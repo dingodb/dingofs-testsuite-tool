@@ -1,0 +1,18 @@
+#
+# Vdbench random read parameter file
+# For DingoFS storage testing
+#
+
+# Host definition
+hd=default,vdbench=/opt/vdbench,user=root,shell=ssh
+hd=localhost,system=localhost
+
+# File Storage Definition - anchor directory for test files
+fsd=default,anchor=/data/randrd,openflags=o_direct,alignfsd=yes
+
+# File Workload Definition - random read operation
+fwd=default,fsd=default,operation=read,fileselect=random,fileio=random
+
+# Run Definition - execute the test
+rd=default,fwd=fwd,format=yes_if_empty
+
