@@ -17,6 +17,7 @@ RUN apt-get update && \
         fio \
         default-jre-headless \
         wget \
+        unzip \
         ca-certificates \
         git \
         build-essential \
@@ -27,24 +28,26 @@ RUN apt-get update && \
         libtool \
         pkg-config \
         libaio-dev && \
-    # Create vdbench directory
-    mkdir -p /opt/vdbench && \
-    # vdbench requires Oracle license acceptance - create instructions
-    echo "vdbench download requires Oracle license acceptance" > /opt/vdbench/DOWNLOAD_INSTRUCTIONS.txt && \
-    echo "Download vdbench50407.zip from Oracle and place vdbench.jar in /opt/vdbench/" >> /opt/vdbench/DOWNLOAD_INSTRUCTIONS.txt && \
-    # Build mdtest from source (part of IOR suite)
-    cd /tmp && \
+    # Clean apt cache to minimize image size (per D-06)
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Copy vdbench archive and install vdbench
+COPY vdbench50406.zip /tmp/vdbench.zip
+RUN mkdir -p /opt/vdbench && \
+    unzip -q /tmp/vdbench.zip -d /opt/vdbench/ && \
+    chmod +x /opt/vdbench/vdbench && \
+    rm -f /tmp/vdbench.zip
+
+# Build mdtest from source (part of IOR suite)
+RUN cd /tmp && \
     git clone --depth 1 https://github.com/hpc/ior.git && \
     cd ior && \
     ./bootstrap && \
     ./configure --prefix=/usr/local && \
     make -j$(nproc) && \
     make install && \
-    # Clean up build artifacts
-    rm -rf /tmp/ior && \
-    # Clean apt cache to minimize image size (per D-06)
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    rm -rf /tmp/ior
 
 # Set working directory for test operations
 WORKDIR /data
