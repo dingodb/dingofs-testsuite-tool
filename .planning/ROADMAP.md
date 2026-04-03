@@ -32,7 +32,10 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
   4. User can verify mdtest is installed by running `mdtest --version` inside container
   5. Image size is optimized (no unnecessary packages or cache files remain)
 
-**Plans:** TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 01-01-PLAN.md — Create Dockerfile and verify all storage testing tools
 
 ---
 
