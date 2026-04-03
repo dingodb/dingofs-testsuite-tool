@@ -24,13 +24,13 @@
 
 ### 预设场景
 
-- [ ] **SCEN-01**: fio预设场景 - 顺序读写（seq_read, seq_write）
-- [ ] **SCEN-02**: fio预设场景 - 随机读写（rand_read, rand_write）
-- [ ] **SCEN-03**: fio预设场景 - 混合读写（randrw）
-- [ ] **SCEN-04**: vdbench预设场景 - 顺序读写
-- [ ] **SCEN-05**: vdbench预设场景 - 随机读写
-- [ ] **SCEN-06**: mdtest预设场景 - 元数据性能测试
-- [ ] **SCEN-07**: 支持用户自定义场景配置文件覆盖内置场景
+- [x] **SCEN-01**: fio预设场景 - 顺序读写（seq_read, seq_write）
+- [x] **SCEN-02**: fio预设场景 - 随机读写（rand_read, rand_write）
+- [x] **SCEN-03**: fio预设场景 - 混合读写（randrw）
+- [x] **SCEN-04**: vdbench预设场景 - 顺序读写
+- [x] **SCEN-05**: vdbench预设场景 - 随机读写
+- [x] **SCEN-06**: mdtest预设场景 - 元数据性能测试
+- [x] **SCEN-07**: 支持用户自定义场景配置文件覆盖内置场景
 
 ### 输出格式
 
@@ -93,13 +93,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | PARM-04 | Phase 2 | Pending |
 | PARM-05 | Phase 2 | Pending |
 | PARM-06 | Phase 2 | Pending |
-| SCEN-01 | Phase 2 | Pending |
-| SCEN-02 | Phase 2 | Pending |
-| SCEN-03 | Phase 2 | Pending |
-| SCEN-04 | Phase 2 | Pending |
-| SCEN-05 | Phase 2 | Pending |
-| SCEN-06 | Phase 2 | Pending |
-| SCEN-07 | Phase 2 | Pending |
+| SCEN-01 | Phase 2 | Complete |
+| SCEN-02 | Phase 2 | Complete |
+| SCEN-03 | Phase 2 | Complete |
+| SCEN-04 | Phase 2 | Complete |
+| SCEN-05 | Phase 2 | Complete |
+| SCEN-06 | Phase 2 | Complete |
+| SCEN-07 | Phase 2 | Complete |
 | OUTP-01 | Phase 3 | Pending |
 | OUTP-02 | Phase 3 | Pending |
 | OUTP-03 | Phase 3 | Pending |
