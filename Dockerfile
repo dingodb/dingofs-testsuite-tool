@@ -49,8 +49,16 @@ RUN cd /tmp && \
     make install && \
     rm -rf /tmp/ior
 
+# Phase 2: Copy scenario files
+COPY scenarios/ /scenarios/
+
+# Create custom config mount point
+RUN mkdir -p /custom && chmod 777 /custom/
+
+# Phase 2: Copy and set entrypoint
+COPY entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
+
 # Set working directory for test operations
 WORKDIR /data
-
-# Default command - interactive bash shell
-CMD ["/bin/bash"]
