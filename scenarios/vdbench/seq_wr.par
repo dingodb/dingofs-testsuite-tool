@@ -1,0 +1,18 @@
+#
+# Vdbench sequential write parameter file
+# For DingoFS storage testing
+#
+
+# Host definition
+hd=default,vdbench=/opt/vdbench,user=root,shell=ssh
+hd=localhost,system=localhost
+
+# File Storage Definition - anchor directory for test files
+fsd=default,anchor=/data/seqwr,openflags=o_direct
+
+# File Workload Definition - sequential write operation
+fwd=default,fsd=default,operation=write,fileselect=sequential,fileio=sequential,streams=1
+
+# Run Definition - execute the test
+rd=default,fwd=fwd,format=yes_if_empty
+
