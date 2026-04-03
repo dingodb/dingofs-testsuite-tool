@@ -12,7 +12,7 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 ## Phases
 
 - [ ] **Phase 1: Docker Image Construction** - Build base image with all testing tools installed
-- [ ] **Phase 2: Core Functionality** - Enable test execution with parameters, scenarios, and run modes
+- [x] **Phase 2: Core Functionality** - Enable test execution with parameters, scenarios, and run modes (completed 2026-04-03)
 - [ ] **Phase 3: Output Formats** - Provide multiple report formats for test results
 
 ## Phase Details
@@ -55,12 +55,12 @@ Plans:
   5. User can run one-shot test mode where container exits after test completion
   6. User can run long-running container and trigger tests via `docker exec`
 
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
 - [x] 02-01-PLAN.md — Create fio and vdbench preset scenario files
-- [ ] 02-02-PLAN.md — Create entrypoint.sh with CLI parsing and mode handling
-- [ ] 02-03-PLAN.md — Update Dockerfile with scenarios and entrypoint
+- [x] 02-02-PLAN.md — Create entrypoint.sh with CLI parsing and mode handling
+- [x] 02-03-PLAN.md — Update Dockerfile with scenarios and entrypoint
 
 ---
 
@@ -87,7 +87,7 @@ Plans:
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
 | 1. Docker Image Construction | 1/1 | Complete | 2026-04-03 |
-| 2. Core Functionality | 1/3 | In Progress|  |
+| 2. Core Functionality | 3/3 | Complete   | 2026-04-03 |
 | 3. Output Formats | 0/1 | Not started | - |
 
 ## Coverage
