@@ -1,0 +1,17 @@
+[global]
+name=rand_read
+description=Random read test for DingoFS storage
+rw=randread
+bs=4k
+ioengine=libaio
+iodepth=32
+direct=1
+numjobs=1
+runtime=60
+time_based=1
+directory=/data
+size=1G
+norandommap=1
+group_reporting=1
+
+[job1]
