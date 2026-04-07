@@ -890,7 +890,7 @@ def generate_mdtest_metrics_html(data):
 # Text Summary Generator
 # ==============================================================================
 
-def generate_text_summary(tool, output_dir, data, scenario, mount):
+def generate_text_summary(tool, output_dir, data, scenario, mount, txt_filename):
     """Generate markdown summary report."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -1169,11 +1169,11 @@ def main():
         print(f"Warning: {error}", file=sys.stderr)
 
     # Generate text summary with timestamped filename first
-    text_summary = generate_text_summary(tool, output_dir, data, scenario, mount)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     scenario_str = scenario if scenario else tool
     txt_filename = f"{tool}_{scenario_str}_summary_{timestamp}.md"
     txt_path = os.path.join(output_dir, txt_filename)
+    text_summary = generate_text_summary(tool, output_dir, data, scenario, mount, txt_filename)
     with open(txt_path, "w") as f:
         f.write(text_summary)
     print(f"Text summary generated: {txt_path}")
