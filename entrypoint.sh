@@ -138,10 +138,10 @@ validate_params() {
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
-        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest)."
+        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest)$ ]]; then
-        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest"
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest)$ ]]; then
+        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest"
         error=1
     fi
 
@@ -213,6 +213,10 @@ scenario_exists() {
                 return 0
             fi
             [[ -f "${SCENARIOS_DIR}/mdtest/${scenario}.sh" ]]
+            ;;
+        pjdtest)
+            # pjdtest only has one scenario: pjdtest
+            [[ "$scenario" == "pjdtest" ]]
             ;;
         *)
             return 1

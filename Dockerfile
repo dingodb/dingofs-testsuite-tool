@@ -34,8 +34,7 @@ RUN apt-get update && \
         libtool \
         pkg-config \
         libaio-dev \
-        perl \
-        libtap-perl && \
+        perl && \
     # Clean apt cache to minimize image size (per D-06)
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
