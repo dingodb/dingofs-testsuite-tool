@@ -243,9 +243,9 @@ get_scenario_paths() {
             ;;
     esac
 
-    # Print paths (one per line)
+    # Print paths (one per line) - use printf to preserve newlines
     for path in "${paths[@]}"; do
-        echo "$path"
+        printf '%s\n' "$path"
     done
 }
 
