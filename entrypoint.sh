@@ -514,7 +514,7 @@ mdtest_run() {
             overall_exit=$mdtest_exit
         fi
 
-        echo ""
+        echo "" || true
     done <<< "$scenario_paths"
 
     # Generate combined report for all mdtest scenarios
