@@ -55,6 +55,10 @@ Tools:
   vdbench   - Oracle storage benchmark
   mdtest    - MPI filesystem metadata test
 
+运行模式:
+  one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
+  long-running   - 容器启动 → 运行测试 → 容器保持运行，可用 docker exec 执行更多测试
+
 FIO Scenarios (4 types, each runs 24 sub-scenarios):
   rand_read   - Random read  (24 variants: 2 direct × 3 block size × 4 numjobs)
   rand_write  - Random write
