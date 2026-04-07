@@ -15,6 +15,7 @@ LABEL version="1.0"
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         fio \
+        python3 \
         default-jre-headless \
         wget \
         unzip \
@@ -48,6 +49,11 @@ RUN cd /tmp && \
     make -j$(nproc) && \
     make install && \
     rm -rf /tmp/ior
+
+# Phase 3: Python and report generation scripts
+RUN mkdir -p /scripts
+COPY scripts/generate_report.py /scripts/generate_report.py
+RUN chmod +x /scripts/generate_report.py
 
 # Phase 2: Copy scenario files
 COPY scenarios/ /scenarios/
