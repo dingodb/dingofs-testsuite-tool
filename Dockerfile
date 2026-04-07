@@ -16,6 +16,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 # - fio: Flexible I/O tester for storage performance benchmarks
 # - default-jre-headless: Java runtime for vdbench (headless = no GUI deps)
 # - mdtest: Metadata performance testing tool (built from IOR source)
+# - perl: Required for prove command (pjdtest test runner)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         fio \
@@ -32,7 +33,9 @@ RUN apt-get update && \
         automake \
         libtool \
         pkg-config \
-        libaio-dev && \
+        libaio-dev \
+        perl \
+        libtap-perl && \
     # Clean apt cache to minimize image size (per D-06)
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
@@ -61,6 +64,9 @@ RUN chmod +x /scripts/generate_report.py
 
 # Phase 2: Copy scenario files
 COPY scenarios/ /scenarios/
+
+# Phase 5: Copy pjdtest tool
+COPY pjdtest/ /pjdtest/
 
 # Create custom config mount point
 RUN mkdir -p /custom && chmod 777 /custom/

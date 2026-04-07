@@ -33,6 +33,7 @@ docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output
 | fio | Flexible I/O tester (存储性能测试) |
 | vdbench | Oracle storage benchmark |
 | mdtest | MPI filesystem metadata test |
+| pjdtest | POSIX 文件系统测试套件 |
 
 ## 运行模式
 
@@ -70,6 +71,15 @@ docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output
 | mdtest_z9_b2_I1 | z=9, b=2, I=1 (深层二叉树, 32736 items) |
 | mdtest | 运行以上所有 4 个场景 |
 
+## PJDTEST
+
+pjdtest 是 POSIX 文件系统测试套件，用于验证文件系统对 POSIX 标准的兼容性。
+
+```bash
+# 运行 pjdtest 测试
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
+```
+
 ## 使用示例
 
 ### FIO 测试
@@ -99,6 +109,13 @@ docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -
 
 # 运行单个 mdtest 场景
 docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+```
+
+### PJDTEST 测试
+
+```bash
+# 运行 pjdtest 测试
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
 ```
 
 ### 长期运行模式
@@ -134,6 +151,7 @@ docker run --rm \
 | fio.raw / fio.json | 原始输出和 JSON 格式 |
 | vdbench.raw | vdbench 原始输出 |
 | mdtest.raw | mdtest 原始输出 |
+| pjdtest_YYYYMMDD_HHMMSS | pjdtest 测试结果 |
 | report.html | HTML 可视化报告 |
 | summary.md | Markdown 格式摘要 |
 

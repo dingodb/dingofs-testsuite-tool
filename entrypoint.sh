@@ -56,6 +56,7 @@ Tools:
   fio       - Flexible I/O tester (存储性能测试)
   vdbench   - Oracle storage benchmark
   mdtest    - MPI filesystem metadata test
+  pjdtest   - POSIX filesystem test suite
 
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
@@ -81,6 +82,9 @@ MDTEST Scenarios (4 types, each runs with 32 parallel tasks):
   mdtest_z9_b2_I1  - z=9, b=2, I=1 (深层二叉树, 32736 items)
   mdtest           - 运行以上所有4个场景
 
+PJDTEST:
+  pjdtest    - 运行 POSIX 文件系统测试套件 (prove -rv /pjdtest/dingofs_baseline)
+
 Examples:
   # 运行所有 rand_read 场景 (24 tests)
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data
@@ -100,6 +104,9 @@ Examples:
   # mdtest 单个场景测试
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
 
+  # pjdtest 测试
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
+
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
@@ -115,6 +122,7 @@ Output:
   测试结果保存在输出目录中:
     - fio.raw / fio.json    (原始输出和JSON格式)
     - mdtest.raw            (mdtest 原始输出)
+    - pjdtest_YYYYMMDD_HHMMSS (pjdtest 测试结果)
     - report.html           (HTML可视化报告)
     - summary.md           (Markdown格式摘要)
 
@@ -348,6 +356,9 @@ dispatch_tool() {
         mdtest)
             mdtest_run
             ;;
+        pjdtest)
+            pjdtest_run
+            ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
             exit 1
@@ -540,6 +551,40 @@ mdtest_run() {
     echo ""
     echo "All mdtest scenarios completed."
     return $overall_exit
+}
+
+pjdtest_run() {
+    echo "Running pjdtest"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+
+    # Create output directory
+    mkdir -p "$OUTPUT"
+
+    # Change to mount directory for test execution
+    cd "$MOUNT"
+
+    # Generate timestamp for output file
+    local timestamp
+    timestamp=$(date +"%Y%m%d_%H%M%S")
+    local output_file="${OUTPUT}/pjdtest_${timestamp}"
+
+    echo "Executing: prove -rv /pjdtest/dingofs_baseline"
+    echo "Output file: ${output_file}"
+
+    # Run pjdtest using prove
+    prove -rv /pjdtest/dingofs_baseline > "${output_file}" 2>&1
+    local pjdtest_exit=$?
+
+    if [[ $pjdtest_exit -ne 0 ]]; then
+        echo "Warning: pjdtest exited with code $pjdtest_exit"
+    else
+        echo "pjdtest completed successfully."
+    fi
+
+    echo ""
+    echo "Results saved to: ${output_file}"
+    return $pjdtest_exit
 }
 
 # ==============================================================================
