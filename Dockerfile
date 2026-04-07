@@ -8,6 +8,10 @@ LABEL maintainer="DingoFS Team"
 LABEL description="Storage performance testing tools: fio, vdbench, mdtest"
 LABEL version="1.0"
 
+# Set timezone to Asia/Shanghai
+ENV TZ=Asia/Shanghai
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
 # Install all tools and dependencies in a single layer to minimize image size
 # - fio: Flexible I/O tester for storage performance benchmarks
 # - default-jre-headless: Java runtime for vdbench (headless = no GUI deps)
