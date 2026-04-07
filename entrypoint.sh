@@ -293,9 +293,17 @@ fio_run() {
     fi
 
     echo "Executing: ${fio_cmd[*]}"
-    "${fio_cmd[@]}"
 
-    return $?
+    # Capture both stdout and stderr to raw file while also letting fio write JSON
+    # Use PIPESTATUS[0] to get fio exit code after tee
+    "${fio_cmd[@]}" 2>&1 | tee "$OUTPUT/fio.raw"
+    local fio_exit=${PIPESTATUS[0]}
+
+    # Generate reports
+    echo "Generating reports..."
+    python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT"
+
+    return $fio_exit
 }
 
 vdbench_run() {
@@ -317,9 +325,17 @@ vdbench_run() {
     cd "$VDBENCH_DIR"
 
     echo "Executing: ./vdbench -f $config -o $OUTPUT"
-    "./vdbench" -f "$config" -o "$OUTPUT"
 
-    return $?
+    # Capture console output to raw file while running vdbench
+    # Use PIPESTATUS[0] to get vdbench exit code after tee
+    "./vdbench" -f "$config" -o "$OUTPUT" 2>&1 | tee "$OUTPUT/vdbench.raw"
+    local vdbench_exit=${PIPESTATUS[0]}
+
+    # Generate reports
+    echo "Generating reports..."
+    python3 /scripts/generate_report.py --tool vdbench --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT"
+
+    return $vdbench_exit
 }
 
 mdtest_run() {
@@ -335,9 +351,17 @@ mdtest_run() {
     local mdtest_cmd=("$MDTEST_BIN" "-d" "$MOUNT")
 
     echo "Executing: ${mdtest_cmd[*]}"
-    "${mdtest_cmd[@]}" > "$OUTPUT/mdtest.txt" 2>&1
 
-    return $?
+    # Capture to raw file using tee, keeping mdtest.txt for backward compatibility
+    # Use PIPESTATUS[0] to get mdtest exit code after tee
+    "${mdtest_cmd[@]}" 2>&1 | tee "$OUTPUT/mdtest.raw"
+    local mdtest_exit=${PIPESTATUS[0]}
+
+    # Generate reports
+    echo "Generating reports..."
+    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT"
+
+    return $mdtest_exit
 }
 
 # ==============================================================================
