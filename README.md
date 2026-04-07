@@ -11,7 +11,7 @@ docker build -t dingofs-benchmark-tools .
 ## 使用方法
 
 ```bash
-docker run myimage -t <tool> -s <scenario> -m <mount> -o <output>
+docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output>
 ```
 
 ## 选项说明
@@ -74,36 +74,36 @@ docker run myimage -t <tool> -s <scenario> -m <mount> -o <output>
 
 ```bash
 # 运行所有 rand_read 场景 (24 tests)
-docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data
 
 # 运行所有 seq_write 场景 (24 tests)
-docker run --rm -v /tmp/test:/data myimage -t fio -s seq_write -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s seq_write -m /data -o /data
 
 # 运行单个特定场景
-docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read_0d_128k_1j -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
 ```
 
 ### VDBENCH 测试
 
 ```bash
-docker run --rm -v /tmp/test:/data myimage -t vdbench -s seq_rd -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t vdbench -s seq_rd -m /data -o /data
 ```
 
 ### MDTEST 测试
 
 ```bash
 # 运行所有 4 个 mdtest 场景并汇总
-docker run --rm -v /tmp/test:/data myimage -t mdtest -s mdtest -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
 
 # 运行单个 mdtest 场景
-docker run --rm -v /tmp/test:/data myimage -t mdtest -s mdtest_z0_n100 -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
 ```
 
 ### 长期运行模式
 
 ```bash
 # 启动长期运行容器
-docker run --detach -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data --mode long-running
+docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
 
 # 在运行中的容器内执行更多测试
 docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data

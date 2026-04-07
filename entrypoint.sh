@@ -5,9 +5,9 @@
 # dispatches to correct storage testing tool (fio/vdbench/mdtest)
 #
 # Usage:
-#   docker run myimage -t fio -s seq_read -m /mnt/test
-#   docker run myimage -t vdbench -s rand_read -m /mnt/test -o /tmp/results
-#   docker run --detach myimage -t fio -s randrw --mode long-running
+#   docker run dingofs-benchmark-tools -t fio -s seq_read -m /mnt/test
+#   docker run dingofs-benchmark-tools -t vdbench -s rand_read -m /mnt/test -o /tmp/results
+#   docker run --detach dingofs-benchmark-tools -t fio -s randrw --mode long-running
 #
 
 set -e
@@ -41,7 +41,7 @@ DingoFS Storage Benchmark Tools
 ===============================
 
 Usage:
-  docker run myimage -t <tool> -s <scenario> -m <mount> -o <output>
+  docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output>
 
 Options:
   -t, --tool      测试工具: fio, vdbench, mdtest
@@ -81,25 +81,25 @@ MDTEST Scenarios (4 types, each runs with 32 parallel tasks):
 
 Examples:
   # 运行所有 rand_read 场景 (24 tests)
-  docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data
 
   # 运行所有 seq_write 场景 (24 tests)
-  docker run --rm -v /tmp/test:/data myimage -t fio -s seq_write -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s seq_write -m /data -o /data
 
   # 运行单个特定场景
-  docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read_0d_128k_1j -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
 
   # vdbench 测试
-  docker run --rm -v /tmp/test:/data myimage -t vdbench -s seq_rd -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t vdbench -s seq_rd -m /data -o /data
 
   # mdtest 测试 (运行所有4个场景并汇总)
-  docker run --rm -v /tmp/test:/data myimage -t mdtest -s mdtest -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
 
   # mdtest 单个场景测试
-  docker run --rm -v /tmp/test:/data myimage -t mdtest -s mdtest_z0_n100 -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
 
   # 长期运行模式 (容器保持运行，可执行多个测试)
-  docker run --detach -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data --mode long-running
+  docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
 
 Output:
