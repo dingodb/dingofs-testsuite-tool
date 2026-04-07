@@ -383,76 +383,61 @@ def parse_mdtest_output(output_dir):
 def parse_mdtest_summary(text):
     """Parse mdtest summary statistics.
 
-    mdtest output format includes lines like:
-    "   1        0.012583       0.010192       1.23 ..."
-
-    Operations include:
-    - File/Directory creation, stat, read, removal
-    - Tree creation and removal
+    mdtest output format:
+       Operation                     Max            Min           Mean        Std Dev
+       ---------                     ---            ---           ----        -------
+       File creation               26100.313      26100.313      26100.313          0.000
     """
     summary = {
         "operations": []
     }
 
     lines = text.split("\n")
-    current_op = None
-    op_data = {}
+    in_summary_section = False
 
     for line in lines:
-        # Look for operation lines with 4 numeric values (max, min, mean, stddev)
-        # Pattern: starts with spaces then numbers
-        if line.strip() and not line.startswith("mdtest"):
-            parts = line.split()
-            # Check if line has numeric pattern like "1.23" or "123.456"
-            numeric_parts = []
-            for p in parts:
+        # Look for the SUMMARY rate header
+        if "SUMMARY rate" in line or "SUMMARY" in line.upper():
+            in_summary_section = True
+            continue
+
+        # Skip header lines
+        if in_summary_section:
+            if "---" in line or "Operation" in line or not line.strip():
+                continue
+
+            # Parse operation line - fixed width format
+            # Format: "Operation Name             Number         Number         Number         Number"
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            # Extract operation name (everything before the first number)
+            parts = stripped.split()
+            if len(parts) < 5:
+                continue
+
+            # Find where numbers start - they come after the operation name
+            # The numbers are at fixed positions but we can identify them by being numeric
+            nums = []
+            op_name_parts = []
+
+            for part in parts:
                 try:
-                    val = float(p)
-                    numeric_parts.append(val)
+                    val = float(part)
+                    nums.append(val)
                 except ValueError:
-                    # Check if it's an operation name
-                    if p.replace("_", " ").replace("-", " ").replace(".", "").isalpha():
-                        # Save previous operation if exists
-                        if current_op and op_data:
-                            summary["operations"].append({
-                                "name": current_op,
-                                "max": op_data.get("max", 0),
-                                "min": op_data.get("min", 0),
-                                "mean": op_data.get("mean", 0),
-                                "stddev": op_data.get("stddev", 0),
-                            })
-                        current_op = p.replace("_", " ")
-                        op_data = {}
-                        numeric_parts = []
-                    else:
-                        break
+                    op_name_parts.append(part)
 
-                if len(numeric_parts) == 4:
-                    op_data["max"] = numeric_parts[0]
-                    op_data["min"] = numeric_parts[1]
-                    op_data["mean"] = numeric_parts[2]
-                    op_data["stddev"] = numeric_parts[3]
-
-            # Save operation if we have complete data
-            if current_op and op_data and len(numeric_parts) == 4:
+            if len(nums) >= 4:
+                op_name = " ".join(op_name_parts).replace("_", " ")
                 summary["operations"].append({
-                    "name": current_op,
-                    "max": op_data.get("max", 0),
-                    "min": op_data.get("min", 0),
-                    "mean": op_data.get("mean", 0),
-                    "stddev": op_data.get("stddev", 0),
+                    "name": op_name,
+                    "max": nums[0],
+                    "min": nums[1],
+                    "mean": nums[2],
+                    "stddev": nums[3] if len(nums) > 3 else 0,
                 })
-                op_data = {}
-
-    # Save last operation
-    if current_op and op_data:
-        summary["operations"].append({
-            "name": current_op,
-            "max": op_data.get("max", 0),
-            "min": op_data.get("min", 0),
-            "mean": op_data.get("mean", 0),
-            "stddev": op_data.get("stddev", 0),
-        })
 
     return summary
 
@@ -567,9 +552,9 @@ def parse_mdtest_scenario_name(scenario_name):
 
 def extract_mdtest_file_count(text):
     """Extract total file/directory count from mdtest output."""
-    # Look for line like "32776" or "32736 files"
+    # Look for line like "32 tasks, 3200 files"
     import re
-    match = re.search(r'(\d+)\s+(?:files?|directories?)', text, re.IGNORECASE)
+    match = re.search(r'(\d+)\s+files', text, re.IGNORECASE)
     if match:
         return int(match.group(1))
     return 0
