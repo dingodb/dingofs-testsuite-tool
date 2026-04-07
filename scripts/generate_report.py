@@ -635,7 +635,7 @@ def generate_mdtest_combined_markdown(output_dir, scenarios, mount):
 # HTML Report Generator
 # ==============================================================================
 
-def generate_html_report(tool, output_dir, data, scenario, mount):
+def generate_html_report(tool, output_dir, data, scenario, mount, txt_filename):
     """Generate HTML report with embedded CSS and JS."""
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
@@ -738,7 +738,7 @@ def generate_html_report(tool, output_dir, data, scenario, mount):
             <ul style="margin-left:20px;">
                 <li><code>{escape(output_dir)}/{escape(tool)}.json</code> - Structured data</li>
                 <li><code>{escape(output_dir)}/{escape(tool)}.raw</code> - Raw tool output</li>
-                <li><code>{escape(output_dir)}/summary.md</code> - Text summary</li>
+                <li><code>{escape(txt_filename)}</code> - Markdown summary</li>
             </ul>
         </div>
 
@@ -923,7 +923,7 @@ def generate_text_summary(tool, output_dir, data, scenario, mount):
     summary.append("")
     summary.append(f"- JSON 输出: `{output_dir}/{tool}.json`")
     summary.append(f"- 原始输出: `{output_dir}/{tool}.raw`")
-    summary.append(f"- 本报告: `{output_dir}/summary.md`")
+    summary.append(f"- 本报告: `{txt_filename}`")
     summary.append("")
     summary.append("---")
     summary.append("*由 DingoFS 存储性能测试工具生成*")
@@ -1168,19 +1168,22 @@ def main():
     if error:
         print(f"Warning: {error}", file=sys.stderr)
 
+    # Generate text summary with timestamped filename first
+    text_summary = generate_text_summary(tool, output_dir, data, scenario, mount)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    scenario_str = scenario if scenario else tool
+    txt_filename = f"{tool}_{scenario_str}_summary_{timestamp}.md"
+    txt_path = os.path.join(output_dir, txt_filename)
+    with open(txt_path, "w") as f:
+        f.write(text_summary)
+    print(f"Text summary generated: {txt_path}")
+
     # Generate HTML report
-    html_report = generate_html_report(tool, output_dir, data, scenario, mount)
+    html_report = generate_html_report(tool, output_dir, data, scenario, mount, txt_filename)
     html_path = os.path.join(output_dir, "report.html")
     with open(html_path, "w") as f:
         f.write(html_report)
     print(f"HTML report generated: {html_path}")
-
-    # Generate text summary
-    text_summary = generate_text_summary(tool, output_dir, data, scenario, mount)
-    txt_path = os.path.join(output_dir, "summary.md")
-    with open(txt_path, "w") as f:
-        f.write(text_summary)
-    print(f"Text summary generated: {txt_path}")
 
     # Generate combined summary tables if requested
     if is_combined and tool == "fio":
