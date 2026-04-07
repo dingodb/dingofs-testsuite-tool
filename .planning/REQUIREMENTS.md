@@ -34,10 +34,10 @@
 
 ### 输出格式
 
-- [ ] **OUTP-01**: 保留工具原始输出格式
-- [ ] **OUTP-02**: 输出结构化JSON格式报告
-- [ ] **OUTP-03**: 生成HTML可视化报告
-- [ ] **OUTP-04**: 输出文本摘要（关键指标）
+- [x] **OUTP-01**: 保留工具原始输出格式
+- [x] **OUTP-02**: 输出结构化JSON格式报告
+- [x] **OUTP-03**: 生成HTML可视化报告
+- [x] **OUTP-04**: 输出文本摘要（关键指标）
 
 ### 运行模式
 
@@ -49,7 +49,7 @@
 
 - [ ] **ENTRY-01**: 提供统一的入口脚本(entrypoint.sh)
 - [ ] **ENTRY-02**: 入口脚本解析参数并调用对应工具
-- [ ] **ENTRY-03**: 入口脚本生成多格式报告
+- [x] **ENTRY-03**: 入口脚本生成多格式报告
 - [ ] **ENTRY-04**: 提供帮助信息和使用示例
 
 ## v2 Requirements
@@ -100,16 +100,16 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SCEN-05 | Phase 2 | Complete |
 | SCEN-06 | Phase 2 | Complete |
 | SCEN-07 | Phase 2 | Complete |
-| OUTP-01 | Phase 3 | Pending |
-| OUTP-02 | Phase 3 | Pending |
-| OUTP-03 | Phase 3 | Pending |
-| OUTP-04 | Phase 3 | Pending |
+| OUTP-01 | Phase 3 | Complete |
+| OUTP-02 | Phase 3 | Complete |
+| OUTP-03 | Phase 3 | Complete |
+| OUTP-04 | Phase 3 | Complete |
 | MODE-01 | Phase 2 | Pending |
 | MODE-02 | Phase 2 | Pending |
 | MODE-03 | Phase 2 | Pending |
 | ENTRY-01 | Phase 2 | Pending |
 | ENTRY-02 | Phase 2 | Pending |
-| ENTRY-03 | Phase 3 | Pending |
+| ENTRY-03 | Phase 3 | Complete |
 | ENTRY-04 | Phase 2 | Pending |
 
 **Coverage:**
