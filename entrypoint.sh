@@ -485,7 +485,12 @@ mdtest_run() {
     cd "$MOUNT"
 
     # Run each scenario
-    while IFS= read -r script; do
+    # Use array instead of while read to avoid set -e issues
+    mapfile -t scenario_array <<< "$scenario_paths"
+    local total=${#scenario_array[@]}
+    local run_num=0
+
+    for script in "${scenario_array[@]}"; do
         [[ -z "$script" ]] && continue
 
         run_num=$((run_num + 1))
@@ -494,7 +499,7 @@ mdtest_run() {
         local scenario_output="$OUTPUT/$scenario_name"
 
         echo "=============================================="
-        echo "Running mdtest scenario $run_num/$path_count: $scenario_name"
+        echo "Running mdtest scenario $run_num/$total: $scenario_name"
         echo "Script: $script"
         echo "Output: $scenario_output"
         echo "=============================================="
@@ -506,8 +511,10 @@ mdtest_run() {
 
         # Run the mdtest scenario script
         # Capture output to raw file
+        set +e
         "$script" > "$scenario_output/mdtest.raw" 2>&1
         local mdtest_exit=$?
+        set -e
 
         if [[ $mdtest_exit -ne 0 ]]; then
             echo "Warning: Scenario '$scenario_name' exited with code $mdtest_exit"
@@ -515,7 +522,7 @@ mdtest_run() {
         fi
 
         echo "" || true
-    done <<< "$scenario_paths"
+    done
 
     # Generate combined report for all mdtest scenarios
     echo "Generating combined mdtest report..."
