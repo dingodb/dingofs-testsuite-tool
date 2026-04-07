@@ -37,39 +37,54 @@ SCENARIOS_DIR="/scenarios"
 
 show_help() {
     cat << EOF
-Usage: entrypoint.sh [OPTIONS]
+DingoFS Storage Benchmark Tools
+===============================
 
-DingoFS Storage Benchmark Tools - Unified entrypoint for storage performance testing.
+Usage:
+  docker run myimage -t <tool> -s <scenario> -m <mount> -o <output>
 
-Options:
-  -t, --tool TOOL       Storage testing tool (fio, vdbench, mdtest)
-  -s, --scenario NAME   Test scenario name
-                        fio: seq_read, seq_write, rand_read, rand_write, randrw
-                        vdbench: seq_rd, seq_wr, rand_rd, rand_wr
-                        mdtest: (uses fixed internal scenarios)
-  -m, --mount PATH      Filesystem mount point (default: /data)
-  -o, --output PATH     Output directory (default: /data/results)
-  --mode MODE           Mode: one-shot or long-running (default: one-shot)
-                        one-shot: Execute test and exit
-                        long-running: Stay alive for additional tests via docker exec
-  -h, --help            Show this help message
+Tools:
+  fio       - Flexible I/O tester (storage performance)
+  vdbench   - Oracle storage benchmark
+  mdtest    - MPI filesystem metadata test
 
-Custom Config Override:
-  Mount your own config files at /custom/ to override built-in scenarios:
-    /custom/{scenario}.fio   (for fio)
-    /custom/{scenario}.par    (for vdbench)
-  Custom configs take precedence over built-in scenarios.
+FIO Scenarios (4 types, each runs 24 sub-scenarios):
+  rand_read   - Random read  (24 variants: 2 direct × 3 block size × 4 numjobs)
+  rand_write  - Random write
+  seq_read    - Sequential read
+  seq_write   - Sequential write
+
+FIO Parameters:
+  direct:    0 (buffered), 1 (direct I/O)
+  block size: 128k, 1m, 4m
+  numjobs:   1, 8, 16, 32
+  iodepth:   1 (fixed)
+  size:      8G per job
 
 Examples:
-  # Run fio sequential read test
-  docker run myimage -t fio -s seq_read -m /mnt/test
+  # Run ALL rand_read scenarios (24 tests)
+  docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data
 
-  # Run vdbench random write test with custom output
-  docker run myimage -t vdbench -s rand_wr -m /mnt/test -o /tmp/results
+  # Run ALL seq_write scenarios (24 tests)
+  docker run --rm -v /tmp/test:/data myimage -t fio -s seq_write -m /data -o /data
 
-  # Run in long-running mode for multiple tests
-  docker run --detach myimage -t fio -s randrw -m /mnt/test --mode long-running
-  docker exec <container> entrypoint.sh -t fio -s seq_read -m /mnt/test
+  # Run a SINGLE specific scenario
+  docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read_0d_128k_1j -m /data -o /data
+
+  # Run vdbench test
+  docker run --rm -v /tmp/test:/data myimage -t vdbench -s seq_rd -m /data -o /data
+
+  # Long-running mode (container stays alive)
+  docker run --detach -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data --mode long-running
+  docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
+
+Output:
+  Results are saved to the output directory with:
+    - fio.raw / fio.json    (raw and JSON output)
+    - report.html           (HTML report)
+    - summary.txt           (text summary)
+
+For more details on fio scenarios, see: ls /scenarios/fio/
 
 EOF
 }
