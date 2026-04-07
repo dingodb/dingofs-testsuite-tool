@@ -90,15 +90,17 @@ validate_params() {
         error=1
     fi
 
-    # Validate SCENARIO (PARM-06)
-    if [[ -z "$SCENARIO" ]]; then
-        echo "Error: Scenario is required. Use -s or --scenario to specify."
-        error=1
-    else
-        # Check if scenario exists (either in /custom/ or /scenarios/)
-        if ! scenario_exists "$TOOL" "$SCENARIO"; then
-            echo "Error: Scenario '$SCENARIO' not found for tool '$TOOL'"
+    # Validate SCENARIO (PARM-06) - mdtest doesn't require a scenario
+    if [[ "$TOOL" != "mdtest" ]]; then
+        if [[ -z "$SCENARIO" ]]; then
+            echo "Error: Scenario is required. Use -s or --scenario to specify."
             error=1
+        else
+            # Check if scenario exists (either in /custom/ or /scenarios/)
+            if ! scenario_exists "$TOOL" "$SCENARIO"; then
+                echo "Error: Scenario '$SCENARIO' not found for tool '$TOOL'"
+                error=1
+            fi
         fi
     fi
 
