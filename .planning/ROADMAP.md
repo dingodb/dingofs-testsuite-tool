@@ -14,6 +14,7 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [ ] **Phase 1: Docker Image Construction** - Build base image with all testing tools installed
 - [x] **Phase 2: Core Functionality** - Enable test execution with parameters, scenarios, and run modes (completed 2026-04-03)
 - [ ] **Phase 3: Output Formats** - Provide multiple report formats for test results
+- [ ] **Phase 4: Fio Scenario Enhancements** - Add more fio scenarios for comprehensive testing
 
 ## Phase Details
 
@@ -78,11 +79,33 @@ Plans:
   3. User can get HTML report with visualized test metrics
   4. User can see text summary highlighting key performance indicators
 
-**Plans:** 1/2 plans executed
+**Plans:** 2/2 plans complete
 
 Plans:
 - [x] 03-01-PLAN.md — Create report generation script and update Dockerfile
-- [ ] 03-02-PLAN.md — Integrate report generation into entrypoint.sh
+- [x] 03-02-PLAN.md — Integrate report generation into entrypoint.sh
+
+---
+
+### Phase 4: Fio Scenario Enhancements
+
+**Goal:** Add more fio test scenarios to cover mixed workloads, different block sizes, and queue depths for comprehensive storage testing.
+
+**Depends on:** Phase 2
+
+**Requirements:** FIO-01, FIO-02, FIO-03, FIO-04, FIO-05
+
+**Success Criteria** (what must be TRUE):
+  1. User can run mixed read/write workloads (e.g., 70/30, 50/50 read/write ratios)
+  2. User can test different block sizes (4k, 8k, 64k, 128k, 1m)
+  3. User can specify iodepth for queue depth testing
+  4. User can run steady-state performance tests with longer runtime
+  5. New scenarios follow existing naming convention and directory structure
+
+**Plans:** 1/1 plan complete
+
+Plans:
+- [x] 04-01-PLAN.md — Add new fio scenarios (mixed rw, block size, iodepth)
 
 ---
 
@@ -92,12 +115,13 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Docker Image Construction | 1/1 | Complete | 2026-04-03 |
 | 2. Core Functionality | 3/3 | Complete   | 2026-04-03 |
-| 3. Output Formats | 1/2 | In Progress|  |
+| 3. Output Formats | 2/2 | Complete | 2026-04-07 |
+| 4. Fio Scenario Enhancements | 0/1 | Pending |  |
 
 ## Coverage
 
-- v1 Requirements: 29 total
-- Mapped to phases: 29
+- v1 Requirements: 34 total
+- Mapped to phases: 34
 - Unmapped: 0
 
 | Requirement | Phase | Status |
@@ -126,11 +150,16 @@ Plans:
 | ENTRY-01 | Phase 2 | Complete |
 | ENTRY-02 | Phase 2 | Complete |
 | ENTRY-04 | Phase 2 | Complete |
-| OUTP-01 | Phase 3 | Pending |
-| OUTP-02 | Phase 3 | Pending |
-| OUTP-03 | Phase 3 | Pending |
-| OUTP-04 | Phase 3 | Pending |
-| ENTRY-03 | Phase 3 | Pending |
+| OUTP-01 | Phase 3 | Complete |
+| OUTP-02 | Phase 3 | Complete |
+| OUTP-03 | Phase 3 | Complete |
+| OUTP-04 | Phase 3 | Complete |
+| ENTRY-03 | Phase 3 | Complete |
+| FIO-01 | Phase 4 | Pending |
+| FIO-02 | Phase 4 | Pending |
+| FIO-03 | Phase 4 | Pending |
+| FIO-04 | Phase 4 | Pending |
+| FIO-05 | Phase 4 | Pending |
 
 ---
 
