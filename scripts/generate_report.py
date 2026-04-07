@@ -61,8 +61,8 @@ def parse_fio_scenario_name(scenario_name):
     Naming convention: {rw}_{direct}d_{bs}_{numjobs}j
     Example: seq_read_1d_4m_32j -> rw=seq_read, direct=1, bs=4m, numjobs=32
     """
-    # Pattern: rw_directd_bs_numjsj (e.g., seq_read_1d_4m_32j)
-    pattern = r'^(.+?)_(\d)d_(\d+m)_(\d+)j$'
+    # Pattern: rw_directd_bs_numjsj (e.g., seq_read_1d_4m_32j, seq_read_1d_128k_1j)
+    pattern = r'^(.+?)_(\d)d_(\d+[km])_(\d+)j$'
     match = re.match(pattern, scenario_name)
     if match:
         return {
