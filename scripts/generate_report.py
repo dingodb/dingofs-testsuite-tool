@@ -7,6 +7,7 @@ Parses fio JSON, vdbench text, and mdtest text outputs to generate HTML and text
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from html import escape
@@ -42,7 +43,106 @@ def parse_args():
         default="/data",
         help="Filesystem mount point (default: /data)"
     )
+    parser.add_argument(
+        "--combined",
+        action="store_true",
+        help="Generate combined summary from multiple sub-scenarios"
+    )
     return parser.parse_args()
+
+
+# ==============================================================================
+# FIO Scenario Name Parser
+# ==============================================================================
+
+def parse_fio_scenario_name(scenario_name):
+    """Parse fio scenario name to extract parameters.
+
+    Naming convention: {rw}_{direct}d_{bs}_{numjobs}j
+    Example: seq_read_1d_4m_32j -> rw=seq_read, direct=1, bs=4m, numjobs=32
+    """
+    # Pattern: rw_directd_bs_numjsj (e.g., seq_read_1d_4m_32j)
+    pattern = r'^(.+?)_(\d)d_(\d+m)_(\d+)j$'
+    match = re.match(pattern, scenario_name)
+    if match:
+        return {
+            "rw": match.group(1),
+            "direct": int(match.group(2)),
+            "bs": match.group(3),
+            "numjobs": int(match.group(4))
+        }
+    return None
+
+
+def aggregate_fio_results(output_dir):
+    """Aggregate fio results from all subdirectories into summary tables.
+
+    Returns two dictionaries (direct=0 and direct=1), each containing
+    aggregated data grouped by (bs, numjobs).
+    """
+    direct_0 = {}  # direct=0 results
+    direct_1 = {}  # direct=1 results
+
+    if not os.path.isdir(output_dir):
+        return direct_0, direct_1
+
+    # Scan subdirectories
+    for subdir in os.listdir(output_dir):
+        subdir_path = os.path.join(output_dir, subdir)
+        if not os.path.isdir(subdir_path):
+            continue
+
+        fio_json_path = os.path.join(subdir_path, "fio.json")
+        if not os.path.exists(fio_json_path):
+            continue
+
+        # Parse scenario name to get parameters
+        params = parse_fio_scenario_name(subdir)
+        if not params:
+            continue
+
+        # Read and parse fio JSON
+        try:
+            with open(fio_json_path, "r") as f:
+                data = json.load(f)
+        except (json.JSONDecodeError, IOError):
+            continue
+
+        # Extract metrics from jobs
+        jobs = data.get("jobs", [])
+        if not jobs:
+            continue
+
+        # Determine if read or write based on scenario name
+        is_read = params["rw"] in ("seq_read", "rand_read")
+        job = jobs[0]
+
+        if is_read:
+            metrics = job.get("read", {})
+        else:
+            metrics = job.get("write", {})
+
+        if not metrics:
+            continue
+
+        # Get bandwidth (KiB/s) and latency mean (ns)
+        bw_kib = metrics.get("bw", 0)
+        latency_ns_mean = metrics.get("lat_ns", {}).get("mean", 0)
+
+        key = (params["bs"], params["numjobs"])
+
+        if params["direct"] == 0:
+            direct_0[key] = {
+                "bandwidth_kib": bw_kib,
+                "latency_ns_mean": latency_ns_mean
+            }
+        else:
+            direct_1[key] = {
+                "bandwidth_kib": bw_kib,
+                "latency_ns_mean": latency_ns_mean
+            }
+
+    return direct_0, direct_1
 
 
 # ==============================================================================
@@ -722,6 +822,116 @@ def generate_mdtest_text_metrics(summary, data):
 
 
 # ==============================================================================
+# FIO Combined Summary Generator
+# ==============================================================================
+
+def generate_fio_summary_tables_html(direct_0, direct_1, rw_type):
+    """Generate HTML summary tables for combined fio results."""
+    html = ""
+
+    # Determine column header based on rw_type
+    if rw_type in ("seq_read", "rand_read"):
+        bw_label = "READ_BANDWIDTH"
+    else:
+        bw_label = "WRITE_BANDWIDTH"
+
+    # Define row order: bs (128k, 1m, 4m) x numjobs (1, 8, 16, 32)
+    bs_order = ["128k", "1m", "4m"]
+    numjobs_order = [1, 8, 16, 32]
+
+    # direct=0 table
+    html += "<div style='margin-bottom: 30px;'>"
+    html += "<h3>Summary Table (direct=0, Buffered I/O)</h3>"
+    html += "<table><thead><tr><th>Block Size</th><th>Num Jobs</th><th>BANDWIDTH (MiB/s)</th><th>Latency (us)</th></tr></thead><tbody>"
+
+    for bs in bs_order:
+        for numjobs in numjobs_order:
+            key = (bs, numjobs)
+            if key in direct_0:
+                data = direct_0[key]
+                bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td class='metric-value'>{bw_mib:.2f}</td><td>{lat_us:.2f}</td></tr>"
+            else:
+                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td>-</td><td>-</td></tr>"
+    html += "</tbody></table></div>"
+
+    # direct=1 table
+    html += "<div style='margin-bottom: 30px;'>"
+    html += "<h3>Summary Table (direct=1, Direct I/O)</h3>"
+    html += "<table><thead><tr><th>Block Size</th><th>Num Jobs</th><th>BANDWIDTH (MiB/s)</th><th>Latency (us)</th></tr></thead><tbody>"
+
+    for bs in bs_order:
+        for numjobs in numjobs_order:
+            key = (bs, numjobs)
+            if key in direct_1:
+                data = direct_1[key]
+                bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td class='metric-value'>{bw_mib:.2f}</td><td>{lat_us:.2f}</td></tr>"
+            else:
+                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td>-</td><td>-</td></tr>"
+    html += "</tbody></table></div>"
+
+    return html
+
+
+def generate_fio_summary_tables_text(direct_0, direct_1, rw_type):
+    """Generate text summary tables for combined fio results."""
+    lines = []
+
+    # Determine column header based on rw_type
+    if rw_type in ("seq_read", "rand_read"):
+        bw_label = "READ_BANDWIDTH"
+    else:
+        bw_label = "WRITE_BANDWIDTH"
+
+    # Define row order
+    bs_order = ["128k", "1m", "4m"]
+    numjobs_order = [1, 8, 16, 32]
+
+    # direct=0 table
+    lines.append("")
+    lines.append("=" * 80)
+    lines.append("SUMMARY TABLE (direct=0, Buffered I/O)")
+    lines.append("=" * 80)
+    lines.append(f"{'Block Size':<12} {'Num Jobs':<10} {'BANDWIDTH (MiB/s)':<20} {'Latency (us)':<15}")
+    lines.append("-" * 80)
+
+    for bs in bs_order:
+        for numjobs in numjobs_order:
+            key = (bs, numjobs)
+            if key in direct_0:
+                data = direct_0[key]
+                bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                lines.append(f"{bs:<12} {numjobs:<10} {bw_mib:<20.2f} {lat_us:<15.2f}")
+            else:
+                lines.append(f"{bs:<12} {numjobs:<10} {'-':<20} {'-':<15}")
+
+    # direct=1 table
+    lines.append("")
+    lines.append("=" * 80)
+    lines.append("SUMMARY TABLE (direct=1, Direct I/O)")
+    lines.append("=" * 80)
+    lines.append(f"{'Block Size':<12} {'Num Jobs':<10} {'BANDWIDTH (MiB/s)':<20} {'Latency (us)':<15}")
+    lines.append("-" * 80)
+
+    for bs in bs_order:
+        for numjobs in numjobs_order:
+            key = (bs, numjobs)
+            if key in direct_1:
+                data = direct_1[key]
+                bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                lines.append(f"{bs:<12} {numjobs:<10} {bw_mib:<20.2f} {lat_us:<15.2f}")
+            else:
+                lines.append(f"{bs:<12} {numjobs:<10} {'-':<20} {'-':<15}")
+
+    return "\n".join(lines)
+
+
+# ==============================================================================
 # Main
 # ==============================================================================
 
@@ -732,6 +942,7 @@ def main():
     tool = args.tool
     scenario = args.scenario
     mount = args.mount
+    is_combined = args.combined
 
     # Parse tool-specific output
     data = None
@@ -760,6 +971,46 @@ def main():
     with open(txt_path, "w") as f:
         f.write(text_summary)
     print(f"Text summary generated: {txt_path}")
+
+    # Generate combined summary tables if requested
+    if is_combined and tool == "fio":
+        direct_0, direct_1 = aggregate_fio_results(output_dir)
+
+        # Determine rw_type from scenario name
+        rw_type = "seq_read"  # default
+        if scenario:
+            params = parse_fio_scenario_name(scenario)
+            if params:
+                rw_type = params["rw"]
+
+        # Generate and append summary tables to HTML report
+        summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type)
+
+        # Read existing HTML and insert summary before the footer
+        with open(html_path, "r") as f:
+            html_content = f.read()
+
+        # Insert summary tables before </div> in the metrics card
+        summary_html = """
+        <div class="card">
+            <h2>Combined Summary (All Sub-Scenarios)</h2>
+        """ + summary_html + "</div>"
+
+        # Find the last </div> before <div class="footer"> and insert before it
+        footer_pos = html_content.find('<div class="footer">')
+        if footer_pos > 0:
+            html_content = html_content[:footer_pos] + summary_html + "\n" + html_content[footer_pos:]
+
+        with open(html_path, "w") as f:
+            f.write(html_content)
+        print(f"Combined summary HTML appended: {html_path}")
+
+        # Generate and append summary tables to text summary
+        summary_text = generate_fio_summary_tables_text(direct_0, direct_1, rw_type)
+
+        with open(txt_path, "a") as f:
+            f.write("\n" + summary_text)
+        print(f"Combined summary text appended: {txt_path}")
 
     print("\nReport generation complete.")
     return 0
