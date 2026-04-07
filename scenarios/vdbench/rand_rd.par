@@ -7,12 +7,11 @@
 hd=default,vdbench=/opt/vdbench,user=root,shell=ssh
 hd=localhost,system=localhost
 
-# File Storage Definition - anchor directory for test files
-fsd=default,anchor=/data/randrd,openflags=o_direct,alignfsd=yes
+# Storage Definition - file based test
+sd=sd1,host=localhost,lun=/data/randrd_testfile,size=100m
 
-# File Workload Definition - random read operation
-fwd=default,fsd=default,operation=read,fileselect=random,fileio=random
+# Workload Definition - random read operation
+wd=wd1,sd=sd1,rdpct=100,xfersize=4k,seekpct=100
 
 # Run Definition - execute the test
-rd=default,fwd=fwd,format=yes_if_empty
-
+rd=rd1,wd=wd1,iorate=100,elapsed=5,interval=1

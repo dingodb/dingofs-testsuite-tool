@@ -81,10 +81,13 @@ def parse_fio_json(output_dir):
         # Read metrics
         read_data = job.get("read", {})
         if read_data:
+            # bw is in KiB/s, bw_bytes is in bytes
+            bw_kib = read_data.get("bw", 0)
+            bw_mib = bw_kib / 1024 if bw_kib else 0
             job_result["read"] = {
-                "IOPS": read_data.get("io_kicks", 0),
+                "IOPS": read_data.get("iops", 0),
                 "bandwidth_bytes": read_data.get("bw_bytes", 0),
-                "bandwidth": read_data.get("bw", ""),
+                "bandwidth": f"{bw_mib:.2f} MiB/s",
                 "latency_ns": {
                     "min": read_data.get("lat_ns", {}).get("min", 0),
                     "max": read_data.get("lat_ns", {}).get("max", 0),
@@ -92,10 +95,10 @@ def parse_fio_json(output_dir):
                     "stddev": read_data.get("lat_ns", {}).get("stddev", 0),
                 },
                 "latency": {
-                    "min": read_data.get("lat", {}).get("min", 0),
-                    "max": read_data.get("lat", {}).get("max", 0),
-                    "mean": read_data.get("lat", {}).get("mean", 0),
-                    "stddev": read_data.get("lat", {}).get("stddev", 0),
+                    "min": read_data.get("lat_ns", {}).get("min", 0) / 1000,  # ns to us
+                    "max": read_data.get("lat_ns", {}).get("max", 0) / 1000,  # ns to us
+                    "mean": read_data.get("lat_ns", {}).get("mean", 0) / 1000,  # ns to us
+                    "stddev": read_data.get("lat_ns", {}).get("stddev", 0) / 1000,  # ns to us
                 },
                 "clat_ns": read_data.get("clat_ns", {}),
                 "percentiles": parse_percentiles(read_data.get("clat_ns", {}).get("percentile", {})),
@@ -104,10 +107,13 @@ def parse_fio_json(output_dir):
         # Write metrics
         write_data = job.get("write", {})
         if write_data:
+            # bw is in KiB/s, bw_bytes is in bytes
+            bw_kib = write_data.get("bw", 0)
+            bw_mib = bw_kib / 1024 if bw_kib else 0
             job_result["write"] = {
-                "IOPS": write_data.get("io_kicks", 0),
+                "IOPS": write_data.get("iops", 0),
                 "bandwidth_bytes": write_data.get("bw_bytes", 0),
-                "bandwidth": write_data.get("bw", ""),
+                "bandwidth": f"{bw_mib:.2f} MiB/s",
                 "latency_ns": {
                     "min": write_data.get("lat_ns", {}).get("min", 0),
                     "max": write_data.get("lat_ns", {}).get("max", 0),
@@ -115,10 +121,10 @@ def parse_fio_json(output_dir):
                     "stddev": write_data.get("lat_ns", {}).get("stddev", 0),
                 },
                 "latency": {
-                    "min": write_data.get("lat", {}).get("min", 0),
-                    "max": write_data.get("lat", {}).get("max", 0),
-                    "mean": write_data.get("lat", {}).get("mean", 0),
-                    "stddev": write_data.get("lat", {}).get("stddev", 0),
+                    "min": write_data.get("lat_ns", {}).get("min", 0) / 1000,  # ns to us
+                    "max": write_data.get("lat_ns", {}).get("max", 0) / 1000,  # ns to us
+                    "mean": write_data.get("lat_ns", {}).get("mean", 0) / 1000,  # ns to us
+                    "stddev": write_data.get("lat_ns", {}).get("stddev", 0) / 1000,  # ns to us
                 },
                 "clat_ns": write_data.get("clat_ns", {}),
                 "percentiles": parse_percentiles(write_data.get("clat_ns", {}).get("percentile", {})),
@@ -354,7 +360,7 @@ def generate_html_report(tool, output_dir, data, scenario, mount):
         .tag {{ display: inline-block; background: #667eea; color: white; padding: 3px 10px; border-radius: 20px; font-size: 0.8em; margin-right: 5px; }}
         .tag.success {{ background: #28a745; }}
         .tag.info {{ background: #17a2b8; }}
-        @media (max-width: 768px) {{ .header h1 {OPEN_BRACE} font-size: 1.5em; {CLOSE_BRACE} table {{ font-size: 0.9em; {CLOSE_BRACE} }}
+        @media (max-width: 768px) {{ .header h1 {{ font-size: 1.5em; }} table {{ font-size: 0.9em; }}}}
     </style>
 </head>
 <body>
@@ -642,12 +648,21 @@ def generate_fio_text_metrics(summary, data):
             summary.append(f"    Bandwidth:    {bw}")
             iops = read_data.get("IOPS", "-")
             if isinstance(iops, (int, float)):
-                iops = f"{iops:,.0f}"
+                iops = f"{iops:,.2f}"
             summary.append(f"    IOPS:         {iops}")
             lat = read_data.get("latency", {})
-            summary.append(f"    Latency Mean: {lat.get('mean', '-')} us")
-            summary.append(f"    Latency Min:  {lat.get('min', '-')} us")
-            summary.append(f"    Latency Max:  {lat.get('max', '-')} us")
+            lat_mean = lat.get('mean', '-')
+            lat_min = lat.get('min', '-')
+            lat_max = lat.get('max', '-')
+            if isinstance(lat_mean, float):
+                lat_mean = f"{lat_mean:.2f}"
+            if isinstance(lat_min, float):
+                lat_min = f"{lat_min:.2f}"
+            if isinstance(lat_max, float):
+                lat_max = f"{lat_max:.2f}"
+            summary.append(f"    Latency Mean: {lat_mean} us")
+            summary.append(f"    Latency Min:  {lat_min} us")
+            summary.append(f"    Latency Max:  {lat_max} us")
 
         if write_data:
             summary.append("  WRITE:")
@@ -655,12 +670,21 @@ def generate_fio_text_metrics(summary, data):
             summary.append(f"    Bandwidth:    {bw}")
             iops = write_data.get("IOPS", "-")
             if isinstance(iops, (int, float)):
-                iops = f"{iops:,.0f}"
+                iops = f"{iops:,.2f}"
             summary.append(f"    IOPS:         {iops}")
             lat = write_data.get("latency", {})
-            summary.append(f"    Latency Mean: {lat.get('mean', '-')} us")
-            summary.append(f"    Latency Min:  {lat.get('min', '-')} us")
-            summary.append(f"    Latency Max:  {lat.get('max', '-')} us")
+            lat_mean = lat.get('mean', '-')
+            lat_min = lat.get('min', '-')
+            lat_max = lat.get('max', '-')
+            if isinstance(lat_mean, float):
+                lat_mean = f"{lat_mean:.2f}"
+            if isinstance(lat_min, float):
+                lat_min = f"{lat_min:.2f}"
+            if isinstance(lat_max, float):
+                lat_max = f"{lat_max:.2f}"
+            summary.append(f"    Latency Mean: {lat_mean} us")
+            summary.append(f"    Latency Min:  {lat_min} us")
+            summary.append(f"    Latency Max:  {lat_max} us")
 
 
 def generate_vdbench_text_metrics(summary, data):

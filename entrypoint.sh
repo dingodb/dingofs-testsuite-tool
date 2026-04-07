@@ -138,7 +138,15 @@ scenario_exists() {
     # Check custom override first
     case "$tool" in
         fio)
-            [[ -f "/custom/${scenario}.fio" ]] || [[ -f "/custom/${scenario}.conf" ]] || [[ -f "${SCENARIOS_DIR}/fio/${scenario}.fio" ]]
+            # Check exact match first
+            if [[ -f "/custom/${scenario}.fio" ]] || [[ -f "/custom/${scenario}.conf" ]] || [[ -f "${SCENARIOS_DIR}/fio/${scenario}.fio" ]]; then
+                return 0
+            fi
+            # Check for prefix matches (e.g., seq_read matches seq_read_*.fio)
+            if [[ -n "$(ls "${SCENARIOS_DIR}/fio/${scenario}"_*.fio 2>/dev/null | head -1)" ]]; then
+                return 0
+            fi
+            return 1
             ;;
         vdbench)
             [[ -f "/custom/${scenario}.par" ]] || [[ -f "${SCENARIOS_DIR}/vdbench/${scenario}.par" ]]
@@ -153,32 +161,47 @@ scenario_exists() {
     esac
 }
 
-get_scenario_path() {
+get_scenario_paths() {
     local tool="$1"
     local scenario="$2"
+    local paths=()
 
     case "$tool" in
         fio)
-            # Check custom override first
+            # Check custom override first (exact match only)
             if [[ -f "/custom/${scenario}.fio" ]]; then
-                echo "/custom/${scenario}.fio"
+                paths+=("/custom/${scenario}.fio")
             elif [[ -f "/custom/${scenario}.conf" ]]; then
-                echo "/custom/${scenario}.conf"
+                paths+=("/custom/${scenario}.conf")
+            elif [[ -f "${SCENARIOS_DIR}/fio/${scenario}.fio" ]]; then
+                paths+=("${SCENARIOS_DIR}/fio/${scenario}.fio")
             else
-                echo "${SCENARIOS_DIR}/fio/${scenario}.fio"
+                # Check for prefix matches
+                while IFS= read -r file; do
+                    paths+=("$file")
+                done < <(ls "${SCENARIOS_DIR}/fio/${scenario}"_*.fio 2>/dev/null | sort)
             fi
             ;;
         vdbench)
             if [[ -f "/custom/${scenario}.par" ]]; then
-                echo "/custom/${scenario}.par"
+                paths+=("/custom/${scenario}.par")
             else
-                echo "${SCENARIOS_DIR}/vdbench/${scenario}.par"
+                paths+=("${SCENARIOS_DIR}/vdbench/${scenario}.par")
             fi
             ;;
-        *)
-            echo ""
-            ;;
     esac
+
+    # Print paths (one per line)
+    for path in "${paths[@]}"; do
+        echo "$path"
+    done
+}
+
+get_scenario_name() {
+    # Extract scenario name from file path
+    local path="$1"
+    local filename=$(basename "$path" .fio)
+    echo "$filename"
 }
 
 # ==============================================================================
@@ -272,43 +295,87 @@ dispatch_tool() {
 }
 
 fio_run() {
-    local config
-    config=$(get_scenario_path fio "$SCENARIO")
+    # Get all matching scenario paths
+    local scenario_paths
+    scenario_paths=$(get_scenario_paths fio "$SCENARIO")
 
-    echo "Running fio with config: $config"
-    echo "  Mount: $MOUNT"
-    echo "  Output: $OUTPUT"
+    local path_count
+    path_count=$(echo "$scenario_paths" | grep -c "^" || true)
 
-    # Create output directory
-    mkdir -p "$OUTPUT"
-
-    # Run fio with JSON output format
-    # Replace directory path in config with MOUNT if needed
-    local fio_cmd=("$FIO_BIN" "$config" "--output=$OUTPUT/fio.json" "--output-format=json")
-
-    # If config has a directory parameter, we need to override it
-    # fio allows overriding via command line: --directory=
-    if [[ -d "$MOUNT" ]]; then
-        fio_cmd+=("--directory=$MOUNT")
+    if [[ -z "$scenario_paths" ]] || [[ "$path_count" -eq 0 ]]; then
+        echo "Error: No scenario found for '$SCENARIO'"
+        exit 1
     fi
 
-    echo "Executing: ${fio_cmd[*]}"
+    echo "Found $path_count scenario(s) for '$SCENARIO'"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+    echo ""
 
-    # Capture both stdout and stderr to raw file while also letting fio write JSON
-    # Use PIPESTATUS[0] to get fio exit code after tee
-    "${fio_cmd[@]}" 2>&1 | tee "$OUTPUT/fio.raw"
-    local fio_exit=${PIPESTATUS[0]}
+    # Create base output directory
+    mkdir -p "$OUTPUT"
 
-    # Generate reports
-    echo "Generating reports..."
-    python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT"
+    local overall_exit=0
+    local run_num=0
 
-    return $fio_exit
+    # Run each scenario
+    while IFS= read -r config; do
+        [[ -z "$config" ]] && continue
+
+        run_num=$((run_num + 1))
+        local scenario_name
+        scenario_name=$(get_scenario_name "$config")
+        local scenario_output="$OUTPUT/$scenario_name"
+
+        echo "=============================================="
+        echo "Running scenario $run_num/$path_count: $scenario_name"
+        echo "Config: $config"
+        echo "Output: $scenario_output"
+        echo "=============================================="
+
+        # Create output directory for this scenario
+        mkdir -p "$scenario_output"
+
+        # Build fio command
+        local fio_cmd=("$FIO_BIN" "$config" "--output-format=json")
+
+        # Override directory if MOUNT is specified
+        if [[ -d "$MOUNT" ]]; then
+            fio_cmd+=("--directory=$MOUNT")
+        fi
+
+        echo "Executing: ${fio_cmd[*]}"
+
+        # Run fio and capture output
+        "${fio_cmd[@]}" 2>&1 | tee "$scenario_output/fio.raw" > "$scenario_output/fio.json"
+        local fio_exit=${PIPESTATUS[0]}
+
+        if [[ $fio_exit -ne 0 ]]; then
+            echo "Warning: Scenario '$scenario_name' exited with code $fio_exit"
+            overall_exit=$fio_exit
+        fi
+
+        # Generate report for this scenario
+        echo "Generating report for $scenario_name..."
+        python3 /scripts/generate_report.py --tool fio --output-dir "$scenario_output" --scenario "$scenario_name" --mount "$MOUNT"
+
+        echo ""
+    done <<< "$scenario_paths"
+
+    # Generate combined report if multiple scenarios
+    if [[ $path_count -gt 1 ]]; then
+        echo "Generating combined report..."
+        python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+    fi
+
+    echo ""
+    echo "All fio scenarios completed."
+    return $overall_exit
 }
 
 vdbench_run() {
     local config
-    config=$(get_scenario_path vdbench "$SCENARIO")
+    config=$(get_scenario_paths vdbench "$SCENARIO" | head -1)
 
     echo "Running vdbench with config: $config"
     echo "  Mount: $MOUNT"

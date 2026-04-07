@@ -7,13 +7,11 @@
 hd=default,vdbench=/opt/vdbench,user=root,shell=ssh
 hd=localhost,system=localhost
 
-# File Storage Definition - anchor directory for test files
-fsd=default,anchor=/data/seqrd,openflags=o_direct
-fsd=default,openflags=o_direct
+# Storage Definition - file based test
+sd=sd1,host=localhost,lun=/data/seqrd_testfile,size=100m
 
-# File Workload Definition - sequential read operation
-fwd=default,fsd=default,operation=read,fileselect=sequential,fileio=sequential,streams=1
+# Workload Definition - sequential read operation
+wd=wd1,sd=sd1,rdpct=100,xfersize=64k
 
 # Run Definition - execute the test
-rd=default,fwd=fwd,format=yes_if_empty
-
+rd=rd1,wd=wd1,iorate=100,elapsed=5,interval=1

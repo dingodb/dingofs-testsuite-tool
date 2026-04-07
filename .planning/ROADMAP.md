@@ -89,23 +89,25 @@ Plans:
 
 ### Phase 4: Fio Scenario Enhancements
 
-**Goal:** Add more fio test scenarios to cover mixed workloads, different block sizes, and queue depths for comprehensive storage testing.
+**Goal:** Add comprehensive fio test scenarios covering all combinations of workload type, direct I/O mode, block size, and job count for thorough storage performance testing.
 
 **Depends on:** Phase 2
 
-**Requirements:** FIO-01, FIO-02, FIO-03, FIO-04, FIO-05
+**Requirements:** FIO-01, FIO-02, FIO-03, FIO-04
 
 **Success Criteria** (what must be TRUE):
-  1. User can run mixed read/write workloads (e.g., 70/30, 50/50 read/write ratios)
-  2. User can test different block sizes (4k, 8k, 64k, 128k, 1m)
-  3. User can specify iodepth for queue depth testing
-  4. User can run steady-state performance tests with longer runtime
-  5. New scenarios follow existing naming convention and directory structure
+  1. User can run all four workload types: rand_read, rand_write, seq_read, seq_write
+  2. User can test with both direct=0 (buffered I/O) and direct=1 (direct I/O)
+  3. User can test different block sizes: 128K, 1M, 4M
+  4. User can test with different job counts: 1, 8, 16, 32
+  5. Each scenario uses iodepth=1 for consistent single-queue-depth testing
+  6. Total: 4 types × 2 direct × 3 bs × 4 numjobs = 96 scenarios
+  7. Naming convention: {rw}_{direct}d_{bs}_{numjobs}j.fio
 
 **Plans:** 1/1 plan complete
 
 Plans:
-- [x] 04-01-PLAN.md — Add new fio scenarios (mixed rw, block size, iodepth)
+- [x] 04-01-PLAN.md — Generate 96 fio scenario files (4 types × 2 direct × 3 bs × 4 numjobs)
 
 ---
 
@@ -116,7 +118,7 @@ Plans:
 | 1. Docker Image Construction | 1/1 | Complete | 2026-04-03 |
 | 2. Core Functionality | 3/3 | Complete   | 2026-04-03 |
 | 3. Output Formats | 2/2 | Complete | 2026-04-07 |
-| 4. Fio Scenario Enhancements | 0/1 | Pending |  |
+| 4. Fio Scenario Enhancements | 1/1 | Complete | 2026-04-07 |
 
 ## Coverage
 
@@ -155,11 +157,10 @@ Plans:
 | OUTP-03 | Phase 3 | Complete |
 | OUTP-04 | Phase 3 | Complete |
 | ENTRY-03 | Phase 3 | Complete |
-| FIO-01 | Phase 4 | Pending |
-| FIO-02 | Phase 4 | Pending |
-| FIO-03 | Phase 4 | Pending |
-| FIO-04 | Phase 4 | Pending |
-| FIO-05 | Phase 4 | Pending |
+| FIO-01 | Phase 4 | Complete |
+| FIO-02 | Phase 4 | Complete |
+| FIO-03 | Phase 4 | Complete |
+| FIO-04 | Phase 4 | Complete |
 
 ---
 

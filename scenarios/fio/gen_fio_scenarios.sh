@@ -6,28 +6,25 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SCENARIOS_DIR="$SCRIPT_DIR"
 
 generate_fio_scenario() {
-    local name="$1"
-    local rw="$2"
-    local direct="$3"
-    local bs="$4"
-    local numjobs="$5"
-    local filename="$6"
-    local is_random="$7"
+    local rw="$1"
+    local direct="$2"
+    local bs="$3"
+    local numjobs="$4"
+    local filename="$5"
+    local is_random="$6"
 
     cat > "$SCENARIOS_DIR/$filename" << EOF
 [global]
-name=$name
-description=$name - direct=$direct bs=$bs numjobs=$numjobs
 rw=$rw
 bs=$bs
-ioengine=libaio
-iodepth=1
 direct=$direct
 numjobs=$numjobs
+ioengine=libaio
+iodepth=1
 runtime=60
 time_based=1
 directory=/data
-size=1G
+size=8G
 group_reporting=1
 EOF
 
@@ -45,10 +42,10 @@ for direct in 0 1; do
         for numjobs in 1 8 16 32; do
             fname_base="${direct}d_${bs}_${numjobs}j"
 
-            generate_fio_scenario "rand_read_$fname_base" "randread" "$direct" "$bs" "$numjobs" "rand_read_$fname_base.fio" "true"
-            generate_fio_scenario "rand_write_$fname_base" "randwrite" "$direct" "$bs" "$numjobs" "rand_write_$fname_base.fio" "true"
-            generate_fio_scenario "seq_read_$fname_base" "read" "$direct" "$bs" "$numjobs" "seq_read_$fname_base.fio" "false"
-            generate_fio_scenario "seq_write_$fname_base" "write" "$direct" "$bs" "$numjobs" "seq_write_$fname_base.fio" "false"
+            generate_fio_scenario "randread" "$direct" "$bs" "$numjobs" "rand_read_$fname_base.fio" "true"
+            generate_fio_scenario "randwrite" "$direct" "$bs" "$numjobs" "rand_write_$fname_base.fio" "true"
+            generate_fio_scenario "read" "$direct" "$bs" "$numjobs" "seq_read_$fname_base.fio" "false"
+            generate_fio_scenario "write" "$direct" "$bs" "$numjobs" "seq_write_$fname_base.fio" "false"
         done
     done
 done
