@@ -72,6 +72,13 @@ FIO Parameters:
   iodepth:   1 (fixed)
   size:      8G per job
 
+MDTEST Scenarios (4 types, each runs with 32 parallel tasks):
+  mdtest_z0_n100   - z=0, n=100 (扁平目录, 3200 files)
+  mdtest_z5_b4_I1  - z=5, b=4, I=1 (多分支树, 32736 items)
+  mdtest_z6_b3_I1  - z=6, b=3, I=1 (中等深度树, 34976 items)
+  mdtest_z9_b2_I1  - z=9, b=2, I=1 (深层二叉树, 32736 items)
+  mdtest           - 运行以上所有4个场景
+
 Examples:
   # 运行所有 rand_read 场景 (24 tests)
   docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data
@@ -85,6 +92,12 @@ Examples:
   # vdbench 测试
   docker run --rm -v /tmp/test:/data myimage -t vdbench -s seq_rd -m /data -o /data
 
+  # mdtest 测试 (运行所有4个场景并汇总)
+  docker run --rm -v /tmp/test:/data myimage -t mdtest -s mdtest -m /data -o /data
+
+  # mdtest 单个场景测试
+  docker run --rm -v /tmp/test:/data myimage -t mdtest -s mdtest_z0_n100 -m /data -o /data
+
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
@@ -92,8 +105,9 @@ Examples:
 Output:
   测试结果保存在输出目录中:
     - fio.raw / fio.json    (原始输出和JSON格式)
+    - mdtest.raw            (mdtest 原始输出)
     - report.html           (HTML可视化报告)
-    - summary.txt          (文本摘要)
+    - summary.md           (Markdown格式摘要)
 
 EOF
 }
@@ -176,8 +190,12 @@ scenario_exists() {
             [[ -f "/custom/${scenario}.par" ]] || [[ -f "${SCENARIOS_DIR}/vdbench/${scenario}.par" ]]
             ;;
         mdtest)
-            # mdtest has no config file, always valid
-            [[ "$scenario" =~ ^(mdtest|meta)$ ]]
+            # mdtest scenarios: mdtest_z0_n100, mdtest_z5_b4_I1, mdtest_z6_b3_I1, mdtest_z9_b2_I1
+            # Also accept "mdtest" alone to run all scenarios
+            if [[ "$scenario" == "mdtest" ]]; then
+                return 0
+            fi
+            [[ -f "${SCENARIOS_DIR}/mdtest/${scenario}.sh" ]]
             ;;
         *)
             return 1
@@ -211,6 +229,16 @@ get_scenario_paths() {
                 paths+=("/custom/${scenario}.par")
             else
                 paths+=("${SCENARIOS_DIR}/vdbench/${scenario}.par")
+            fi
+            ;;
+        mdtest)
+            # mdtest can run all scenarios at once
+            if [[ "$scenario" == "mdtest" ]]; then
+                for script in "${SCENARIOS_DIR}"/mdtest/*.sh; do
+                    [[ -f "$script" ]] && paths+=("$script")
+                done
+            else
+                paths+=("${SCENARIOS_DIR}/mdtest/${scenario}.sh")
             fi
             ;;
     esac
@@ -430,29 +458,72 @@ vdbench_run() {
 }
 
 mdtest_run() {
-    echo "Running mdtest"
+    # Get all matching scenario paths
+    local scenario_paths
+    scenario_paths=$(get_scenario_paths mdtest "$SCENARIO")
+
+    local path_count
+    path_count=$(echo "$scenario_paths" | grep -c "^" || true)
+
+    if [[ -z "$scenario_paths" ]] || [[ "$path_count" -eq 0 ]]; then
+        echo "Error: No scenario found for '$SCENARIO'"
+        exit 1
+    fi
+
+    echo "Found $path_count mdtest scenario(s) for '$SCENARIO'"
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
+    echo ""
 
-    # Create output directory
+    # Create base output directory
     mkdir -p "$OUTPUT"
 
-    # mdtest has fixed internal scenarios, no config file needed
-    # Common mdtest flags: -d (directory), -i (iterations), -b (breadth), -e (depth)
-    local mdtest_cmd=("$MDTEST_BIN" "-d" "$MOUNT")
+    local overall_exit=0
+    local run_num=0
 
-    echo "Executing: ${mdtest_cmd[*]}"
+    # Change to mount directory for test execution
+    cd "$MOUNT"
 
-    # Capture to raw file using tee, keeping mdtest.txt for backward compatibility
-    # Use PIPESTATUS[0] to get mdtest exit code after tee
-    "${mdtest_cmd[@]}" 2>&1 | tee "$OUTPUT/mdtest.raw"
-    local mdtest_exit=${PIPESTATUS[0]}
+    # Run each scenario
+    while IFS= read -r script; do
+        [[ -z "$script" ]] && continue
 
-    # Generate reports
-    echo "Generating reports..."
-    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT"
+        run_num=$((run_num + 1))
+        local scenario_name
+        scenario_name=$(basename "$script" .sh)
+        local scenario_output="$OUTPUT/$scenario_name"
 
-    return $mdtest_exit
+        echo "=============================================="
+        echo "Running mdtest scenario $run_num/$path_count: $scenario_name"
+        echo "Script: $script"
+        echo "Output: $scenario_output"
+        echo "=============================================="
+
+        # Create output directory for this scenario
+        mkdir -p "$scenario_output"
+
+        echo "Executing: $script"
+
+        # Run the mdtest scenario script
+        # Capture output to raw file
+        "$script" > "$scenario_output/mdtest.raw" 2>&1
+        local mdtest_exit=$?
+
+        if [[ $mdtest_exit -ne 0 ]]; then
+            echo "Warning: Scenario '$scenario_name' exited with code $mdtest_exit"
+            overall_exit=$mdtest_exit
+        fi
+
+        echo ""
+    done <<< "$scenario_paths"
+
+    # Generate combined report for all mdtest scenarios
+    echo "Generating combined mdtest report..."
+    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT" --combined
+
+    echo ""
+    echo "All mdtest scenarios completed."
+    return $overall_exit
 }
 
 # ==============================================================================

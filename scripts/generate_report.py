@@ -355,20 +355,106 @@ def parse_vdbench_metrics(text):
 
 def parse_mdtest_output(output_dir):
     """Parse mdtest output and extract key metrics."""
-    mdtest_path = os.path.join(output_dir, "mdtest.txt")
+    # Try multiple possible locations
+    mdtest_paths = [
+        os.path.join(output_dir, "mdtest.raw"),
+        os.path.join(output_dir, "mdtest.txt"),
+    ]
 
-    if not os.path.exists(mdtest_path):
-        return None, f"mdtest.txt not found in {output_dir}"
+    raw_text = None
+    for path in mdtest_paths:
+        if os.path.exists(path):
+            with open(path, "r") as f:
+                raw_text = f.read()
+            break
 
-    with open(mdtest_path, "r") as f:
-        raw_text = f.read()
+    if raw_text is None:
+        return None, f"mdtest output not found in {output_dir}"
 
     info = {
         "raw_output": raw_text,
         "metrics": parse_mdtest_metrics(raw_text),
+        "summary": parse_mdtest_summary(raw_text),
     }
 
     return info, None
+
+
+def parse_mdtest_summary(text):
+    """Parse mdtest summary statistics.
+
+    mdtest output format includes lines like:
+    "   1        0.012583       0.010192       1.23 ..."
+
+    Operations include:
+    - File/Directory creation, stat, read, removal
+    - Tree creation and removal
+    """
+    summary = {
+        "operations": []
+    }
+
+    lines = text.split("\n")
+    current_op = None
+    op_data = {}
+
+    for line in lines:
+        # Look for operation lines with 4 numeric values (max, min, mean, stddev)
+        # Pattern: starts with spaces then numbers
+        if line.strip() and not line.startswith("mdtest"):
+            parts = line.split()
+            # Check if line has numeric pattern like "1.23" or "123.456"
+            numeric_parts = []
+            for p in parts:
+                try:
+                    val = float(p)
+                    numeric_parts.append(val)
+                except ValueError:
+                    # Check if it's an operation name
+                    if p.replace("_", " ").replace("-", " ").replace(".", "").isalpha():
+                        # Save previous operation if exists
+                        if current_op and op_data:
+                            summary["operations"].append({
+                                "name": current_op,
+                                "max": op_data.get("max", 0),
+                                "min": op_data.get("min", 0),
+                                "mean": op_data.get("mean", 0),
+                                "stddev": op_data.get("stddev", 0),
+                            })
+                        current_op = p.replace("_", " ")
+                        op_data = {}
+                        numeric_parts = []
+                    else:
+                        break
+
+                if len(numeric_parts) == 4:
+                    op_data["max"] = numeric_parts[0]
+                    op_data["min"] = numeric_parts[1]
+                    op_data["mean"] = numeric_parts[2]
+                    op_data["stddev"] = numeric_parts[3]
+
+            # Save operation if we have complete data
+            if current_op and op_data and len(numeric_parts) == 4:
+                summary["operations"].append({
+                    "name": current_op,
+                    "max": op_data.get("max", 0),
+                    "min": op_data.get("min", 0),
+                    "mean": op_data.get("mean", 0),
+                    "stddev": op_data.get("stddev", 0),
+                })
+                op_data = {}
+
+    # Save last operation
+    if current_op and op_data:
+        summary["operations"].append({
+            "name": current_op,
+            "max": op_data.get("max", 0),
+            "min": op_data.get("min", 0),
+            "mean": op_data.get("mean", 0),
+            "stddev": op_data.get("stddev", 0),
+        })
+
+    return summary
 
 
 def parse_mdtest_metrics(text):
@@ -376,7 +462,6 @@ def parse_mdtest_metrics(text):
     metrics = {
         "create_rate": [],
         "remove_rate": [],
-        "tree_ops": [],
     }
 
     lines = text.split("\n")
@@ -384,29 +469,15 @@ def parse_mdtest_metrics(text):
         line = line.strip()
 
         # Look for mdtest summary lines with rates
-        # Typical format: "   1        0.012583       0.010192       1.23 ..." or items/sec
         if "items" in line.lower() and ("sec" in line.lower() or "/s" in line):
             parts = line.split()
             for part in parts:
-                if part.replace(".", "").replace("e", "").replace("-", "").isdigit():
-                    try:
-                        val = float(part)
-                        if val > 0:
-                            metrics["create_rate"].append(val)
-                    except ValueError:
-                        pass
-
-        # Look for remove/stat rates
-        if "remove" in line.lower() or "stat" in line.lower():
-            parts = line.split()
-            for part in parts:
-                if part.replace(".", "").replace("e", "").replace("-", "").isdigit():
-                    try:
-                        val = float(part)
-                        if val > 0:
-                            metrics["remove_rate"].append(val)
-                    except ValueError:
-                        pass
+                try:
+                    val = float(part)
+                    if val > 0:
+                        metrics["create_rate"].append(val)
+                except ValueError:
+                    pass
 
     # Calculate averages
     result = {}
@@ -417,6 +488,162 @@ def parse_mdtest_metrics(text):
             result[f"{key}_min"] = min(vals)
 
     return result
+
+
+# ==============================================================================
+# MDTEST Combined Report Generator
+# ==============================================================================
+
+def aggregate_mdtest_results(output_dir):
+    """Aggregate mdtest results from all scenario subdirectories."""
+    scenarios = []
+
+    if not os.path.isdir(output_dir):
+        return scenarios
+
+    # Find all scenario directories
+    for subdir in sorted(os.listdir(output_dir)):
+        subdir_path = os.path.join(output_dir, subdir)
+        if not os.path.isdir(subdir_path):
+            continue
+
+        # Skip non-mdtest directories
+        if not subdir.startswith("mdtest_"):
+            continue
+
+        mdtest_raw_path = os.path.join(subdir_path, "mdtest.raw")
+        if not os.path.exists(mdtest_raw_path):
+            continue
+
+        # Parse scenario name to extract z, b, I parameters
+        # Pattern: mdtest_z0_n100, mdtest_z5_b4_I1, etc.
+        params = parse_mdtest_scenario_name(subdir)
+        if not params:
+            continue
+
+        # Read and parse mdtest output
+        try:
+            with open(mdtest_raw_path, "r") as f:
+                raw_text = f.read()
+        except IOError:
+            continue
+
+        summary = parse_mdtest_summary(raw_text)
+        file_count = extract_mdtest_file_count(raw_text)
+
+        scenarios.append({
+            "name": subdir,
+            "params": params,
+            "file_count": file_count,
+            "operations": summary.get("operations", []),
+            "raw_output": raw_text,
+        })
+
+    return scenarios
+
+
+def parse_mdtest_scenario_name(scenario_name):
+    """Parse mdtest scenario name to extract parameters.
+
+    Pattern: mdtest_z{z}_n{n} or mdtest_z{z}_b{b}_I{I}
+    Examples:
+      mdtest_z0_n100 -> z=0, n=100
+      mdtest_z5_b4_I1 -> z=5, b=4, I=1
+    """
+    import re
+
+    # Pattern 1: mdtest_z0_n100
+    match = re.match(r'^mdtest_z(\d+)_n(\d+)$', scenario_name)
+    if match:
+        return {"z": int(match.group(1)), "n": int(match.group(2)), "b": None, "I": None}
+
+    # Pattern 2: mdtest_z5_b4_I1
+    match = re.match(r'^mdtest_z(\d+)_b(\d+)_I(\d+)$', scenario_name)
+    if match:
+        return {"z": int(match.group(1)), "b": int(match.group(2)), "I": int(match.group(3)), "n": None}
+
+    return None
+
+
+def extract_mdtest_file_count(text):
+    """Extract total file/directory count from mdtest output."""
+    # Look for line like "32776" or "32736 files"
+    import re
+    match = re.search(r'(\d+)\s+(?:files?|directories?)', text, re.IGNORECASE)
+    if match:
+        return int(match.group(1))
+    return 0
+
+
+def generate_mdtest_combined_markdown(output_dir, scenarios, mount):
+    """Generate combined markdown report for all mdtest scenarios."""
+    timestamp = datetime.now().strftime("%Y-%m-%d")
+
+    lines = []
+    lines.append("# DingoFS 元数据性能测试报告")
+    lines.append("")
+    lines.append("## 测试环境")
+    lines.append("")
+    lines.append(f"- **测试工具**: mdtest")
+    lines.append(f"- **进程数**: 32 tasks")
+    lines.append(f"- **节点数**: 1 node")
+    lines.append(f"- **测试路径**: {mount}")
+    lines.append(f"- **测试日期**: {timestamp}")
+    lines.append("")
+
+    # Summary table
+    lines.append("## 测试结果汇总")
+    lines.append("")
+    lines.append("| 测试场景 | 深度(z) | 分支(b) | 每目录项数(I) | 文件/目录数 | 状态 |")
+    lines.append("|---------|---------|---------|---------------|-------------|------|")
+
+    for sc in scenarios:
+        params = sc["params"]
+        if params["b"] is not None:
+            # z5_b4_I1 format
+            z = params["z"]
+            b = params["b"]
+            I = params["I"]
+            n = "-"
+        else:
+            # z0_n100 format
+            z = params["z"]
+            b = "-"
+            I = "-"
+            n = params["n"]
+
+        status = "成功" if sc["file_count"] > 0 else "失败"
+        lines.append(f"| {sc['name']} | {z} | {b} | {I} | {sc['file_count']} | {status} |")
+
+    lines.append("")
+    lines.append("---")
+    lines.append("")
+    lines.append("## 详细性能数据")
+    lines.append("")
+
+    # Detailed data for each scenario
+    for sc in scenarios:
+        params = sc["params"]
+        if params["b"] is not None:
+            cmd = f"mdtest -z {params['z']} -b {params['b']} -I {params['I']} -d ./"
+        else:
+            cmd = f"mdtest -d ./test -z {params['z']} -F -n {params['n']}"
+
+        lines.append(f"### {sc['name']}")
+        lines.append(f"**命令**: `{cmd}`")
+        lines.append(f"**文件/目录数**: {sc['file_count']}")
+        lines.append("")
+        lines.append("| 操作 | Max (ops/s) | Min (ops/s) | Mean (ops/s) | Std Dev |")
+        lines.append("|------|-------------|-------------|--------------|---------|")
+
+        for op in sc["operations"]:
+            lines.append(f"| {op['name'].capitalize()} | {op['max']:.3f} | {op['min']:.3f} | {op['mean']:.3f} | {op['stddev']:.3f} |")
+
+        lines.append("")
+        lines.append("---")
+        lines.append("")
+
+    return "\n".join(lines)
 
 
 # ==============================================================================
@@ -1009,6 +1236,15 @@ def main():
         with open(txt_path, "a") as f:
             f.write("\n" + summary_text)
         print(f"Combined summary text appended: {txt_path}")
+
+    # Generate combined mdtest report if requested
+    if is_combined and tool == "mdtest":
+        scenarios = aggregate_mdtest_results(output_dir)
+        if scenarios:
+            mdtest_combined = generate_mdtest_combined_markdown(output_dir, scenarios, mount)
+            with open(txt_path, "w") as f:
+                f.write(mdtest_combined)
+            print(f"Combined mdtest report generated: {txt_path}")
 
     print("\nReport generation complete.")
     return 0
