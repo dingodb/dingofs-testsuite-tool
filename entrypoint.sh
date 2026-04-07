@@ -43,8 +43,15 @@ DingoFS Storage Benchmark Tools
 Usage:
   docker run myimage -t <tool> -s <scenario> -m <mount> -o <output>
 
+Options:
+  -t, --tool      测试工具: fio, vdbench, mdtest
+  -s, --scenario  测试场景
+  -m, --mount     被测存储的挂载点 (例如: /mnt/test)
+  -o, --output    测试结果输出目录 (例如: /tmp/results)
+  --mode          运行模式: one-shot (默认) 或 long-running
+
 Tools:
-  fio       - Flexible I/O tester (storage performance)
+  fio       - Flexible I/O tester (存储性能测试)
   vdbench   - Oracle storage benchmark
   mdtest    - MPI filesystem metadata test
 
@@ -62,29 +69,27 @@ FIO Parameters:
   size:      8G per job
 
 Examples:
-  # Run ALL rand_read scenarios (24 tests)
+  # 运行所有 rand_read 场景 (24 tests)
   docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data
 
-  # Run ALL seq_write scenarios (24 tests)
+  # 运行所有 seq_write 场景 (24 tests)
   docker run --rm -v /tmp/test:/data myimage -t fio -s seq_write -m /data -o /data
 
-  # Run a SINGLE specific scenario
+  # 运行单个特定场景
   docker run --rm -v /tmp/test:/data myimage -t fio -s rand_read_0d_128k_1j -m /data -o /data
 
-  # Run vdbench test
+  # vdbench 测试
   docker run --rm -v /tmp/test:/data myimage -t vdbench -s seq_rd -m /data -o /data
 
-  # Long-running mode (container stays alive)
+  # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data myimage -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
 
 Output:
-  Results are saved to the output directory with:
-    - fio.raw / fio.json    (raw and JSON output)
-    - report.html           (HTML report)
-    - summary.txt           (text summary)
-
-For more details on fio scenarios, see: ls /scenarios/fio/
+  测试结果保存在输出目录中:
+    - fio.raw / fio.json    (原始输出和JSON格式)
+    - report.html           (HTML可视化报告)
+    - summary.txt          (文本摘要)
 
 EOF
 }
