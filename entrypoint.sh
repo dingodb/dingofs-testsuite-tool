@@ -47,8 +47,10 @@ Options:
   -t, --tool      测试工具: fio, vdbench, mdtest
   -s, --scenario  测试场景
   -m, --mount     被测存储的挂载点 (例如: /mnt/test)
-  -o, --output    测试结果输出目录 (例如: /tmp/results)
+  -o, --output    测试结果输出目录 (例如: /output)
   --mode          运行模式: one-shot (默认) 或 long-running
+
+注意: -o 指定的是容器内路径，需要通过 -v 将容器内目录映射到本机路径
 
 Tools:
   fio       - Flexible I/O tester (存储性能测试)
@@ -101,6 +103,13 @@ Examples:
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
+
+  # 分离挂载点和输出目录 (被测存储和结果保存到不同路径)
+  docker run --rm \
+    -v /mnt/disk1/test:/data \
+    -v /tmp/results:/output \
+    dingofs-benchmark-tools \
+    -t fio -s seq_read -m /data -o /output
 
 Output:
   测试结果保存在输出目录中:
