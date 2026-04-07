@@ -32,7 +32,7 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
   4. User can verify mdtest is installed by running `mdtest --version` inside container
   5. Image size is optimized (no unnecessary packages or cache files remain)
 
-**Plans:** 1 plan
+**Plans:** 1/1 plan complete
 
 Plans:
 - [x] 01-01-PLAN.md — Create Dockerfile and verify all storage testing tools
@@ -78,7 +78,11 @@ Plans:
   3. User can get HTML report with visualized test metrics
   4. User can see text summary highlighting key performance indicators
 
-**Plans:** TBD
+**Plans:** 2/2 plans
+
+Plans:
+- [ ] 03-01-PLAN.md — Create report generation script and update Dockerfile
+- [ ] 03-02-PLAN.md — Integrate report generation into entrypoint.sh
 
 ---
 
@@ -88,7 +92,7 @@ Plans:
 |-------|----------------|--------|-----------|
 | 1. Docker Image Construction | 1/1 | Complete | 2026-04-03 |
 | 2. Core Functionality | 3/3 | Complete   | 2026-04-03 |
-| 3. Output Formats | 0/1 | Not started | - |
+| 3. Output Formats | 0/2 | Not started | - |
 
 ## Coverage
 
@@ -109,19 +113,19 @@ Plans:
 | PARM-04 | Phase 2 | Pending |
 | PARM-05 | Phase 2 | Pending |
 | PARM-06 | Phase 2 | Pending |
-| SCEN-01 | Phase 2 | Pending |
-| SCEN-02 | Phase 2 | Pending |
-| SCEN-03 | Phase 2 | Pending |
-| SCEN-04 | Phase 2 | Pending |
-| SCEN-05 | Phase 2 | Pending |
-| SCEN-06 | Phase 2 | Pending |
-| SCEN-07 | Phase 2 | Pending |
+| SCEN-01 | Phase 2 | Complete |
+| SCEN-02 | Phase 2 | Complete |
+| SCEN-03 | Phase 2 | Complete |
+| SCEN-04 | Phase 2 | Complete |
+| SCEN-05 | Phase 2 | Complete |
+| SCEN-06 | Phase 2 | Complete |
+| SCEN-07 | Phase 2 | Complete |
 | MODE-01 | Phase 2 | Pending |
 | MODE-02 | Phase 2 | Pending |
 | MODE-03 | Phase 2 | Pending |
-| ENTRY-01 | Phase 2 | Pending |
-| ENTRY-02 | Phase 2 | Pending |
-| ENTRY-04 | Phase 2 | Pending |
+| ENTRY-01 | Phase 2 | Complete |
+| ENTRY-02 | Phase 2 | Complete |
+| ENTRY-04 | Phase 2 | Complete |
 | OUTP-01 | Phase 3 | Pending |
 | OUTP-02 | Phase 3 | Pending |
 | OUTP-03 | Phase 3 | Pending |
@@ -131,4 +135,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-04-03*
-*Last updated: 2026-04-03*
+*Last updated: 2026-04-07*
