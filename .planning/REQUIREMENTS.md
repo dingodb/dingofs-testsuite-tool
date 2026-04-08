@@ -131,12 +131,21 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENTRY-02 | Phase 2 | Pending |
 | ENTRY-03 | Phase 3 | Complete |
 | ENTRY-04 | Phase 2 | Pending |
+| LTP-01 | Phase 5 | Pending |
+| LTP-02 | Phase 5 | Pending |
+| LTP-03 | Phase 5 | Pending |
+| LTP-04 | Phase 6 | Pending |
+| LTP-05 | Phase 6 | Pending |
+| LTP-06 | Phase 6 | Pending |
+| LTP-07 | Phase 7 | Pending |
+| LTP-08 | Phase 7 | Pending |
+| LTP-09 | Phase 7 | Pending |
 
 **Coverage:**
-- v1 requirements: 29 total
-- Mapped to phases: 29
+- v1 requirements: 43 total (34 from v1.0 + 9 from v1.1)
+- Mapped to phases: 43
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-03 after initial definition*
+*Last updated: 2026-04-08 after roadmap creation for v1.1*

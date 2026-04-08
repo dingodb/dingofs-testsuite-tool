@@ -7,7 +7,7 @@
 
 ## Overview
 
-This roadmap delivers a Docker-based storage performance testing toolkit with fio, vdbench, and mdtest tools. The project evolves from a basic Docker image to a fully functional testing platform with multiple output formats.
+This roadmap delivers a Docker-based storage performance testing toolkit with fio, vdbench, mdtest, and LTP tools. The project evolves from a basic Docker image to a fully functional testing platform with multiple output formats.
 
 ## Phases
 
@@ -15,6 +15,9 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [x] **Phase 2: Core Functionality** - Enable test execution with parameters, scenarios, and run modes (completed 2026-04-03)
 - [ ] **Phase 3: Output Formats** - Provide multiple report formats for test results
 - [ ] **Phase 4: Fio Scenario Enhancements** - Add more fio scenarios for comprehensive testing
+- [ ] **Phase 5: LTP Build Setup** - Multi-stage Docker build for LTP toolset
+- [ ] **Phase 6: LTP Integration** - Integrate LTP into entrypoint.sh with ltp_run function
+- [ ] **Phase 7: LTP Runtime Safety** - Timeout wrappers, output logging, and capability documentation
 
 ## Phase Details
 
@@ -111,6 +114,61 @@ Plans:
 
 ---
 
+### Phase 5: LTP Build Setup
+
+**Goal:** Users have a Docker image with LTP toolset installed via multi-stage build, supporting both x86_64 and ARM64 platforms.
+
+**Depends on:** Phase 1
+
+**Requirements:** LTP-01, LTP-02, LTP-03
+
+**Success Criteria** (what must be TRUE):
+  1. User can build Docker image with LTP toolset without errors
+  2. User can verify LTP is installed by running `ltp-01 --version` or seeing the tool available
+  3. Final image uses multi-stage build with build stage for compilation
+  4. User can build and run on x86_64 platform
+  5. User can build and run on ARM64 platform
+
+**Plans:** TBD
+
+---
+
+### Phase 6: LTP Integration
+
+**Goal:** Users can execute LTP filesystem tests via `-t ltp` command line parameter, with `ltp_run()` function defaulting to filesystem test suite.
+
+**Depends on:** Phase 5
+
+**Requirements:** LTP-04, LTP-05, LTP-06
+
+**Success Criteria** (what must be TRUE):
+  1. User can specify `-t ltp` and container recognizes LTP as a valid tool option
+  2. User can run `ltp_run()` function which executes the LTP test suite
+  3. User can run LTP with default filesystem tests via `-f fs` flag
+  4. User can see LTP test output displayed in container logs
+
+**Plans:** TBD
+
+---
+
+### Phase 7: LTP Runtime Safety
+
+**Goal:** LTP tests execute safely with timeout protection, output is logged to user-specified directory, and container capability requirements are documented.
+
+**Depends on:** Phase 6
+
+**Requirements:** LTP-07, LTP-08, LTP-09
+
+**Success Criteria** (what must be TRUE):
+  1. User can run LTP tests without risk of indefinite hanging (timeout wrapper active)
+  2. User can specify output directory and see LTP results written there
+  3. User can find documentation explaining required container capabilities (CAP_SYS_ADMIN)
+  4. User understands that privileged container or specific capabilities are needed for LTP tests
+
+**Plans:** TBD
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -119,11 +177,14 @@ Plans:
 | 2. Core Functionality | 3/3 | Complete   | 2026-04-03 |
 | 3. Output Formats | 2/2 | Complete | 2026-04-07 |
 | 4. Fio Scenario Enhancements | 1/1 | Complete | 2026-04-07 |
+| 5. LTP Build Setup | 0/1 | Not started | - |
+| 6. LTP Integration | 0/1 | Not started | - |
+| 7. LTP Runtime Safety | 0/1 | Not started | - |
 
 ## Coverage
 
-- v1 Requirements: 34 total
-- Mapped to phases: 34
+- v1 Requirements: 43 total (34 from v1.0 + 9 from v1.1)
+- Mapped to phases: 43
 - Unmapped: 0
 
 | Requirement | Phase | Status |
@@ -161,8 +222,17 @@ Plans:
 | FIO-02 | Phase 4 | Complete |
 | FIO-03 | Phase 4 | Complete |
 | FIO-04 | Phase 4 | Complete |
+| LTP-01 | Phase 5 | Pending |
+| LTP-02 | Phase 5 | Pending |
+| LTP-03 | Phase 5 | Pending |
+| LTP-04 | Phase 6 | Pending |
+| LTP-05 | Phase 6 | Pending |
+| LTP-06 | Phase 6 | Pending |
+| LTP-07 | Phase 7 | Pending |
+| LTP-08 | Phase 7 | Pending |
+| LTP-09 | Phase 7 | Pending |
 
 ---
 
 *Roadmap created: 2026-04-03*
-*Last updated: 2026-04-07*
+*Last updated: 2026-04-08*
