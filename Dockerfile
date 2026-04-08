@@ -1,24 +1,62 @@
 # DingoFS Storage Benchmark Tools
-# A Docker image with fio, vdbench, and mdtest storage testing tools
+# A Docker image with fio, vdbench, mdtest, pjdtest, and LTP storage testing tools
 # Base image: ubuntu:24.04 (per project requirement)
 
-FROM ubuntu:24.04
+# Stage 1: Build LTP
+FROM ubuntu:24.04 AS ltp-builder
 
 LABEL maintainer="DingoFS Team"
-LABEL description="Storage performance testing tools: fio, vdbench, mdtest"
-LABEL version="1.0"
+LABEL description="LTP build stage"
 
-# Set timezone to Asia/Shanghai
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Set proxy for network access
-ARG http_proxy=http://10.220.69.222:1088
-ARG https_proxy=http://10.220.69.222:1088
-# Install all tools and dependencies in a single layer to minimize image size
-# - fio: Flexible I/O tester for storage performance benchmarks
-# - default-jre-headless: Java runtime for vdbench (headless = no GUI deps)
-# - mdtest: Metadata performance testing tool (built from IOR source)
+# Install LTP build dependencies
+RUN apt-get update && \
+    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        build-essential \
+        autoconf \
+        automake \
+        libtool \
+        pkg-config \
+        git \
+        ca-certificates \
+        bison \
+        flex \
+        libcap-dev \
+        libnuma-dev \
+        libpopt-dev \
+        libssl-dev \
+        uuid-dev \
+        perl \
+        libtimedate-perl && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+
+# Configure git to use system CA certificates
+RUN git config --global http.sslCAinfo /etc/ssl/certs/ca-certificates.crt
+
+# Clone and build LTP (use 20240930 stable release - runltp still works)
+RUN git clone --depth 1 --branch 20240930 https://github.com/linux-test-project/ltp.git /tmp/ltp && \
+    cd /tmp/ltp && \
+    make autotools && \
+    ./configure && \
+    make -j$(nproc) && \
+    make install && \
+    rm -rf /tmp/ltp
+
+# Stage 2: Final image
+FROM ubuntu:24.04
+
+LABEL maintainer="DingoFS Team"
+LABEL description="Storage performance testing tools: fio, vdbench, mdtest, pjdtest, LTP"
+LABEL version="1.1"
+
+ENV TZ=Asia/Shanghai
+ENV PATH=/opt/vdbench:/opt/ltp:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
+
+# Install runtime dependencies only (no build tools)
 RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         fio \
@@ -35,8 +73,9 @@ RUN apt-get update && \
         automake \
         libtool \
         pkg-config \
-        libaio-dev && \
-    # Clean apt cache to minimize image size (per D-06)
+        libaio-dev \
+        perl \
+        libtimedate-perl && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -57,6 +96,9 @@ RUN cd /tmp && \
     make install && \
     rm -rf /tmp/ior
 
+# Copy LTP from builder stage
+COPY --from=ltp-builder /opt/ltp /opt/ltp
+
 # Phase 3: Python and report generation scripts
 RUN mkdir -p /scripts
 COPY scripts/generate_report.py /scripts/generate_report.py
@@ -64,6 +106,9 @@ RUN chmod +x /scripts/generate_report.py
 
 # Phase 2: Copy scenario files
 COPY scenarios/ /scenarios/
+
+# Phase 5: Copy pjdtest tool
+COPY pjdtest/ /pjdtest/
 
 # Create custom config mount point
 RUN mkdir -p /custom && chmod 777 /custom/
