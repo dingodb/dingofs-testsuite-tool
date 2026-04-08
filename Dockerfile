@@ -36,8 +36,8 @@ RUN apt-get update && \
 # Configure git to use system CA certificates
 RUN git config --global http.sslCAinfo /etc/ssl/certs/ca-certificates.crt
 
-# Clone and build LTP
-RUN git clone --depth 1 https://github.com/linux-test-project/ltp.git /tmp/ltp && \
+# Clone and build LTP (use 20240930 stable release - runltp still works)
+RUN git clone --depth 1 --branch 20240930 https://github.com/linux-test-project/ltp.git /tmp/ltp && \
     cd /tmp/ltp && \
     make autotools && \
     ./configure && \

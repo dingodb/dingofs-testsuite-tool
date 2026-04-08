@@ -57,6 +57,7 @@ Tools:
   vdbench   - Oracle storage benchmark
   mdtest    - MPI filesystem metadata test
   pjdtest   - POSIX filesystem test suite
+  ltp       - Linux Test Project (内核测试套件)
 
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
@@ -85,6 +86,10 @@ MDTEST Scenarios (4 types, each runs with 32 parallel tasks):
 PJDTEST:
   pjdtest    - 运行 POSIX 文件系统测试套件 (prove -rv /pjdtest/dingofs_baseline)
 
+LTP:
+  ltp        - 运行 Linux Test Project 测试套件
+  ltp默认运行文件系统测试 (-f fs)
+
 Examples:
   # 运行所有 rand_read 场景 (24 tests)
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data
@@ -107,6 +112,9 @@ Examples:
   # pjdtest 测试
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
 
+  # ltp 测试 (默认运行文件系统测试)
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
@@ -123,6 +131,7 @@ Output:
     - fio.raw / fio.json    (原始输出和JSON格式)
     - mdtest.raw            (mdtest 原始输出)
     - pjdtest_YYYYMMDD_HHMMSS (pjdtest 测试结果)
+    - ltp_YYYYMMDD_HHMMSS.log (LTP 测试日志)
     - report.html           (HTML可视化报告)
     - summary.md           (Markdown格式摘要)
 
@@ -138,10 +147,10 @@ validate_params() {
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
-        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest)."
+        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest)$ ]]; then
-        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest"
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp)$ ]]; then
+        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp"
         error=1
     fi
 
@@ -217,6 +226,10 @@ scenario_exists() {
         pjdtest)
             # pjdtest only has one scenario: pjdtest
             [[ "$scenario" == "pjdtest" ]]
+            ;;
+        ltp)
+            # ltp scenarios: ltp (default), ltp_fs, ltp_mm, ltp_all
+            [[ "$scenario" == "ltp" ]] || [[ "$scenario" =~ ^ltp_ ]]
             ;;
         *)
             return 1
@@ -362,6 +375,9 @@ dispatch_tool() {
             ;;
         pjdtest)
             pjdtest_run
+            ;;
+        ltp)
+            ltp_run
             ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
@@ -589,6 +605,46 @@ pjdtest_run() {
     echo ""
     echo "Results saved to: ${output_file}"
     return $pjdtest_exit
+}
+
+ltp_run() {
+    echo "Running LTP test suite"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+    echo "  Scenario: $SCENARIO"
+
+    # Create output directory
+    mkdir -p "$OUTPUT"
+
+    # Change to mount directory for test execution
+    cd "$MOUNT"
+
+    # Generate timestamp for output file
+    local timestamp
+    timestamp=$(date +"%Y%m%d_%H%M%S")
+    local output_file="${OUTPUT}/ltp_${timestamp}"
+
+    # Default to filesystem tests (-f fs) if no scenario specified
+    local scenario="${SCENARIO:-fs}"
+
+    echo "Executing: timeout 3600 /opt/ltp/runltp -p $OUTPUT -l ${output_file}.log -d $MOUNT -f $scenario"
+    echo "Output file: ${output_file}.log"
+
+    # Run LTP with timeout protection (1 hour max)
+    timeout 3600 /opt/ltp/runltp -p "$OUTPUT" -l "${output_file}.log" -d "$MOUNT" -f "$scenario" 2>&1 | tee "${output_file}.raw"
+    local ltp_exit=${PIPESTATUS[0]}
+
+    if [[ $ltp_exit -eq 124 ]]; then
+        echo "Warning: LTP test timed out after 3600 seconds"
+    elif [[ $ltp_exit -ne 0 ]]; then
+        echo "Warning: LTP exited with code $ltp_exit"
+    else
+        echo "LTP tests completed successfully."
+    fi
+
+    echo ""
+    echo "Results saved to: ${output_file}.log"
+    return $ltp_exit
 }
 
 # ==============================================================================
