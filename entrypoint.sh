@@ -87,15 +87,12 @@ PJDTEST:
   pjdtest    - 运行 POSIX 文件系统测试套件 (prove -rv /pjdtest/dingofs_baseline)
 
 LTP:
-  ltp        - 运行 Linux Test Project 测试套件 (runltp -f fs)
+  ltp        - 运行 Linux Test Project 测试套件 (默认 fs)
   ltp_fs     - 文件系统测试 (fs)
   ltp_dio    - Direct I/O 测试 (dio)
   ltp_mm     - 内存管理测试 (mm)
 
 注意: LTP 需要 --privileged 运行以访问 /dev/kmsg 等设备
-
-Examples:
-  # 运行所有 rand_read 场景 (24 tests)
 
 Examples:
   # 运行所有 rand_read 场景 (24 tests)

@@ -89,12 +89,12 @@ LTP (Linux Test Project) 是 Linux 内核测试套件，用于验证内核和系
 
 ### LTP 场景
 
-| 场景 | 说明 |
-|------|------|
-| ltp | 默认运行文件系统测试 (等同于 ltp_fs) |
-| ltp_fs | 文件系统测试 (fs) |
-| ltp_dio | Direct I/O 测试 (dio) |
-| ltp_mm | 内存管理测试 (mm) |
+| 场景 | 说明 | 对应测试套件 |
+|------|------|-------------|
+| ltp | 默认运行文件系统测试 | fs |
+| ltp_fs | 文件系统测试 | fs |
+| ltp_dio | Direct I/O 测试 | dio |
+| ltp_mm | 内存管理测试 | mm |
 
 ### 运行 LTP 测试
 
