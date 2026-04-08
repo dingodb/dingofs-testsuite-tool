@@ -1,21 +1,21 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: executing
-last_updated: "2026-04-07T01:45:53.858Z"
+milestone: v1.1
+milestone_name: 新增 LTP 工具
+status: defining
+last_updated: "2026-04-08"
 progress:
-  total_phases: 3
-  completed_phases: 3
-  total_plans: 6
-  completed_plans: 6
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE: DingoFS Storage Benchmark Tools
 
-**Last Updated:** 2026-04-03
-**Session:** Initialization
+**Last Updated:** 2026-04-08
+**Session:** v1.1 - 新增 LTP 工具
 
 ---
 
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Phase 03 — output-formats
+**Current Focus:** Defining requirements for LTP tool integration
 
 **Project Root:** `/home/jenkins/dgy/github/dingofs-storage-benchmark-tools`
 
@@ -31,18 +31,10 @@ progress:
 
 ## Current Position
 
-Phase: 03 (output-formats) — EXECUTING
-Plan: 1 of 2
-**Phase:** 2
-**Plan:** Not started
-**Status:** Executing Phase 03
-**Progress:** [██████████] 100%
-
-```
-┌─────────────────────────────────────────────────────────┐
-│ Phase 1 ████████████████████████████░░░░░░░░░░░░░░░░░░░ │
-└─────────────────────────────────────────────────────────┘
-```
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-08 — Milestone v1.1 started
 
 ---
 
@@ -50,15 +42,12 @@ Plan: 1 of 2
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed | 0/3 |
-| Requirements Delivered | 0/29 |
+| Phases Completed | 0/4 |
+| Requirements Delivered | 0/3 |
 | Days in Progress | 0 |
 | Blockers | 0 |
 
 ---
-| Phase 02 P01 | 12 | 9 tasks | 9 files |
-| Phase 03 P01 | 5 | 2 tasks | 2 files |
-| Phase 03 P02 | 5 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -74,10 +63,11 @@ Plan: 1 of 2
 - [Phase 02]: Created 4 vdbench preset scenarios (seq_rd, seq_wr, rand_rd, rand_wr)
 - [Phase 03]: Python standard library only for report generation - no external dependencies
 - [Phase 03-02]: Used PIPESTATUS[0] to capture tool exit code after tee pipe
+- [v1.0]: Added pjdtest POSIX filesystem test suite
 
 ### Active TODOs
 
-- [ ] Start Phase 1: Build Docker image with fio, vdbench, mdtest
+- [ ] Start Phase 1: Add LTP tool to Docker image
 
 ### Blockers
 
@@ -94,16 +84,16 @@ Plan: 1 of 2
 
 ## Session Continuity
 
-**Last Session:** 2026-04-07T01:26:58.703Z
+**Last Session:** 2026-04-08T08:00:00.000Z
 
 **Next Actions:**
 
-1. Run `/gsd:plan-phase 1` to create detailed implementation plan for Docker image
-2. Begin Dockerfile implementation
-3. Install and verify fio, vdbench, mdtest tools
+1. Define LTP requirements
+2. Create roadmap for v1.1
+3. Implement LTP tool integration
 
 **Context for Next Session:**
-This is a Docker image project for storage performance testing. Phase 1 focuses on building the base image with all three tools (fio, vdbench, mdtest) installed on ubuntu:24.04. The image should be optimized for size and support both x86_64 and ARM64 platforms.
+This is a Docker image project for storage performance testing. v1.1 focuses on adding LTP (Linux Test Project) tool to the existing benchmark tools image. LTP is a comprehensive test suite for Linux kernel testing.
 
 ---
 
@@ -111,10 +101,24 @@ This is a Docker image project for storage performance testing. Phase 1 focuses 
 
 | Phase | Status | Completed | Notes |
 |-------|--------|-----------|-------|
-| 1. Docker Image Construction | Not started | - | - |
-| 2. Core Functionality | Not started | - | - |
-| 3. Output Formats | Not started | - | - |
+| 1. Docker Image Construction | Complete | 2026-04-03 | Base image with fio, vdbench, mdtest |
+| 2. Core Functionality | Complete | 2026-04-03 | Parameters, scenarios, run modes |
+| 3. Output Formats | Complete | 2026-04-07 | Reports in multiple formats |
+| 4. Fio Scenario Enhancements | Complete | 2026-04-07 | 96 fio scenarios |
+| 5. pjdtest POSIX Tests | Complete | 2026-04-07 | Added pjdtest tool |
 
 ---
 
-*State initialized: 2026-04-03*
+## v1.1 Milestone: 新增 LTP 工具
+
+**Started:** 2026-04-08
+
+**Target features:**
+- Install LTP toolset in Docker image
+- Add ltp run command (filesystem tests by default)
+- Support specifying LTP test subsets via command line
+- Support LTP test results output to specified directory
+
+---
+
+*State initialized: 2026-04-08*

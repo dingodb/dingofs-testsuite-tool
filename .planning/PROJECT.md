@@ -8,23 +8,35 @@
 
 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试，无需关注工具安装和配置细节。
 
+## Current Milestone: v1.1 新增 LTP 工具
+
+**Goal:** 将 LTP (Linux Test Project) 测试套件添加到镜像中
+
+**Target features:**
+- 安装 LTP 工具集到 Docker 镜像
+- 添加 ltp 运行命令（默认运行文件系统相关测试）
+- 支持通过命令行指定 LTP 测试子集
+- 支持 LTP 测试结果输出到指定目录
+
 ## Requirements
 
-### Validated
+### Validated (v1.0)
 
-(None yet — ship to validate)
+- [x] Dockerfile基于ubuntu:24.04构建
+- [x] 内置fio、vdbench、mdtest三种存储测试工具
+- [x] 支持命令行参数传入：工具名、场景名、挂载点路径、日志输出路径
+- [x] 支持配置文件挂载方式传入参数
+- [x] 内置基础预设场景：顺序读写、随机读写、混合读写
+- [x] 支持用户自定义场景配置覆盖内置场景
+- [x] 输出多种格式报告：原始输出、结构化JSON、HTML报告、文本摘要
+- [x] 支持一次性运行模式（测试完成后退出）
+- [x] 支持长期运行模式（通过docker exec触发测试）
 
-### Active
+### Active (v1.1)
 
-- [ ] Dockerfile基于ubuntu:24.04构建
-- [ ] 内置fio、vdbench、mdtest三种存储测试工具
-- [ ] 支持命令行参数传入：工具名、场景名、挂载点路径、日志输出路径
-- [ ] 支持配置文件挂载方式传入参数
-- [ ] 内置基础预设场景：顺序读写、随机读写、混合读写
-- [ ] 支持用户自定义场景配置覆盖内置场景
-- [ ] 输出多种格式报告：原始输出、结构化JSON、HTML报告、文本摘要
-- [ ] 支持一次性运行模式（测试完成后退出）
-- [ ] 支持长期运行模式（通过docker exec触发测试）
+- [ ] 内置LTP (Linux Test Project) 测试工具
+- [ ] 支持ltp工具运行模式
+- [ ] 支持LTP测试结果输出
 
 ### Out of Scope
 
@@ -77,4 +89,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-03 after initialization*
+*Last updated: 2026-04-08 — v1.1 started*
