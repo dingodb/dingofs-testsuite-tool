@@ -87,8 +87,15 @@ PJDTEST:
   pjdtest    - 运行 POSIX 文件系统测试套件 (prove -rv /pjdtest/dingofs_baseline)
 
 LTP:
-  ltp        - 运行 Linux Test Project 测试套件
-  ltp默认运行文件系统测试 (-f fs)
+  ltp        - 运行 Linux Test Project 测试套件 (runltp -f fs)
+  ltp_fs     - 文件系统测试 (fs)
+  ltp_dio    - Direct I/O 测试 (dio)
+  ltp_mm     - 内存管理测试 (mm)
+
+注意: LTP 需要 --privileged 运行以访问 /dev/kmsg 等设备
+
+Examples:
+  # 运行所有 rand_read 场景 (24 tests)
 
 Examples:
   # 运行所有 rand_read 场景 (24 tests)
@@ -112,8 +119,8 @@ Examples:
   # pjdtest 测试
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
 
-  # ltp 测试 (默认运行文件系统测试)
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+  # ltp 测试 (默认运行文件系统测试，需要 --privileged)
+  docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
 
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
@@ -627,11 +634,15 @@ ltp_run() {
     # Default to filesystem tests (-f fs) if no scenario specified
     local scenario="${SCENARIO:-fs}"
 
-    echo "Executing: timeout 3600 /opt/ltp/runltp -p $OUTPUT -l ${output_file}.log -d $MOUNT -f $scenario"
+    echo "Executing: timeout 3600 /opt/ltp/runltp -f $scenario -d ."
     echo "Output file: ${output_file}.log"
 
     # Run LTP with timeout protection (1 hour max)
-    timeout 3600 /opt/ltp/runltp -p "$OUTPUT" -l "${output_file}.log" -d "$MOUNT" -f "$scenario" 2>&1 | tee "${output_file}.raw"
+    # -f: test suite (fs for filesystem tests)
+    # -d .: run in current directory (mount point)
+    # -p: output directory for results
+    # -l: log file
+    timeout 3600 /opt/ltp/runltp -f "$scenario" -d . -p "$OUTPUT" -l "${output_file}.log" 2>&1 | tee "${output_file}.raw"
     local ltp_exit=${PIPESTATUS[0]}
 
     if [[ $ltp_exit -eq 124 ]]; then

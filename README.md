@@ -34,6 +34,7 @@ docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output
 | vdbench | Oracle storage benchmark |
 | mdtest | MPI filesystem metadata test |
 | pjdtest | POSIX 文件系统测试套件 |
+| ltp | Linux Test Project (内核测试套件) |
 
 ## 运行模式
 
@@ -80,6 +81,35 @@ pjdtest 是 POSIX 文件系统测试套件，用于验证文件系统对 POSIX �
 docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
 ```
 
+## LTP
+
+LTP (Linux Test Project) 是 Linux 内核测试套件，用于验证内核和系统调用的正确性、稳定性和可靠性。
+
+**注意**: LTP 测试需要 `--privileged` 标志运行，以访问 `/dev/kmsg` 等设备。
+
+### LTP 场景
+
+| 场景 | 说明 |
+|------|------|
+| ltp | 默认运行文件系统测试 (等同于 ltp_fs) |
+| ltp_fs | 文件系统测试 (fs) |
+| ltp_dio | Direct I/O 测试 (dio) |
+| ltp_mm | 内存管理测试 (mm) |
+
+### 运行 LTP 测试
+
+```bash
+# 运行 LTP 文件系统测试 (需要 --privileged)
+docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+
+# 运行特定 LTP 测试场景
+docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp_fs -m /data -o /data
+```
+
+### LTP 测试限制
+
+在容器中运行 LTP 时，部分测试会失败或报错（如 `/dev/kmsg`、`/proc/sys` 等内核接口），这是预期行为。LTP 设计用于在裸机上运行以获得完整测试结果。
+
 ## 使用示例
 
 ### FIO 测试
@@ -118,6 +148,13 @@ docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z
 docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
 ```
 
+### LTP 测试
+
+```bash
+# 运行 LTP 文件系统测试 (需要 --privileged)
+docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+```
+
 ### 长期运行模式
 
 ```bash
@@ -152,6 +189,7 @@ docker run --rm \
 | vdbench.raw | vdbench 原始输出 |
 | mdtest.raw | mdtest 原始输出 |
 | pjdtest_YYYYMMDD_HHMMSS | pjdtest 测试结果 |
+| ltp_YYYYMMDD_HHMMSS.log | LTP 测试日志 |
 | report.html | HTML 可视化报告 |
 | summary.md | Markdown 格式摘要 |
 
