@@ -76,6 +76,26 @@
 | 实时监控功能 | 专注于测试执行，监控由其他工具负责 |
 | 分布式测试协调 | v1专注单节点，后续扩展 |
 
+## v1.1 Requirements
+
+### LTP 安装与构建
+
+- [ ] **LTP-01**: 在 Docker 镜像中安装 LTP 工具集
+- [ ] **LTP-02**: 使用 multi-stage build 优化镜像大小
+- [ ] **LTP-03**: 支持 x86_64 和 ARM64 平台
+
+### LTP 运行与集成
+
+- [ ] **LTP-04**: 支持 `-t ltp` 命令行参数
+- [ ] **LTP-05**: 创建 `ltp_run()` 函数执行测试
+- [ ] **LTP-06**: 默认运行文件系统相关测试 (`-f fs`)
+
+### LTP 运行时限制
+
+- [ ] **LTP-07**: 使用 timeout 包装防止测试挂起
+- [ ] **LTP-08**: 记录测试输出到用户指定目录
+- [ ] **LTP-09**: 文档说明容器权限要求
+
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
