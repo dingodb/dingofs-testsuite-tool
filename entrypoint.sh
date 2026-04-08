@@ -21,6 +21,7 @@ SCENARIO=""          # Test scenario name (e.g., seq_read, rand_write)
 MOUNT="/data"        # Filesystem mount point
 OUTPUT="/data/results"  # Output directory
 MODE="one-shot"      # Mode: one-shot or long-running
+NP=16                # Number of MPI processes for mdtest (default: 16)
 
 # Tool paths (from Dockerfile)
 FIO_BIN="/usr/bin/fio"
@@ -48,6 +49,7 @@ Options:
   -s, --scenario  测试场景
   -m, --mount     被测存储的挂载点 (例如: /mnt/test)
   -o, --output    测试结果输出目录 (例如: /output)
+  -n, --np        mdtest MPI 进程数 (默认: 16)
   --mode          运行模式: one-shot (默认) 或 long-running
 
 注意: -o 指定的是容器内路径，需要通过 -v 将容器内目录映射到本机路径
@@ -76,12 +78,14 @@ FIO Parameters:
   iodepth:   1 (fixed)
   size:      8G per job
 
-MDTEST Scenarios (4 types, each runs with 32 parallel tasks):
+MDTEST Scenarios (4 types, each runs with configurable parallel tasks):
   mdtest_z0_n100   - z=0, n=100 (扁平目录, 3200 files)
   mdtest_z5_b4_I1  - z=5, b=4, I=1 (多分支树, 32736 items)
   mdtest_z6_b3_I1  - z=6, b=3, I=1 (中等深度树, 34976 items)
   mdtest_z9_b2_I1  - z=9, b=2, I=1 (深层二叉树, 32736 items)
   mdtest           - 运行以上所有4个场景
+
+  默认进程数: 16，可用 -n 或 --np 参数调整
 
 PJDTEST:
   pjdtest    - 运行 POSIX 文件系统测试套件 (prove -rv /pjdtest/dingofs_baseline)
@@ -112,6 +116,9 @@ Examples:
 
   # mdtest 单个场景测试
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+
+  # mdtest 自定义进程数测试
+  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data -n 32
 
   # pjdtest 测试
   docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
@@ -315,8 +322,8 @@ parse_args() {
 
     # Use getopt for long options support
     local opts
-    opts=$(getopt -o t:s:m:o:h \
-                  -l tool:,scenario:,mount:,output:,mode:,help \
+    opts=$(getopt -o t:s:m:o:n:h \
+                  -l tool:,scenario:,mount:,output:,np:,help \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -340,6 +347,10 @@ parse_args() {
                 ;;
             -o|--output)
                 OUTPUT="$2"
+                shift 2
+                ;;
+            -n|--np)
+                NP="$2"
                 shift 2
                 ;;
             --mode)
@@ -517,6 +528,7 @@ mdtest_run() {
     echo "Found $path_count mdtest scenario(s) for '$SCENARIO'"
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
+    echo "  NP: $NP"
     echo ""
 
     # Create base output directory
@@ -527,6 +539,9 @@ mdtest_run() {
 
     # Change to mount directory for test execution
     cd "$MOUNT"
+
+    # Export MDTEST_NP for use by scenario scripts
+    export MDTEST_NP="$NP"
 
     # Run each scenario
     # Use array instead of while read to avoid set -e issues
@@ -735,6 +750,7 @@ main() {
     echo "Scenario: $SCENARIO"
     echo "Mount:    $MOUNT"
     echo "Output:   $OUTPUT"
+    echo "NP:       $NP"
     echo "Mode:     $MODE"
     echo "=============================================="
     echo ""

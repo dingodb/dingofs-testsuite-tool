@@ -22,6 +22,7 @@ docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output
 | `-s, --scenario` | 测试场景 |
 | `-m, --mount` | 被测存储的挂载点 (例如: /mnt/test) |
 | `-o, --output` | 测试结果输出目录 (例如: /output) |
+| `-n, --np` | mdtest MPI 进程数 (默认: 16) |
 | `--mode` | 运行模式: one-shot (默认) 或 long-running |
 
 > **注意**: `-o` 指定的是容器内路径，需要通过 `-v` 将容器内目录映射到本机路径。
@@ -62,7 +63,7 @@ docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output
 | iodepth | 1 (fixed) |
 | size | 8G per job |
 
-## MDTEST 场景 (4 种类型，每种 32 并行任务)
+## MDTEST 场景 (4 种类型，可配置并行任务数)
 
 | 场景 | 说明 |
 |------|------|
@@ -71,6 +72,8 @@ docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output
 | mdtest_z6_b3_I1 | z=6, b=3, I=1 (中等深度树, 34976 items) |
 | mdtest_z9_b2_I1 | z=9, b=2, I=1 (深层二叉树, 32736 items) |
 | mdtest | 运行以上所有 4 个场景 |
+
+> **默认进程数**: 16，可用 `-n` 或 `--np` 参数调整
 
 ## PJDTEST
 
@@ -139,6 +142,9 @@ docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -
 
 # 运行单个 mdtest 场景
 docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+
+# 自定义进程数测试 (默认 16)
+docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data -n 32
 ```
 
 ### PJDTEST 测试
