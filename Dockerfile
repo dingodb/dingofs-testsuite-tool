@@ -53,6 +53,7 @@ LABEL description="Storage performance testing tools: fio, vdbench, mdtest, pjdt
 LABEL version="1.1"
 
 ENV TZ=Asia/Shanghai
+ENV PATH=/opt/vdbench:/opt/ltp:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 # Install runtime dependencies only (no build tools)
