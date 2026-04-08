@@ -631,8 +631,26 @@ ltp_run() {
     timestamp=$(date +"%Y%m%d_%H%M%S")
     local output_file="${OUTPUT}/ltp_${timestamp}"
 
-    # Default to filesystem tests (-f fs) if no scenario specified
-    local scenario="${SCENARIO:-fs}"
+    # Map scenario names to LTP test suite names
+    # ltp -> fs (default filesystem tests)
+    # ltp_fs -> fs (filesystem tests)
+    # ltp_dio -> dio (direct I/O tests)
+    # ltp_mm -> mm (memory management tests)
+    local scenario
+    case "${SCENARIO}" in
+        ltp|ltp_fs)
+            scenario="fs"
+            ;;
+        ltp_dio)
+            scenario="dio"
+            ;;
+        ltp_mm)
+            scenario="mm"
+            ;;
+        *)
+            scenario="${SCENARIO:-fs}"
+            ;;
+    esac
 
     echo "Executing: timeout 3600 /opt/ltp/runltp -f $scenario -d ."
     echo "Output file: ${output_file}.log"
