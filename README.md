@@ -5,7 +5,14 @@ DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbenc
 ## 构建镜像
 
 ```bash
+# 标准构建
 docker build -t dingofs-benchmark-tools .
+
+# 需要代理的网络环境
+docker build -t dingofs-benchmark-tools \
+  --build-arg http_proxy=http://10.220.69.222:1088 \
+  --build-arg https_proxy=http://10.220.69.222:1088 \
+  .
 ```
 
 ## 使用方法
