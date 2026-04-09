@@ -21,6 +21,20 @@ docker build -t dingofs-benchmark-tools \
 docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output>
 ```
 
+### 容器运行模式
+
+```bash
+# 一次性测试：容器运行完测试后自动删除
+docker run --rm dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
+
+# 后台运行：容器在后台运行，测试结果在容器内，通过 docker stop 停止
+docker run -d dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
+docker stop <container_id>
+
+# 交互式测试：进入容器内部，可手动执行测试命令
+docker run --rm -it dingofs-benchmark-tools /bin/bash
+```
+
 ## 选项说明
 
 | 选项 | 说明 |
