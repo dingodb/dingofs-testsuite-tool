@@ -35,6 +35,13 @@ docker stop <container_id>
 docker run --rm -it dingofs-benchmark-tools /bin/bash
 ```
 
+### 查看帮助
+
+```bash
+# 查看所有选项和示例
+docker run --rm dingofs-benchmark-tools --help
+```
+
 ## 选项说明
 
 | 选项 | 说明 |

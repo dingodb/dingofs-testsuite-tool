@@ -107,8 +107,13 @@ RUN chmod +x /scripts/generate_report.py
 # Phase 2: Copy scenario files
 COPY scenarios/ /scenarios/
 
-# Phase 5: Copy pjdtest tool
+# Phase 5: Copy and build pjdtest tool
 COPY pjdtest/ /pjdtest/
+RUN cd /pjdtest && \
+    autoreconf -ifs && \
+    ./configure && \
+    make pjdfstest && \
+    rm -rf autom4te.cache
 
 # Create custom config mount point
 RUN mkdir -p /custom && chmod 777 /custom/
