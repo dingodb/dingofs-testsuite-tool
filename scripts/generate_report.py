@@ -48,6 +48,12 @@ def parse_args():
         action="store_true",
         help="Generate combined summary from multiple sub-scenarios"
     )
+    parser.add_argument(
+        "--np",
+        type=int,
+        default=16,
+        help="Number of MPI processes for mdtest (default: 16)"
+    )
     return parser.parse_args()
 
 
@@ -560,7 +566,7 @@ def extract_mdtest_file_count(text):
     return 0
 
 
-def generate_mdtest_combined_markdown(output_dir, scenarios, mount):
+def generate_mdtest_combined_markdown(output_dir, scenarios, mount, np=16):
     """Generate combined markdown report for all mdtest scenarios."""
     timestamp = datetime.now().strftime("%Y-%m-%d")
 
@@ -570,7 +576,7 @@ def generate_mdtest_combined_markdown(output_dir, scenarios, mount):
     lines.append("## 测试环境")
     lines.append("")
     lines.append(f"- **测试工具**: mdtest")
-    lines.append(f"- **进程数**: 32 tasks")
+    lines.append(f"- **进程数**: {np} tasks")
     lines.append(f"- **节点数**: 1 node")
     lines.append(f"- **测试路径**: {mount}")
     lines.append(f"- **测试日期**: {timestamp}")
@@ -1229,7 +1235,7 @@ def main():
     if is_combined and tool == "mdtest":
         scenarios = aggregate_mdtest_results(output_dir)
         if scenarios:
-            mdtest_combined = generate_mdtest_combined_markdown(output_dir, scenarios, mount)
+            mdtest_combined = generate_mdtest_combined_markdown(output_dir, scenarios, mount, args.np)
             with open(txt_path, "w") as f:
                 f.write(mdtest_combined)
             print(f"Combined mdtest report generated: {txt_path}")

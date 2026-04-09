@@ -585,7 +585,7 @@ mdtest_run() {
 
     # Generate combined report for all mdtest scenarios
     echo "Generating combined mdtest report..."
-    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT" --combined
+    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
 
     echo ""
     echo "All mdtest scenarios completed."
