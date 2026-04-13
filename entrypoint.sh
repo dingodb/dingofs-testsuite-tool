@@ -441,12 +441,14 @@ log_result() {
             ;;
         pjdtest)
             # Check if output contains PASS or FAIL
-            if [[ -f "$output_dir/pjdtest_"* ]]; then
-                local pjdtest_output
-                pjdtest_output=$(ls "$output_dir"/pjdtest_* 2>/dev/null | head -1)
-                if [[ -n "$pjdtest_output" ]] && grep -qE "(Result:|PASS$|FAIL$)" "$pjdtest_output" 2>/dev/null; then
+            # Find the most recent pjdtest output file
+            local pjdtest_output
+            pjdtest_output=$(ls -t "$output_dir"/pjdtest_* 2>/dev/null | head -1)
+            if [[ -n "$pjdtest_output" ]] && [[ -f "$pjdtest_output" ]]; then
+                # Check for PASS/FAIL result
+                if grep -qE "(Result:|PASS|FAIL)" "$pjdtest_output" 2>/dev/null; then
                     status="SUCCESS"
-                    details=$(grep -E "(Result:|PASS$|FAIL$)" "$pjdtest_output" | head -1 || true)
+                    details=$(grep -E "(Result:|PASS|FAIL)" "$pjdtest_output" 2>/dev/null | tail -1 || true)
                 fi
             fi
             ;;
@@ -469,7 +471,7 @@ log_result() {
         echo "========================================"
         echo "Tool: $tool"
         echo "Scenario: $scenario"
-        echo "Start Time: $start_timestamp"
+        echo "Start Time: $start_time_str"
         echo "Duration: $duration_str"
         echo "Exit Code: $exit_code"
         echo "Status: $status"
