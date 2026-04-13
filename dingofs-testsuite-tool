@@ -94,7 +94,7 @@ Config Subcommands:
   dingofs-testsuite-tool config set testdir <dir>   Set test directory (mount point)
   dingofs-testsuite-tool config set output <dir>    Set output directory
   dingofs-testsuite-tool config set image <name>    Set Docker image
-  dingofs-testsuite-tool config set mdsaddr <addr>  Set MDS address (e.g., 172.30.14.126:6900)
+  dingofs-testsuite-tool config set mdsaddr <addr>  Set MDS address (e.g., 172.30.14.126:6900 or comma-separated for multiple)
   dingofs-testsuite-tool config show                Show current configuration
 
 Test Commands (run testsuite):
@@ -227,9 +227,25 @@ cmd_debug() {
     fi
 
     if [[ -n "$mdsaddr" ]]; then
-        # Extract IP (before port) for --add-host
-        local mds_ip="${mdsaddr%:*}"
-        docker_cmd+=("--add-host" "mds:${mds_ip}")
+        local -a added_ips=()
+        # Extract unique IPs for --add-host (split by comma, extract IP from each, deduplicate)
+        while IFS=',' read -ra ADDRS; do
+            for addr in "${ADDRS[@]}"; do
+                # Trim whitespace
+                addr=$(echo "$addr" | xargs)
+                [[ -n "$addr" ]] || continue
+                local ip="${addr%:*}"
+                # Add --add-host for this IP (avoid duplicates)
+                local already_added=false
+                for existing in "${added_ips[@]}"; do
+                    [[ "$existing" == "$ip" ]] && already_added=true && break
+                done
+                if [[ "$already_added" == "false" ]]; then
+                    docker_cmd+=("--add-host" "mds:${ip}")
+                    added_ips+=("$ip")
+                fi
+            done
+        done <<< "$mdsaddr"
     fi
 
     docker_cmd+=("$image")
@@ -324,9 +340,25 @@ run_testsuite() {
 
     # Add host mapping for MDS if configured
     if [[ -n "$config_mdsaddr" ]]; then
-        # Extract IP (before port) for --add-host
-        local mds_ip="${config_mdsaddr%:*}"
-        docker_cmd+=("--add-host" "mds:${mds_ip}")
+        local -a added_ips=()
+        # Extract unique IPs for --add-host (split by comma, extract IP from each, deduplicate)
+        while IFS=',' read -ra ADDRS; do
+            for addr in "${ADDRS[@]}"; do
+                # Trim whitespace
+                addr=$(echo "$addr" | xargs)
+                [[ -n "$addr" ]] || continue
+                local ip="${addr%:*}"
+                # Add --add-host for this IP (avoid duplicates)
+                local already_added=false
+                for existing in "${added_ips[@]}"; do
+                    [[ "$existing" == "$ip" ]] && already_added=true && break
+                done
+                if [[ "$already_added" == "false" ]]; then
+                    docker_cmd+=("--add-host" "mds:${ip}")
+                    added_ips+=("$ip")
+                fi
+            done
+        done <<< "$config_mdsaddr"
     fi
 
     # Build entrypoint command

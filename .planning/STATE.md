@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.1
 milestone_name: 新增 LTP 工具
 status: roadmap_created
-last_updated: "2026-04-08"
+last_updated: "2026-04-13"
 progress:
   total_phases: 7
   completed_phases: 4
@@ -14,7 +14,7 @@ progress:
 
 # STATE: DingoFS Storage Testsuite Tools
 
-**Last Updated:** 2026-04-08
+**Last Updated:** 2026-04-13
 **Session:** v1.1 - 新增 LTP 工具
 
 ---
@@ -69,6 +69,12 @@ Last activity: 2026-04-08 — Roadmap created for v1.1
 ### Blockers
 
 (None)
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260413-m3k | Support multiple mdsaddr addresses (comma-separated) | 2026-04-13 | - | [260413-m3k-support-multiple-mdsaddr-addresses-comma](./quick/260413-m3k-support-multiple-mdsaddr-addresses-comma/) |
 
 ### Key Files
 
