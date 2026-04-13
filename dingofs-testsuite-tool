@@ -204,7 +204,7 @@ cmd_debug() {
     echo "Type 'exit' to leave the container"
     echo ""
 
-    local docker_cmd=("docker" "run" "-it" "--rm" "--privileged")
+    local docker_cmd=("docker" "run" "-it" "--rm" "--privileged" "--entrypoint" "/bin/bash")
 
     if [[ -n "$testdir" ]]; then
         docker_cmd+=("-v" "${testdir}:/data")
@@ -214,7 +214,7 @@ cmd_debug() {
         docker_cmd+=("-v" "${output}:/output")
     fi
 
-    docker_cmd+=("$image" "/bin/bash")
+    docker_cmd+=("$image")
 
     "${docker_cmd[@]}"
 }
