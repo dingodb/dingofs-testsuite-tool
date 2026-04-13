@@ -16,6 +16,7 @@ CONFIG_DIR="$DINGOFS_TESTSUITE_CONFIG_DIR"
 TESTDIR_FILE="$CONFIG_DIR/testdir"
 OUTPUT_FILE="$CONFIG_DIR/output"
 IMAGE_FILE="$CONFIG_DIR/image"
+MDSADDR_FILE="$CONFIG_DIR/mdsaddr"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
@@ -39,6 +40,9 @@ load_config() {
         image)
             [[ -f "$IMAGE_FILE" ]] && cat "$IMAGE_FILE" || echo "$DEFAULT_IMAGE"
             ;;
+        mdsaddr)
+            [[ -f "$MDSADDR_FILE" ]] && cat "$MDSADDR_FILE" || echo ""
+            ;;
     esac
 }
 
@@ -54,6 +58,9 @@ save_config() {
             ;;
         image)
             echo "$value" > "$IMAGE_FILE"
+            ;;
+        mdsaddr)
+            echo "$value" > "$MDSADDR_FILE"
             ;;
     esac
 }
@@ -87,6 +94,7 @@ Config Subcommands:
   dingofs-testsuite-tool config set testdir <dir>   Set test directory (mount point)
   dingofs-testsuite-tool config set output <dir>    Set output directory
   dingofs-testsuite-tool config set image <name>    Set Docker image
+  dingofs-testsuite-tool config set mdsaddr <addr>  Set MDS address (e.g., 172.30.14.126:6900)
   dingofs-testsuite-tool config show                Show current configuration
 
 Test Commands (run testsuite):
@@ -153,13 +161,13 @@ cmd_config() {
             fi
 
             case "$key" in
-                testdir|output|image)
+                testdir|output|image|mdsaddr)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir, output, image"
+                    echo "Valid keys: testdir, output, image, mdsaddr"
                     return 1
                     ;;
             esac
@@ -169,9 +177,11 @@ cmd_config() {
             local td=$(load_config testdir)
             local out=$(load_config output)
             local img=$(load_config image)
+            local mds=$(load_config mdsaddr)
             echo "  testdir: ${td:-not set}"
             echo "  output:  ${out:-not set}"
             echo "  image:   ${img:-not set}"
+            echo "  mdsaddr: ${mds:-not set}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then
@@ -190,6 +200,7 @@ cmd_debug() {
     local image=$(load_config image)
     local testdir=$(load_config testdir)
     local output=$(load_config output)
+    local mdsaddr=$(load_config mdsaddr)
 
     if [[ -z "$image" ]]; then
         echo "Error: No Docker image configured."
@@ -200,6 +211,7 @@ cmd_debug() {
     echo "Starting debug shell with image: $image"
     echo "Testdir: ${testdir:-<not set>}"
     echo "Output: ${output:-<not set>}"
+    echo "MDSAddr: ${mdsaddr:-<not set>}"
     echo ""
     echo "Type 'exit' to leave the container"
     echo ""
@@ -214,6 +226,12 @@ cmd_debug() {
         docker_cmd+=("-v" "${output}:/output")
     fi
 
+    if [[ -n "$mdsaddr" ]]; then
+        # Extract IP (before port) for --add-host
+        local mds_ip="${mdsaddr%:*}"
+        docker_cmd+=("--add-host" "mds:${mds_ip}")
+    fi
+
     docker_cmd+=("$image")
 
     "${docker_cmd[@]}"
@@ -223,6 +241,7 @@ run_testsuite() {
     local image=$(load_config image)
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
+    local config_mdsaddr=$(load_config mdsaddr)
 
     if [[ -z "$image" ]]; then
         echo "Error: No Docker image configured."
@@ -302,6 +321,13 @@ run_testsuite() {
         -v "${mount}:/data"
         -v "${output}:/output"
     )
+
+    # Add host mapping for MDS if configured
+    if [[ -n "$config_mdsaddr" ]]; then
+        # Extract IP (before port) for --add-host
+        local mds_ip="${config_mdsaddr%:*}"
+        docker_cmd+=("--add-host" "mds:${mds_ip}")
+    fi
 
     # Build entrypoint command
     local entrypoint_cmd=(
