@@ -29,8 +29,8 @@ else
     echo ""
     echo "      Build failed, retrying with proxy settings..."
     if docker build -t "$IMAGE_NAME" \
-        --build-arg http_proxy=http://10.220.69.222:1088 \
-        --build-arg https_proxy=http://10.220.69.222:1088 \
+        --build-arg http_proxy=http://hproxy.it.zetyun.cn:1080 \
+        --build-arg https_proxy=http://hproxy.it.zetyun.cn:1080 \
         . 2>/dev/null; then
         BUILD_SUCCESS=true
     else
@@ -63,8 +63,8 @@ if docker push "$HARBOR_IMAGE" 2>/dev/null; then
 else
     echo ""
     echo "      Push failed, retrying with proxy settings..."
-    if http_proxy=http://10.220.69.222:1088 \
-       https_proxy=http://10.220.69.222:1088 \
+    if http_proxy=http://hproxy.it.zetyun.cn:1080 \
+       https_proxy=http://hproxy.it.zetyun.cn:1080 \
        docker push "$HARBOR_IMAGE" 2>/dev/null; then
         PUSH_SUCCESS=true
     else

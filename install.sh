@@ -47,8 +47,8 @@ if [[ "$SKIP_BUILD" == "false" ]]; then
     else
         echo ""
         echo "      Pull failed, retrying with proxy settings..."
-        if http_proxy=http://10.220.69.222:1088 \
-           https_proxy=http://10.220.69.222:1088 \
+        if http_proxy=http://hproxy.it.zetyun.cn:1080 \
+           https_proxy=http://hproxy.it.zetyun.cn:1080 \
            docker pull "$IMAGE_NAME" 2>/dev/null; then
             PULL_SUCCESS=true
         else
