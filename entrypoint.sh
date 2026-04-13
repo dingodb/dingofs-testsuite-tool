@@ -383,14 +383,14 @@ log_result() {
     local tool="$1"
     local scenario="$2"
     local exit_code="$3"
-    local start_time="$4"
+    local start_time_str="$4"
     local output_dir="$5"
     local result_log="$output_dir/result.log"
 
-    # Calculate execution time
+    # Calculate execution time using epoch seconds
     local end_time=$(date +%s)
-    local start_timestamp="${start_time}"
-    local duration=$((end_time - start_timestamp))
+    local start_time=$(date -d "$start_time_str" +%s 2>/dev/null || echo "$end_time")
+    local duration=$((end_time - start_time))
     local duration_str=""
     if [[ $duration -ge 60 ]]; then
         duration_str="${duration}s ($((${duration} / 60))m $((${duration} % 60))s)"
