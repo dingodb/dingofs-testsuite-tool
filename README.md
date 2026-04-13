@@ -2,11 +2,78 @@
 
 DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbench、mdtest 三种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
 
-## 构建镜像
+## 快速开始 (dingofs_benchmark_tool)
+
+推荐使用 `dingofs_benchmark_tool` 外壳脚本，它封装了 docker 命令的复杂参数，让测试更简单。
 
 ```bash
-# 标准构建
+# 1. 首次配置：设置测试目录、输出目录和镜像
+dingofs_benchmark_tool config set testdir /mnt/test
+dingofs_benchmark_tool config set output /tmp/results
+dingofs_benchmark_tool config set image localhost/dingofs-benchmark-tools:latest
+
+# 2. 查看当前配置
+dingofs_benchmark_tool config show
+
+# 3. 运行测试（无需指定 -m -o，使用配置的值）
+dingofs_benchmark_tool -t fio -s seq_write
+dingofs_benchmark_tool -t mdtest -s mdtest
+dingofs_benchmark_tool -t vdbench -s vdbench
+dingofs_benchmark_tool -t pjdtest -s pjdtest
+
+# 4. 进入镜像调试
+dingofs_benchmark_tool debug
+
+# 5. 显示帮助
+dingofs_benchmark_tool help
+```
+
+### dingofs_benchmark_tool 命令 (dbt)
+
+| 命令 | 说明 |
+|------|------|
+| `config set testdir <dir>` | 设置测试目录（挂载点） |
+| `config set output <dir>` | 设置输出目录 |
+| `config set image <name>` | 设置 Docker 镜像 |
+| `config show` | 显示当前配置 |
+| `-t -s [-n]` | 运行测试（testdir/output 从配置读取） |
+| `debug` | 进入镜像交互式调试 |
+| `help` | 显示帮助信息 |
+
+> 快捷命令：`dbt` 是 `dingofs_benchmark_tool` 的别名，两者功能相同。
+
+> 如尚未安装 dingofs_benchmark_tool，也可直接使用 docker run 命令（见下文）。
+
+## 安装
+
+使用 `install.sh` 一键安装（构建镜像 + 配置环境变量 + 设置默认镜像）：
+
+```bash
+./install.sh
+```
+
+或者分步进行：
+
+```bash
+# 1. 构建镜像
 docker build -t dingofs-benchmark-tools .
+
+# 2. 将 dingofs_benchmark_tool 加入 PATH
+export PATH="$PATH:/path/to/dingofs-storage-benchmark-tools"
+
+# 3. 设置镜像
+dingofs_benchmark_tool config set image localhost/dingofs-benchmark-tools:latest
+```
+
+> install.sh 参数：
+> - `-n, --no-build`: 跳过镜像构建，只配置环境变量和设置镜像
+
+## 卸载
+
+```bash
+./uninstall.sh           # 卸载并删除镜像
+./uninstall.sh --keep-image  # 卸载但保留镜像
+```
 
 # 需要代理的网络环境
 docker build -t dingofs-benchmark-tools \
@@ -131,7 +198,7 @@ LTP (Linux Test Project) 是 Linux 内核测试套件，用于验证内核和系
 
 ```bash
 # 运行 LTP 文件系统测试 (需要 --privileged)
-docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+docker run --rm --privileged -v /mnt/disk0/daigy/tmp/:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
 
 # 运行特定 LTP 测试场景
 docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp_fs -m /data -o /data
@@ -226,6 +293,7 @@ docker run --rm \
 | ltp_YYYYMMDD_HHMMSS.log | LTP 测试日志 |
 | report.html | HTML 可视化报告 |
 | summary.md | Markdown 格式摘要 |
+| running_result.log | 测试执行结果汇总 |
 
 ## 镜像信息
 
