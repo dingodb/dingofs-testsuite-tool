@@ -36,7 +36,9 @@
       "Bash(dingofs-testsuite-tool help:*)",
       "Bash(dtt help:*)",
       "Bash(chmod +x /mnt/disk0/daigy/github/dingofs-storage-testsuite-tools/build.sh)",
-      "Bash(bash -n /mnt/disk0/daigy/github/dingofs-storage-testsuite-tools/build.sh)"
+      "Bash(bash -n /mnt/disk0/daigy/github/dingofs-storage-testsuite-tools/build.sh)",
+      "Bash(cat /mnt/disk0/daigy/tmp/test_fio/seq_write_0d_128k_1j/fio_seq_write_0d_128k_1j_summary_*.md)",
+      "Bash(bash -n /mnt/disk0/daigy/github/dingofs-storage-benchmark-tools/dingofs-testsuite-tool)"
     ],
     "additionalDirectories": [
       "/mnt/disk0/daigy/tmp"

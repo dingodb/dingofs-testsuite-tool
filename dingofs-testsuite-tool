@@ -204,7 +204,7 @@ cmd_debug() {
     echo "Type 'exit' to leave the container"
     echo ""
 
-    local docker_cmd=("docker" "run" "-it" "--rm")
+    local docker_cmd=("docker" "run" "-it" "--rm" "--privileged")
 
     if [[ -n "$testdir" ]]; then
         docker_cmd+=("-v" "${testdir}:/data")
@@ -298,7 +298,7 @@ run_testsuite() {
 
     # Build docker command
     local docker_cmd=(
-        docker run --rm
+        docker run --rm --privileged
         -v "${mount}:/data"
         -v "${output}:/output"
     )
