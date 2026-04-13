@@ -7,7 +7,7 @@
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCHMARK_TOOL="$SCRIPT_DIR/dingofs_benchmark_tool"
+BENCHMARK_TOOL="$SCRIPT_DIR/dingofs-testsuite-tool"
 IMAGE_NAME="${IMAGE_NAME:-localhost/dingofs-benchmark-tools:latest}"
 SKIP_BUILD=false
 
@@ -71,9 +71,9 @@ else
     echo "[1/3] Skipping Docker build (--no-build specified)"
 fi
 
-# Step 2: Add dingofs_benchmark_tool to PATH
+# Step 2: Add dingofs-testsuite-tool to PATH
 echo ""
-echo "[2/3] Adding dingofs_benchmark_tool to PATH..."
+echo "[2/3] Adding dingofs-testsuite-tool to PATH..."
 
 # Detect shell profile
 SHELL_PROFILE=""
@@ -89,7 +89,7 @@ fi
 
 # Add to shell profile if not already there
 if [[ -f "$SHELL_PROFILE" ]]; then
-    if ! grep -q "dingofs_benchmark_tool" "$SHELL_PROFILE" 2>/dev/null; then
+    if ! grep -q "dingofs-testsuite-tool" "$SHELL_PROFILE" 2>/dev/null; then
         echo "" >> "$SHELL_PROFILE"
         echo "# DingoFS Benchmark Tool" >> "$SHELL_PROFILE"
         echo "export PATH=\"\$PATH:$SCRIPT_DIR\"" >> "$SHELL_PROFILE"
@@ -104,38 +104,38 @@ fi
 # Create symlinks in /usr/local/bin
 if [[ -d "/usr/local/bin" ]]; then
     # Try direct write first, then sudo if it fails
-    if ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dingofs_benchmark_tool 2>/dev/null; then
-        echo "      Symlinked to /usr/local/bin/dingofs_benchmark_tool"
+    if ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null; then
+        echo "      Symlinked to /usr/local/bin/dingofs-testsuite-tool"
     else
-        sudo ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dingofs_benchmark_tool 2>/dev/null && \
-            echo "      Symlinked to /usr/local/bin/dingofs_benchmark_tool (sudo)"
+        sudo ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null && \
+            echo "      Symlinked to /usr/local/bin/dingofs-testsuite-tool (sudo)"
     fi
 
-    if ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dbt 2>/dev/null; then
-        echo "      Symlinked to /usr/local/bin/dbt (shortcut)"
+    if ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dtt 2>/dev/null; then
+        echo "      Symlinked to /usr/local/bin/dtt (shortcut)"
     else
-        sudo ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dbt 2>/dev/null && \
-            echo "      Symlinked to /usr/local/bin/dbt (shortcut, sudo)"
+        sudo ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dtt 2>/dev/null && \
+            echo "      Symlinked to /usr/local/bin/dtt (shortcut, sudo)"
     fi
 fi
 
-# Add alias for dbt in shell profile if not already there
+# Add alias for dtt in shell profile if not already there
 if [[ -f "$SHELL_PROFILE" ]]; then
-    if ! grep -q "^alias dbt=" "$SHELL_PROFILE" 2>/dev/null; then
-        echo "alias dbt='dingofs_benchmark_tool'" >> "$SHELL_PROFILE"
-        echo "      Added 'dbt' alias to $SHELL_PROFILE"
+    if ! grep -q "^alias dtt=" "$SHELL_PROFILE" 2>/dev/null; then
+        echo "alias dtt='dingofs-testsuite-tool'" >> "$SHELL_PROFILE"
+        echo "      Added 'dtt' alias to $SHELL_PROFILE"
     fi
 fi
 
-# Step 3: Set image in dingofs_benchmark_tool config
+# Step 3: Set image in dingofs-testsuite-tool config
 echo ""
-echo "[3/3] Setting Docker image in dingofs_benchmark_tool config..."
+echo "[3/3] Setting Docker image in dingofs-testsuite-tool config..."
 
 # Source the script to use its functions
 source "$BENCHMARK_TOOL"
 
 # Set the image
-dingofs_benchmark_tool config set image "$IMAGE_NAME"
+dingofs-testsuite-tool config set image "$IMAGE_NAME"
 
 echo ""
 echo "=============================================="
@@ -144,9 +144,9 @@ echo "=============================================="
 echo ""
 echo "Next steps:"
 echo "  1. Source your shell profile or start a new terminal"
-echo "  2. Set test directory: dingofs_benchmark_tool config set testdir /mnt/test"
-echo "  3. Set output directory: dingofs_benchmark_tool config set output /tmp/results"
-echo "  4. Run a test: dingofs_benchmark_tool -t fio -s seq_write"
+echo "  2. Set test directory: dingofs-testsuite-tool config set testdir /mnt/test"
+echo "  3. Set output directory: dingofs-testsuite-tool config set output /tmp/results"
+echo "  4. Run a test: dingofs-testsuite-tool -t fio -s seq_write"
 echo ""
 echo "Or use directly from current terminal:"
 echo "  source $BENCHMARK_TOOL"

@@ -28,7 +28,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.dingofs_benchmark"
+CONFIG_DIR="$HOME/.dingofs_testsuite"
 IMAGE_NAME="localhost/dingofs-benchmark-tools:latest"
 
 echo "=============================================="
@@ -39,16 +39,16 @@ echo ""
 # Step 1: Remove symlinks
 echo "[1/4] Removing symlinks from /usr/local/bin..."
 
-if [[ -L "/usr/local/bin/dingofs_benchmark_tool" ]]; then
-    sudo rm /usr/local/bin/dingofs_benchmark_tool && echo "      Removed /usr/local/bin/dingofs_benchmark_tool"
-elif [[ -f "/usr/local/bin/dingofs_benchmark_tool" ]]; then
-    echo "      Warning: /usr/local/bin/dingofs_benchmark_tool is not a symlink, skipping"
+if [[ -L "/usr/local/bin/dingofs-testsuite-tool" ]]; then
+    sudo rm /usr/local/bin/dingofs-testsuite-tool && echo "      Removed /usr/local/bin/dingofs-testsuite-tool"
+elif [[ -f "/usr/local/bin/dingofs-testsuite-tool" ]]; then
+    echo "      Warning: /usr/local/bin/dingofs-testsuite-tool is not a symlink, skipping"
 fi
 
-if [[ -L "/usr/local/bin/dbt" ]]; then
-    sudo rm /usr/local/bin/dbt && echo "      Removed /usr/local/bin/dbt"
-elif [[ -f "/usr/local/bin/dbt" ]]; then
-    echo "      Warning: /usr/local/bin/dbt is not a symlink, skipping"
+if [[ -L "/usr/local/bin/dtt" ]]; then
+    sudo rm /usr/local/bin/dtt && echo "      Removed /usr/local/bin/dtt"
+elif [[ -f "/usr/local/bin/dtt" ]]; then
+    echo "      Warning: /usr/local/bin/dtt is not a symlink, skipping"
 fi
 
 # Step 2: Remove PATH and alias from shell profile
@@ -69,9 +69,9 @@ fi
 
 if [[ -f "$SHELL_PROFILE" ]]; then
     # Remove PATH export line
-    sed -i.bak "\|export PATH=.*dingofs_benchmark_tool|d" "$SHELL_PROFILE" 2>/dev/null || true
+    sed -i.bak "\|export PATH=.*dingofs-testsuite-tool|d" "$SHELL_PROFILE" 2>/dev/null || true
     # Remove alias line
-    sed -i.bak "/^alias dbt=/d" "$SHELL_PROFILE" 2>/dev/null || true
+    sed -i.bak "/^alias dtt=/d" "$SHELL_PROFILE" 2>/dev/null || true
     # Remove comment line
     sed -i.bak "/# DingoFS Benchmark Tool/d" "$SHELL_PROFILE" 2>/dev/null || true
     rm -f "$SHELL_PROFILE.bak"

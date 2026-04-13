@@ -2,33 +2,33 @@
 
 DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbench、mdtest 三种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
 
-## 快速开始 (dingofs_benchmark_tool)
+## 快速开始 (dingofs-testsuite-tool)
 
-推荐使用 `dingofs_benchmark_tool` 外壳脚本，它封装了 docker 命令的复杂参数，让测试更简单。
+推荐使用 `dingofs-testsuite-tool` 外壳脚本，它封装了 docker 命令的复杂参数，让测试更简单。
 
 ```bash
 # 1. 首次配置：设置测试目录、输出目录和镜像
-dingofs_benchmark_tool config set testdir /mnt/test
-dingofs_benchmark_tool config set output /tmp/results
-dingofs_benchmark_tool config set image localhost/dingofs-benchmark-tools:latest
+dingofs-testsuite-tool config set testdir /mnt/test
+dingofs-testsuite-tool config set output /tmp/results
+dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest
 
 # 2. 查看当前配置
-dingofs_benchmark_tool config show
+dingofs-testsuite-tool config show
 
 # 3. 运行测试（无需指定 -m -o，使用配置的值）
-dingofs_benchmark_tool -t fio -s seq_write
-dingofs_benchmark_tool -t mdtest -s mdtest
-dingofs_benchmark_tool -t vdbench -s vdbench
-dingofs_benchmark_tool -t pjdtest -s pjdtest
+dingofs-testsuite-tool -t fio -s seq_write
+dingofs-testsuite-tool -t mdtest -s mdtest
+dingofs-testsuite-tool -t vdbench -s vdbench
+dingofs-testsuite-tool -t pjdtest -s pjdtest
 
 # 4. 进入镜像调试
-dingofs_benchmark_tool debug
+dingofs-testsuite-tool debug
 
 # 5. 显示帮助
-dingofs_benchmark_tool help
+dingofs-testsuite-tool help
 ```
 
-### dingofs_benchmark_tool 命令 (dbt)
+### dingofs-testsuite-tool 命令 (dtt)
 
 | 命令 | 说明 |
 |------|------|
@@ -40,9 +40,9 @@ dingofs_benchmark_tool help
 | `debug` | 进入镜像交互式调试 |
 | `help` | 显示帮助信息 |
 
-> 快捷命令：`dbt` 是 `dingofs_benchmark_tool` 的别名，两者功能相同。
+> 快捷命令：`dtt` 是 `dingofs-testsuite-tool` 的别名，两者功能相同。
 
-> 如尚未安装 dingofs_benchmark_tool，也可直接使用 docker run 命令（见下文）。
+> 如尚未安装 dingofs-testsuite-tool，也可直接使用 docker run 命令（见下文）。
 
 ## 安装
 
@@ -58,11 +58,11 @@ dingofs_benchmark_tool help
 # 1. 构建镜像
 docker build -t dingofs-benchmark-tools .
 
-# 2. 将 dingofs_benchmark_tool 加入 PATH
+# 2. 将 dingofs-testsuite-tool 加入 PATH
 export PATH="$PATH:/path/to/dingofs-storage-benchmark-tools"
 
 # 3. 设置镜像
-dingofs_benchmark_tool config set image localhost/dingofs-benchmark-tools:latest
+dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest
 ```
 
 > install.sh 参数：
