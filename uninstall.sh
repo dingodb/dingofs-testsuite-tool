@@ -29,7 +29,7 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.dingofs_testsuite"
-IMAGE_NAME="localhost/dingofs-testsuite-tools:latest"
+IMAGE_NAME="harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest"
 
 echo "=============================================="
 echo "dingofs-Testsuite-tools Uninstaller"
