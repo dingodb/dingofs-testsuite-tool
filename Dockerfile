@@ -118,6 +118,11 @@ RUN cd /pjdtest && \
 # Create custom config mount point
 RUN mkdir -p /custom && chmod 777 /custom/
 
+# Copy dingo CLI tool
+COPY dingo /root/.dingo/bin/dingo
+RUN chmod +x /root/.dingo/bin/dingo && \
+    echo 'export PATH=$PATH:/root/.dingo/bin' >> /root/.bashrc
+
 # Phase 2: Copy and set entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
