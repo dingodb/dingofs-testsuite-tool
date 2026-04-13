@@ -1,13 +1,13 @@
 #!/bin/bash
 #
-# DingoFS Storage Benchmark Tools - Unified Entrypoint
+# DingoFS Storage Testsuite Tools - Unified Entrypoint
 # Parses CLI arguments, handles one-shot and long-running modes,
 # dispatches to correct storage testing tool (fio/vdbench/mdtest)
 #
 # Usage:
-#   docker run dingofs-benchmark-tools -t fio -s seq_read -m /mnt/test
-#   docker run dingofs-benchmark-tools -t vdbench -s rand_read -m /mnt/test -o /tmp/results
-#   docker run --detach dingofs-benchmark-tools -t fio -s randrw --mode long-running
+#   docker run dingofs-testsuite-tools -t fio -s seq_read -m /mnt/test
+#   docker run dingofs-testsuite-tools -t vdbench -s rand_read -m /mnt/test -o /tmp/results
+#   docker run --detach dingofs-testsuite-tools -t fio -s randrw --mode long-running
 #
 
 set -e
@@ -38,11 +38,11 @@ SCENARIOS_DIR="/scenarios"
 
 show_help() {
     cat << EOF
-DingoFS Storage Benchmark Tools
+DingoFS Storage Testsuite Tools
 ===============================
 
 Usage:
-  docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output>
+  docker run dingofs-testsuite-tools -t <tool> -s <scenario> -m <mount> -o <output>
 
 Options:
   -t, --tool      测试工具: fio, vdbench, mdtest
@@ -56,7 +56,7 @@ Options:
 
 Tools:
   fio       - Flexible I/O tester (存储性能测试)
-  vdbench   - Oracle storage benchmark
+  vdbench   - Oracle storage testsuite
   mdtest    - MPI filesystem metadata test
   pjdtest   - POSIX filesystem test suite
   ltp       - Linux Test Project (内核测试套件)
@@ -100,41 +100,41 @@ LTP:
 
 Examples:
   # 运行所有 rand_read 场景 (24 tests)
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data
 
   # 运行所有 seq_write 场景 (24 tests)
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s seq_write -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_write -m /data -o /data
 
   # 运行单个特定场景
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
 
   # vdbench 测试
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t vdbench -s seq_rd -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t vdbench -s seq_rd -m /data -o /data
 
   # mdtest 测试 (运行所有4个场景并汇总)
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data
 
   # mdtest 单个场景测试
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
 
   # mdtest 自定义进程数测试
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data -n 32
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data -n 32
 
   # pjdtest 测试
-  docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s pjdtest -m /data -o /data
 
   # ltp 测试 (默认运行文件系统测试，需要 --privileged)
-  docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+  docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
 
   # 长期运行模式 (容器保持运行，可执行多个测试)
-  docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
+  docker run --detach -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
 
   # 分离挂载点和输出目录 (被测存储和结果保存到不同路径)
   docker run --rm \
     -v /mnt/disk1/test:/data \
     -v /tmp/results:/output \
-    dingofs-benchmark-tools \
+    dingofs-testsuite-tools \
     -t fio -s seq_read -m /data -o /output
 
 Output:
@@ -744,7 +744,7 @@ main() {
     validate_params
 
     echo "=============================================="
-    echo "DingoFS Storage Benchmark Tools"
+    echo "DingoFS Storage Testsuite Tools"
     echo "=============================================="
     echo "Tool:     $TOOL"
     echo "Scenario: $SCENARIO"

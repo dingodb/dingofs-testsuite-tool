@@ -1,6 +1,6 @@
 # Technology Stack: LTP Integration
 
-**Project:** DingoFS Storage Benchmark Tools - LTP Addition
+**Project:** DingoFS Storage Testsuite Tools - LTP Addition
 **Researched:** 2026-04-08
 **Confidence:** LOW
 
@@ -10,7 +10,7 @@
 
 ## LTP Overview
 
-The Linux Test Project (LTP) is a consortium of tests that validate the Linux kernel and system calls. Unlike fio/vdbench (storage benchmarks) or pjdtest (POSIX compliance), LTP focuses on kernel API correctness, stress testing, and system call validation.
+The Linux Test Project (LTP) is a consortium of tests that validate the Linux kernel and system calls. Unlike fio/vdbench (storage testsuites) or pjdtest (POSIX compliance), LTP focuses on kernel API correctness, stress testing, and system call validation.
 
 **Repository:** https://github.com/linux-test-project/ltp
 

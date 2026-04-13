@@ -1,12 +1,12 @@
 # Architecture Research: LTP Integration
 
-**Project:** DingoFS Storage Benchmark Tools
+**Project:** DingoFS Storage Testsuite Tools
 **Researched:** 2026-04-08
 **Confidence:** LOW (based on training data; verification needed)
 
 ## Executive Summary
 
-LTP (Linux Test Project) is a comprehensive test suite that validates Linux system reliability, stability, and correctness. Integrating LTP into the existing Docker benchmark architecture requires adding LTP as a new tool case in the `dispatch_tool()` function, installing LTP in `/opt/ltp`, and routing its output to the user-specified mount point and output directory.
+LTP (Linux Test Project) is a comprehensive test suite that validates Linux system reliability, stability, and correctness. Integrating LTP into the existing Docker testsuite architecture requires adding LTP as a new tool case in the `dispatch_tool()` function, installing LTP in `/opt/ltp`, and routing its output to the user-specified mount point and output directory.
 
 The integration follows the established pattern used by pjdtest: a single tool dispatch case that runs LTP tests against the mount point and captures output to the designated output directory.
 
@@ -35,7 +35,7 @@ dispatch_tool() case statement:
 | Tool | Location | Purpose |
 |------|----------|---------|
 | fio | `/usr/bin/fio` | I/O performance testing |
-| vdbench | `/opt/vdbench/vdbench` | Oracle storage benchmark |
+| vdbench | `/opt/vdbench/vdbench` | Oracle storage testsuite |
 | mdtest | `/usr/local/bin/mdtest` | Filesystem metadata testing |
 | pjdtest | `/pjdtest/` (source) | POSIX compliance testing |
 

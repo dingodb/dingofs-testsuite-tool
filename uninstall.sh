@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# DingoFS Benchmark Tool Uninstaller
+# dingofs-Testsuite-tools Uninstaller
 # Usage: ./uninstall.sh [--keep-image]
 #
 
@@ -29,10 +29,10 @@ done
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.dingofs_testsuite"
-IMAGE_NAME="localhost/dingofs-benchmark-tools:latest"
+IMAGE_NAME="localhost/dingofs-testsuite-tools:latest"
 
 echo "=============================================="
-echo "DingoFS Benchmark Tool Uninstaller"
+echo "dingofs-Testsuite-tools Uninstaller"
 echo "=============================================="
 echo ""
 
@@ -73,7 +73,7 @@ if [[ -f "$SHELL_PROFILE" ]]; then
     # Remove alias line
     sed -i.bak "/^alias dtt=/d" "$SHELL_PROFILE" 2>/dev/null || true
     # Remove comment line
-    sed -i.bak "/# DingoFS Benchmark Tool/d" "$SHELL_PROFILE" 2>/dev/null || true
+    sed -i.bak "/# dingofs-Testsuite-tools/d" "$SHELL_PROFILE" 2>/dev/null || true
     rm -f "$SHELL_PROFILE.bak"
     echo "      Cleaned $SHELL_PROFILE"
 fi

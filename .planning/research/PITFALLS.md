@@ -1,4 +1,4 @@
-# Domain Pitfalls: Adding LTP to Docker Storage Benchmark Image
+# Domain Pitfalls: Adding LTP to Docker Storage Testsuite Image
 
 **Domain:** LTP (Linux Test Project) Docker Integration
 **Researched:** 2026-04-08
@@ -6,7 +6,7 @@
 
 ## Executive Summary
 
-Adding LTP to a Docker-based storage benchmark image introduces several categories of pitfalls: compilation complexity, image size bloat, runtime privilege requirements, kernel feature limitations, test hanging risks, multi-platform challenges, test selection complexity, and result parsing difficulties. Most critical is the privilege/capability issue - many LTP tests fundamentally require kernel-level access that containers cannot safely provide.
+Adding LTP to a Docker-based storage testsuite image introduces several categories of pitfalls: compilation complexity, image size bloat, runtime privilege requirements, kernel feature limitations, test hanging risks, multi-platform challenges, test selection complexity, and result parsing difficulties. Most critical is the privilege/capability issue - many LTP tests fundamentally require kernel-level access that containers cannot safely provide.
 
 ## Critical Pitfalls
 
@@ -50,7 +50,7 @@ Docker drops most capabilities by default for security.
 
 **Consequences:**
 - Tests that should pass appear to fail
-- Misleading benchmark results
+- Misleading testsuite results
 - Users may blame storage system for kernel behavior issues
 
 **Prevention:**
@@ -159,7 +159,7 @@ Even with `--privileged`, some kernel features behave differently in containers 
 - Memory management
 - Device drivers
 
-Most are not relevant to storage benchmark evaluation.
+Most are not relevant to storage testsuite evaluation.
 
 **Consequences:**
 - Extremely long test times

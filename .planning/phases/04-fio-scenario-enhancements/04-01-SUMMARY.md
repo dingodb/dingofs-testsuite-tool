@@ -2,7 +2,7 @@
 phase: 04-fio-scenario-enhancements
 plan: "01"
 subsystem: testing
-tags: [fio, scenarios, storage-benchmark]
+tags: [fio, scenarios, storage-testsuite]
 
 # Dependency graph
 requires:

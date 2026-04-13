@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-DingoFS Storage Benchmark Tools - Report Generation Script
+DingoFS Storage Testsuite Tools - Report Generation Script
 Parses fio JSON, vdbench text, and mdtest text outputs to generate HTML and text reports.
 """
 
@@ -20,7 +20,7 @@ from pathlib import Path
 
 def parse_args():
     parser = argparse.ArgumentParser(
-        description="Generate performance test reports from storage benchmark tools"
+        description="Generate performance test reports from storage testsuite tools"
     )
     parser.add_argument(
         "--tool",
@@ -650,7 +650,7 @@ def generate_html_report(tool, output_dir, data, scenario, mount, txt_filename):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DingoFS Benchmark Report - {escape(tool.upper())}</title>
+    <title>DingoFS Testsuite Report - {escape(tool.upper())}</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; line-height: 1.6; color: #333; background: #f5f5f5; }}
@@ -684,7 +684,7 @@ def generate_html_report(tool, output_dir, data, scenario, mount, txt_filename):
 <body>
     <div class="container">
         <div class="header">
-            <h1>DingoFS Storage Benchmark Report</h1>
+            <h1>DingoFS Storage Testsuite Report</h1>
             <div class="meta">
                 <span class="tag success">{escape(tool.upper())}</span>
                 <span class="tag info">{escape(scenario or "N/A")}</span>
@@ -749,7 +749,7 @@ def generate_html_report(tool, output_dir, data, scenario, mount, txt_filename):
         </div>
 
         <div class="footer">
-            <p>DingoFS Storage Benchmark Tools &bull; Generated {escape(timestamp)}</p>
+            <p>DingoFS Storage Testsuite Tools &bull; Generated {escape(timestamp)}</p>
         </div>
     </div>
 </body>

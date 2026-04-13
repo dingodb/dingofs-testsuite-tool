@@ -1,26 +1,26 @@
 #!/bin/bash
 #
-# DingoFS Benchmark Tool Installer
-# Usage: ./install.sh [-n|--no-build]
+# dingofs-Testsuite-tools Installer
+# Usage: ./install.sh [-n|--no-pull]
 #
 
 set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-BENCHMARK_TOOL="$SCRIPT_DIR/dingofs-testsuite-tool"
-IMAGE_NAME="${IMAGE_NAME:-localhost/dingofs-benchmark-tools:latest}"
+TESTSUITE_TOOL="$SCRIPT_DIR/dingofs-testsuite-tool"
+IMAGE_NAME="${IMAGE_NAME:-harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest}"
 SKIP_BUILD=false
 
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -n|--no-build)
+        -n|--no-pull)
             SKIP_BUILD=true
             shift
             ;;
         -h|--help)
-            echo "Usage: $0 [-n|--no-build]"
-            echo "  -n, --no-build  Skip Docker image build"
+            echo "Usage: $0 [-n|--no-pull]"
+            echo "  -n, --no-pull  Skip Docker image pull"
             exit 0
             ;;
         *)
@@ -31,44 +31,41 @@ while [[ $# -gt 0 ]]; do
 done
 
 echo "=============================================="
-echo "DingoFS Benchmark Tool Installer"
+echo "dingofs-Testsuite-tools Installer"
 echo "=============================================="
 echo ""
 
-# Step 1: Build Docker image
+# Step 1: Pull Docker image
 if [[ "$SKIP_BUILD" == "false" ]]; then
-    echo "[1/3] Building Docker image..."
+    echo "[1/3] Pulling Docker image..."
     echo "      Image: $IMAGE_NAME"
     echo ""
 
-    cd "$SCRIPT_DIR"
-
-    # Try build without proxy first, then with proxy if it fails
-    if docker build -t "$IMAGE_NAME" . 2>/dev/null; then
-        BUILD_SUCCESS=true
+    # Try pull without proxy first, then with proxy if it fails
+    if docker pull "$IMAGE_NAME" 2>/dev/null; then
+        PULL_SUCCESS=true
     else
         echo ""
-        echo "      Build failed, retrying with proxy settings..."
-        if docker build -t "$IMAGE_NAME" \
-            --build-arg http_proxy=http://10.220.69.222:1088 \
-            --build-arg https_proxy=http://10.220.69.222:1088 \
-            . 2>/dev/null; then
-            BUILD_SUCCESS=true
+        echo "      Pull failed, retrying with proxy settings..."
+        if http_proxy=http://10.220.69.222:1088 \
+           https_proxy=http://10.220.69.222:1088 \
+           docker pull "$IMAGE_NAME" 2>/dev/null; then
+            PULL_SUCCESS=true
         else
-            BUILD_SUCCESS=false
+            PULL_SUCCESS=false
         fi
     fi
 
-    if [[ "$BUILD_SUCCESS" == "true" ]]; then
+    if [[ "$PULL_SUCCESS" == "true" ]]; then
         echo ""
-        echo "      Docker image built successfully."
+        echo "      Docker image pulled successfully."
     else
         echo ""
-        echo "Error: Docker build failed."
+        echo "Error: Docker image pull failed."
         exit 1
     fi
 else
-    echo "[1/3] Skipping Docker build (--no-build specified)"
+    echo "[1/3] Skipping Docker image pull (--no-pull specified)"
 fi
 
 # Step 2: Add dingofs-testsuite-tool to PATH
@@ -91,7 +88,7 @@ fi
 if [[ -f "$SHELL_PROFILE" ]]; then
     if ! grep -q "dingofs-testsuite-tool" "$SHELL_PROFILE" 2>/dev/null; then
         echo "" >> "$SHELL_PROFILE"
-        echo "# DingoFS Benchmark Tool" >> "$SHELL_PROFILE"
+        echo "# dingofs-Testsuite-tools" >> "$SHELL_PROFILE"
         echo "export PATH=\"\$PATH:$SCRIPT_DIR\"" >> "$SHELL_PROFILE"
         echo "      Added to $SHELL_PROFILE"
     else
@@ -104,17 +101,17 @@ fi
 # Create symlinks in /usr/local/bin
 if [[ -d "/usr/local/bin" ]]; then
     # Try direct write first, then sudo if it fails
-    if ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null; then
+    if ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null; then
         echo "      Symlinked to /usr/local/bin/dingofs-testsuite-tool"
     else
-        sudo ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null && \
+        sudo ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null && \
             echo "      Symlinked to /usr/local/bin/dingofs-testsuite-tool (sudo)"
     fi
 
-    if ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dtt 2>/dev/null; then
+    if ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dtt 2>/dev/null; then
         echo "      Symlinked to /usr/local/bin/dtt (shortcut)"
     else
-        sudo ln -sf "$BENCHMARK_TOOL" /usr/local/bin/dtt 2>/dev/null && \
+        sudo ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dtt 2>/dev/null && \
             echo "      Symlinked to /usr/local/bin/dtt (shortcut, sudo)"
     fi
 fi
@@ -132,7 +129,7 @@ echo ""
 echo "[3/3] Setting Docker image in dingofs-testsuite-tool config..."
 
 # Source the script to use its functions
-source "$BENCHMARK_TOOL"
+source "$TESTSUITE_TOOL"
 
 # Set the image
 dingofs-testsuite-tool config set image "$IMAGE_NAME"
@@ -149,5 +146,5 @@ echo "  3. Set output directory: dingofs-testsuite-tool config set output /tmp/r
 echo "  4. Run a test: dingofs-testsuite-tool -t fio -s seq_write"
 echo ""
 echo "Or use directly from current terminal:"
-echo "  source $BENCHMARK_TOOL"
+echo "  source $TESTSUITE_TOOL"
 echo ""

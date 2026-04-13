@@ -1,6 +1,6 @@
 # Research Summary: LTP Integration
 
-**Project:** DingoFS Storage Benchmark Tools - v1.1 LTP Addition
+**Project:** DingoFS Storage Testsuite Tools - v1.1 LTP Addition
 **Researched:** 2026-04-08
 **Confidence:** LOW-MEDIUM (training data, needs verification)
 

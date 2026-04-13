@@ -12,7 +12,7 @@ progress:
   percent: 57
 ---
 
-# STATE: DingoFS Storage Benchmark Tools
+# STATE: DingoFS Storage Testsuite Tools
 
 **Last Updated:** 2026-04-08
 **Session:** v1.1 - 新增 LTP 工具
@@ -25,7 +25,7 @@ progress:
 
 **Current Focus:** Roadmap created for LTP tool integration
 
-**Project Root:** `/home/jenkins/dgy/github/dingofs-storage-benchmark-tools`
+**Project Root:** `/home/jenkins/dgy/github/dingofs-storage-testsuite-tools`
 
 ---
 
@@ -90,7 +90,7 @@ Last activity: 2026-04-08 — Roadmap created for v1.1
 3. Integrate LTP into entrypoint.sh
 
 **Context for Next Session:**
-This is a Docker image project for storage performance testing. v1.1 focuses on adding LTP (Linux Test Project) tool to the existing benchmark tools image. LTP is a comprehensive test suite for Linux kernel testing. Phase 5 handles the Docker build setup with multi-stage builds.
+This is a Docker image project for storage performance testing. v1.1 focuses on adding LTP (Linux Test Project) tool to the existing testsuite tools image. LTP is a comprehensive test suite for Linux kernel testing. Phase 5 handles the Docker build setup with multi-stage builds.
 
 ---
 

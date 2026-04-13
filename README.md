@@ -10,7 +10,7 @@ DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbenc
 # 1. 首次配置：设置测试目录、输出目录和镜像
 dingofs-testsuite-tool config set testdir /mnt/test
 dingofs-testsuite-tool config set output /tmp/results
-dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest
+dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
 
 # 2. 查看当前配置
 dingofs-testsuite-tool config show
@@ -56,13 +56,13 @@ dingofs-testsuite-tool help
 
 ```bash
 # 1. 构建镜像
-docker build -t dingofs-benchmark-tools .
+docker build -t dingofs-testsuite-tools .
 
 # 2. 将 dingofs-testsuite-tool 加入 PATH
-export PATH="$PATH:/path/to/dingofs-storage-benchmark-tools"
+export PATH="$PATH:/path/to/dingofs-storage-testsuite-tools"
 
 # 3. 设置镜像
-dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest
+dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
 ```
 
 > install.sh 参数：
@@ -76,7 +76,7 @@ dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest
 ```
 
 # 需要代理的网络环境
-docker build -t dingofs-benchmark-tools \
+docker build -t dingofs-testsuite-tools \
   --build-arg http_proxy=http://10.220.69.222:1088 \
   --build-arg https_proxy=http://10.220.69.222:1088 \
   .
@@ -85,28 +85,28 @@ docker build -t dingofs-benchmark-tools \
 ## 使用方法
 
 ```bash
-docker run dingofs-benchmark-tools -t <tool> -s <scenario> -m <mount> -o <output>
+docker run dingofs-testsuite-tools -t <tool> -s <scenario> -m <mount> -o <output>
 ```
 
 ### 容器运行模式
 
 ```bash
 # 一次性测试：容器运行完测试后自动删除
-docker run --rm dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
+docker run --rm dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data
 
 # 后台运行：容器在后台运行，测试结果在容器内，通过 docker stop 停止
-docker run -d dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
+docker run -d dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data
 docker stop <container_id>
 
 # 交互式测试：进入容器内部，可手动执行测试命令
-docker run --rm -it dingofs-benchmark-tools /bin/bash
+docker run --rm -it dingofs-testsuite-tools /bin/bash
 ```
 
 ### 查看帮助
 
 ```bash
 # 查看所有选项和示例
-docker run --rm dingofs-benchmark-tools --help
+docker run --rm dingofs-testsuite-tools --help
 ```
 
 ## 选项说明
@@ -127,7 +127,7 @@ docker run --rm dingofs-benchmark-tools --help
 | 工具 | 说明 |
 |------|------|
 | fio | Flexible I/O tester (存储性能测试) |
-| vdbench | Oracle storage benchmark |
+| vdbench | Oracle storage testsuite |
 | mdtest | MPI filesystem metadata test |
 | pjdtest | POSIX 文件系统测试套件 |
 | ltp | Linux Test Project (内核测试套件) |
@@ -176,7 +176,7 @@ pjdtest 是 POSIX 文件系统测试套件，用于验证文件系统对 POSIX �
 
 ```bash
 # 运行 pjdtest 测试
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s pjdtest -m /data -o /data
 ```
 
 ## LTP
@@ -198,10 +198,10 @@ LTP (Linux Test Project) 是 Linux 内核测试套件，用于验证内核和系
 
 ```bash
 # 运行 LTP 文件系统测试 (需要 --privileged)
-docker run --rm --privileged -v /mnt/disk0/daigy/tmp/:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+docker run --rm --privileged -v /mnt/disk0/daigy/tmp/:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
 
 # 运行特定 LTP 测试场景
-docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp_fs -m /data -o /data
+docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp_fs -m /data -o /data
 ```
 
 ### LTP 测试限制
@@ -214,53 +214,53 @@ docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -
 
 ```bash
 # 运行所有 rand_read 场景 (24 tests)
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data
 
 # 运行所有 seq_write 场景 (24 tests)
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s seq_write -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_write -m /data -o /data
 
 # 运行单个特定场景
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
 ```
 
 ### VDBENCH 测试
 
 ```bash
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t vdbench -s seq_rd -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t vdbench -s seq_rd -m /data -o /data
 ```
 
 ### MDTEST 测试
 
 ```bash
 # 运行所有 4 个 mdtest 场景并汇总
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data
 
 # 运行单个 mdtest 场景
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
 
 # 自定义进程数测试 (默认 16)
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t mdtest -s mdtest -m /data -o /data -n 32
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data -n 32
 ```
 
 ### PJDTEST 测试
 
 ```bash
 # 运行 pjdtest 测试
-docker run --rm -v /tmp/test:/data dingofs-benchmark-tools -t pjdtest -s pjdtest -m /data -o /data
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s pjdtest -m /data -o /data
 ```
 
 ### LTP 测试
 
 ```bash
 # 运行 LTP 文件系统测试 (需要 --privileged)
-docker run --rm --privileged -v /tmp/test:/data dingofs-benchmark-tools -t ltp -s ltp -m /data -o /data
+docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
 ```
 
 ### 长期运行模式
 
 ```bash
 # 启动长期运行容器
-docker run --detach -v /tmp/test:/data dingofs-benchmark-tools -t fio -s rand_read -m /data -o /data --mode long-running
+docker run --detach -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data --mode long-running
 
 # 在运行中的容器内执行更多测试
 docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
@@ -276,7 +276,7 @@ docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
 docker run --rm \
   -v /mnt/disk1/test:/data \
   -v /tmp/results:/output \
-  dingofs-benchmark-tools \
+  dingofs-testsuite-tools \
   -t fio -s seq_read -m /data -o /output
 ```
 

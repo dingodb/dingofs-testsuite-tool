@@ -6,14 +6,14 @@
 
 ## What Was Built
 
-Dockerfile for DingoFS Storage Benchmark Tools image based on ubuntu:24.04.
+Dockerfile for DingoFS Storage Testsuite Tools image based on ubuntu:24.04.
 
 ## Artifacts Created
 
 | Artifact | Path | Status |
 |----------|------|--------|
 | Dockerfile | `Dockerfile` | ✓ Created |
-| Docker Image | `dingofs-benchmark:latest` | ✓ Built |
+| Docker Image | `dingofs-testsuite:latest` | ✓ Built |
 
 ## Tool Verification
 

@@ -15,7 +15,7 @@ updated: 2026-04-07T02:28:00Z
 ## Tests
 
 ### 1. fio raw output capture
-expected: After running `docker run --rm -v /tmp/test:/data dingofs-benchmark:latest -t fio -s seq_read -m /data -o /data`, the file /tmp/test/fio.raw should exist and contain fio console output.
+expected: After running `docker run --rm -v /tmp/test:/data dingofs-testsuite:latest -t fio -s seq_read -m /data -o /data`, the file /tmp/test/fio.raw should exist and contain fio console output.
 result: pass
 note: "Fixed by changing fio output approach: removed --output=file and used tee to capture stdout to both fio.raw and fio.json"
 
@@ -33,12 +33,12 @@ result: pass
 note: "Fixed parse_fio_json: changed io_kicks->iops, added ns->us conversion for latency, added bandwidth unit (MiB/s)"
 
 ### 5. vdbench raw output capture
-expected: After running `docker run --rm -v /tmp/vdtest:/data dingofs-benchmark:latest -t vdbench -s seq_rd -m /data -o /data`, /tmp/vdtest/vdbench.raw should exist.
+expected: After running `docker run --rm -v /tmp/vdtest:/data dingofs-testsuite:latest -t vdbench -s seq_rd -m /data -o /data`, /tmp/vdtest/vdbench.raw should exist.
 result: pass
 note: "Fixed vdbench scenario files: changed from fsd/fwd syntax to sd/wd syntax for vdbench50406 compatibility"
 
 ### 6. mdtest raw output capture
-expected: After running `docker run --rm -v /tmp/mdtest:/data dingofs-benchmark:latest -t mdtest -m /data -o /data`, /tmp/mdtest/mdtest.raw should exist.
+expected: After running `docker run --rm -v /tmp/mdtest:/data dingofs-testsuite:latest -t mdtest -m /data -o /data`, /tmp/mdtest/mdtest.raw should exist.
 result: pass
 
 ## Summary

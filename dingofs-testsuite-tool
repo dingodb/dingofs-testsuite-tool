@@ -1,6 +1,6 @@
 #!/bin/bash
 #
-# DingoFS Benchmark Tool - Wrapper script for docker-based benchmark testing
+# dingofs-Testsuite-tools - Wrapper script for docker-based testsuite testing
 # Usage: source dingofs-testsuite-tool from any directory, or run directly
 #
 
@@ -11,14 +11,14 @@ set -e
 # ==============================================================================
 
 # Config directory
-: "${DINGOFS_BENCHMARK_CONFIG_DIR:=$HOME/.dingofs_benchmark}"
-CONFIG_DIR="$DINGOFS_BENCHMARK_CONFIG_DIR"
+: "${DINGOFS_TESTSUITE_CONFIG_DIR:=$HOME/.dingofs_testsuite}"
+CONFIG_DIR="$DINGOFS_TESTSUITE_CONFIG_DIR"
 TESTDIR_FILE="$CONFIG_DIR/testdir"
 OUTPUT_FILE="$CONFIG_DIR/output"
 IMAGE_FILE="$CONFIG_DIR/image"
 
 # Default image
-DEFAULT_IMAGE="localhost/dingofs-benchmark-tools:latest"
+DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
 
 # Ensure config directory exists
 mkdir -p "$CONFIG_DIR"
@@ -59,8 +59,8 @@ save_config() {
 }
 
 list_docker_images() {
-    echo "Available dingofs-benchmark-tools images:"
-    docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null | grep -E "dingofs-benchmark-tools|benchmark-tools" || echo "  (no matching images found)"
+    echo "Available dingofs-testsuite-tools images:"
+    docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null | grep -E "dingofs-testsuite-tools|testsuite-tools" || echo "  (no matching images found)"
     echo ""
     echo "All Docker images:"
     docker images --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null
@@ -68,10 +68,10 @@ list_docker_images() {
 
 show_help() {
     cat << EOF
-DingoFS Benchmark Tool (dtt)
+dingofs-Testsuite-tools (dtt)
 ============================
 
-A wrapper script for running DingoFS storage benchmark tests via Docker.
+A wrapper script for running DingoFS storage testsuite tests via Docker.
 
 Usage:
   dingofs-testsuite-tool <command> [options]
@@ -79,7 +79,7 @@ Usage:
 
 Commands:
   config <subcommand>      Manage configuration
-  debug                    Start an interactive shell in the benchmark container
+  debug                    Start an interactive shell in the testsuite container
   help                     Show this help message
   (dtt is an alias for dingofs-testsuite-tool)
 
@@ -89,9 +89,9 @@ Config Subcommands:
   dingofs-testsuite-tool config set image <name>    Set Docker image
   dingofs-testsuite-tool config show                Show current configuration
 
-Test Commands (run benchmark):
+Test Commands (run testsuite):
   dingofs-testsuite-tool -t <tool> -s <scenario> [-n <np>] [options]
-                          Run a benchmark test
+                          Run a testsuite test
                           (use config values for testdir/output if not specified)
 
 Options for test command:
@@ -105,7 +105,7 @@ Examples:
   # First-time setup: configure settings
   dingofs-testsuite-tool config set testdir /mnt/test
   dingofs-testsuite-tool config set output /tmp/results
-  dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest
+  dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
 
   # Show current configuration
   dingofs-testsuite-tool config show
@@ -219,7 +219,7 @@ cmd_debug() {
     "${docker_cmd[@]}"
 }
 
-run_benchmark() {
+run_testsuite() {
     local image=$(load_config image)
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
@@ -229,7 +229,7 @@ run_benchmark() {
         echo "Please run 'dingofs-testsuite-tool config set image <image>' first."
         echo ""
         echo "Usage:"
-        echo "  dingofs-testsuite-tool config set image localhost/dingofs-benchmark-tools:latest"
+        echo "  dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest"
         return 1
     fi
 
@@ -325,7 +325,7 @@ run_benchmark() {
         entrypoint_cmd+=(-n "$np")
     fi
 
-    echo "Running benchmark with image: $image"
+    echo "Running testsuite with image: $image"
     echo "Mount: $mount -> /data"
     echo "Output: $output -> /output"
     echo "Tool: $tool"
@@ -361,7 +361,7 @@ dingofs-testsuite-tool() {
             ;;
         -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output)
             # Handle case where command starts with options (no explicit command)
-            run_benchmark "$@"
+            run_testsuite "$@"
             ;;
         *)
             if [[ -z "$command" ]]; then

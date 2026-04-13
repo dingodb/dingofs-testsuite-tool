@@ -41,7 +41,7 @@ Created unified entrypoint.sh that parses CLI arguments, handles one-shot and lo
 
 ## What Was Built
 
-**entrypoint.sh** - A comprehensive bash script that serves as the unified entrypoint for the DingoFS Storage Benchmark Tools Docker image.
+**entrypoint.sh** - A comprehensive bash script that serves as the unified entrypoint for the DingoFS Storage Testsuite Tools Docker image.
 
 ### Features Implemented
 

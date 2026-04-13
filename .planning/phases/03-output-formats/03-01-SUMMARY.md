@@ -2,7 +2,7 @@
 phase: 03-output-formats
 plan: "01"
 subsystem: infra
-tags: [python, html, reporting, storage-benchmark]
+tags: [python, html, reporting, storage-testsuite]
 
 # Dependency graph
 requires:
