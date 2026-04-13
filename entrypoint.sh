@@ -466,7 +466,7 @@ log_result() {
             ;;
     esac
 
-    # Append to result.log
+    # Append to result.log in the scenario directory
     {
         echo "========================================"
         echo "Tool: $tool"
@@ -479,6 +479,25 @@ log_result() {
         echo "Command: $tool -s $scenario -m $MOUNT -o $output_dir"
         echo ""
     } >> "$result_log"
+
+    # Also append to result.log in the base OUTPUT directory
+    # This ensures users can find the log in the main output directory
+    if [[ "$output_dir" != "$OUTPUT" ]]; then
+        local base_result_log="$OUTPUT/result.log"
+        {
+            echo "========================================"
+            echo "Tool: $tool"
+            echo "Scenario: $scenario"
+            echo "Start Time: $start_time_str"
+            echo "Duration: $duration_str"
+            echo "Exit Code: $exit_code"
+            echo "Status: $status"
+            [[ -n "$details" ]] && echo "Details: $details"
+            echo "Command: $tool -s $scenario -m $MOUNT -o $output_dir"
+            echo ""
+        } >> "$base_result_log"
+        echo "Result also logged to: $base_result_log"
+    fi
 
     echo "Result logged to: $result_log"
 }
