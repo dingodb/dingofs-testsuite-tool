@@ -444,9 +444,9 @@ log_result() {
             if [[ -f "$output_dir/pjdtest_"* ]]; then
                 local pjdtest_output
                 pjdtest_output=$(ls "$output_dir"/pjdtest_* 2>/dev/null | head -1)
-                if [[ -n "$pjdtest_output" ]] && grep -qE "^(PASS|FAIL)" "$pjdtest_output" 2>/dev/null; then
+                if [[ -n "$pjdtest_output" ]] && grep -qE "(Result:|PASS$|FAIL$)" "$pjdtest_output" 2>/dev/null; then
                     status="SUCCESS"
-                    details=$(grep -E "^(PASS|FAIL)" "$pjdtest_output" | head -1 || true)
+                    details=$(grep -E "(Result:|PASS$|FAIL$)" "$pjdtest_output" | head -1 || true)
                 fi
             fi
             ;;
