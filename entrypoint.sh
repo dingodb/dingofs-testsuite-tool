@@ -374,6 +374,115 @@ parse_args() {
 }
 
 # ==============================================================================
+# Result Logging Functions
+# ==============================================================================
+
+# Log test result to result.log
+# Usage: log_result <tool> <scenario> <exit_code> <start_time> <output_dir>
+log_result() {
+    local tool="$1"
+    local scenario="$2"
+    local exit_code="$3"
+    local start_time="$4"
+    local output_dir="$5"
+    local result_log="$output_dir/result.log"
+
+    # Calculate execution time
+    local end_time=$(date +%s)
+    local start_timestamp="${start_time}"
+    local duration=$((end_time - start_timestamp))
+    local duration_str=""
+    if [[ $duration -ge 60 ]]; then
+        duration_str="${duration}s ($((${duration} / 60))m $((${duration} % 60))s)"
+    else
+        duration_str="${duration}s"
+    fi
+
+    # Determine success/failure based on tool-specific criteria
+    local status="FAIL"
+    local details=""
+
+    case "$tool" in
+        fio)
+            # Check if summary report has normal metrics (latency or bandwidth)
+            if [[ -f "$output_dir/${scenario}_summary_"*.md ]]; then
+                local summary_file
+                summary_file=$(ls "$output_dir"/${scenario}_summary_*.md 2>/dev/null | head -1)
+                if [[ -n "$summary_file" ]] && grep -qE "(latency|bandwidth|bw|MiB|BW)" "$summary_file" 2>/dev/null; then
+                    # Check if values are non-zero
+                    if grep -qE "(latency|bandwidth|bw|MiB|BW).*[^0-.]" "$summary_file" 2>/dev/null; then
+                        status="SUCCESS"
+                    fi
+                fi
+            fi
+            # Also check JSON for actual data
+            if [[ -f "$output_dir/fio.json" ]]; then
+                if grep -q '"bw" : [1-9]' "$output_dir/fio.json" 2>/dev/null; then
+                    status="SUCCESS"
+                fi
+            fi
+            ;;
+        mdtest)
+            # Check if summary report has SUMMARY rate output
+            if [[ -f "$output_dir/mdtest_${scenario}_summary_"*.md ]]; then
+                local summary_file
+                summary_file=$(ls "$output_dir"/mdtest_${scenario}_summary_*.md 2>/dev/null | head -1)
+                if [[ -n "$summary_file" ]] && grep -q "SUMMARY rate" "$summary_file" 2>/dev/null; then
+                    status="SUCCESS"
+                    details=$(grep "SUMMARY rate" "$summary_file" | head -1 | cut -d: -f2 | xargs || true)
+                fi
+            fi
+            # Also check combined summary
+            if [[ -f "$output_dir/mdtest_mdtest_summary_"*.md ]]; then
+                if grep -q "SUMMARY rate" "$output_dir"/mdtest_mdtest_summary_*.md 2>/dev/null; then
+                    status="SUCCESS"
+                fi
+            fi
+            ;;
+        pjdtest)
+            # Check if output contains PASS or FAIL
+            if [[ -f "$output_dir/pjdtest_"* ]]; then
+                local pjdtest_output
+                pjdtest_output=$(ls "$output_dir"/pjdtest_* 2>/dev/null | head -1)
+                if [[ -n "$pjdtest_output" ]] && grep -qE "^(PASS|FAIL)" "$pjdtest_output" 2>/dev/null; then
+                    status="SUCCESS"
+                    details=$(grep -E "^(PASS|FAIL)" "$pjdtest_output" | head -1 || true)
+                fi
+            fi
+            ;;
+        vdbench)
+            # vdbench success based on exit code
+            if [[ $exit_code -eq 0 ]]; then
+                status="SUCCESS"
+            fi
+            ;;
+        ltp)
+            # ltp success based on exit code
+            if [[ $exit_code -eq 0 ]]; then
+                status="SUCCESS"
+            fi
+            ;;
+    esac
+
+    # Append to result.log
+    {
+        echo "========================================"
+        echo "Tool: $tool"
+        echo "Scenario: $scenario"
+        echo "Start Time: $start_timestamp"
+        echo "Duration: $duration_str"
+        echo "Exit Code: $exit_code"
+        echo "Status: $status"
+        [[ -n "$details" ]] && echo "Details: $details"
+        echo "Command: $tool -s $scenario -m $MOUNT -o $output_dir"
+        echo ""
+    } >> "$result_log"
+
+    echo "Result logged to: $result_log"
+}
+
+
+# ==============================================================================
 # Tool Dispatch Functions
 # ==============================================================================
 
@@ -433,6 +542,7 @@ fio_run() {
         local scenario_name
         scenario_name=$(get_scenario_name "$config")
         local scenario_output="$OUTPUT/$scenario_name"
+        local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
         echo "Running scenario $run_num/$path_count: $scenario_name"
@@ -466,6 +576,9 @@ fio_run() {
         echo "Generating report for $scenario_name..."
         python3 /scripts/generate_report.py --tool fio --output-dir "$scenario_output" --scenario "$scenario_name" --mount "$MOUNT"
 
+        # Log result
+        log_result "fio" "$scenario_name" "$fio_exit" "$scenario_start_time" "$scenario_output"
+
         echo ""
     done <<< "$scenario_paths"
 
@@ -483,6 +596,8 @@ fio_run() {
 vdbench_run() {
     local config
     config=$(get_scenario_paths vdbench "$SCENARIO" | head -1)
+
+    local vdbench_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
     echo "Running vdbench with config: $config"
     echo "  Mount: $MOUNT"
@@ -508,6 +623,9 @@ vdbench_run() {
     # Generate reports
     echo "Generating reports..."
     python3 /scripts/generate_report.py --tool vdbench --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT"
+
+    # Log result
+    log_result "vdbench" "$SCENARIO" "$vdbench_exit" "$vdbench_start_time" "$OUTPUT"
 
     return $vdbench_exit
 }
@@ -556,6 +674,7 @@ mdtest_run() {
         local scenario_name
         scenario_name=$(basename "$script" .sh)
         local scenario_output="$OUTPUT/$scenario_name"
+        local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
         echo "Running mdtest scenario $run_num/$total: $scenario_name"
@@ -580,6 +699,9 @@ mdtest_run() {
             overall_exit=$mdtest_exit
         fi
 
+        # Log result for this scenario
+        log_result "mdtest" "$scenario_name" "$mdtest_exit" "$scenario_start_time" "$OUTPUT"
+
         echo "" || true
     done
 
@@ -593,6 +715,8 @@ mdtest_run() {
 }
 
 pjdtest_run() {
+    local pjdtest_start_time=$(date +"%Y-%m-%d %H:%M:%S")
+
     echo "Running pjdtest"
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
@@ -621,12 +745,17 @@ pjdtest_run() {
         echo "pjdtest completed successfully."
     fi
 
+    # Log result
+    log_result "pjdtest" "pjdtest" "$pjdtest_exit" "$pjdtest_start_time" "$OUTPUT"
+
     echo ""
     echo "Results saved to: ${output_file}"
     return $pjdtest_exit
 }
 
 ltp_run() {
+    local ltp_start_time=$(date +"%Y-%m-%d %H:%M:%S")
+
     echo "Running LTP test suite"
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
@@ -682,6 +811,9 @@ ltp_run() {
     else
         echo "LTP tests completed successfully."
     fi
+
+    # Log result
+    log_result "ltp" "$SCENARIO" "$ltp_exit" "$ltp_start_time" "$OUTPUT"
 
     echo ""
     echo "Results saved to: ${output_file}.log"
