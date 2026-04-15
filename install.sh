@@ -41,30 +41,51 @@ echo "[1/4] Downloading dingofs-testsuite-tool from GitHub..."
 echo "      URL: $TESTSUITE_TOOL_URL"
 echo ""
 
-INSTALL_DIR="/usr/local/bin"
+TEMP_FILE=$(mktemp)
 DOWNLOAD_SUCCESS=false
 
 # Try direct download first, then with proxy if it fails
-if curl -fsSL "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
+if curl -fsSL "$TESTSUITE_TOOL_URL" -o "$TEMP_FILE" 2>&1; then
     DOWNLOAD_SUCCESS=true
-elif curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
+elif curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$TESTSUITE_TOOL_URL" -o "$TEMP_FILE" 2>&1; then
     DOWNLOAD_SUCCESS=true
 fi
 
-if [[ "$DOWNLOAD_SUCCESS" == "true" ]]; then
-    chmod +x "$INSTALL_DIR/dingofs-testsuite-tool"
-    echo "      Downloaded to $INSTALL_DIR/dingofs-testsuite-tool"
-else
+if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
     echo "Error: Failed to download dingofs-testsuite-tool"
+    rm -f "$TEMP_FILE"
     exit 1
 fi
 
-# Create symlink for dtt shortcut
-if ln -sf "$INSTALL_DIR/dingofs-testsuite-tool" "$INSTALL_DIR/dtt" 2>/dev/null; then
-    echo "      Created symlink: /usr/local/bin/dtt"
+echo "      Downloaded successfully"
+
+# Determine install location (prefer ~/.local/bin if available, else /usr/local/bin)
+if [[ -d "$HOME/.local/bin" ]] || mkdir -p "$HOME/.local/bin" 2>/dev/null; then
+    INSTALL_DIR="$HOME/.local/bin"
 else
-    sudo ln -sf "$INSTALL_DIR/dingofs-testsuite-tool" "$INSTALL_DIR/dtt" 2>/dev/null && \
-        echo "      Created symlink: /usr/local/bin/dtt (sudo)"
+    INSTALL_DIR="/usr/local/bin"
+fi
+
+DEST_FILE="$INSTALL_DIR/dingofs-testsuite-tool"
+
+# Move temp file to install location (use sudo if needed)
+if cp "$TEMP_FILE" "$DEST_FILE" 2>/dev/null; then
+    chmod +x "$DEST_FILE"
+    echo "      Installed to $DEST_FILE"
+elif sudo cp "$TEMP_FILE" "$DEST_FILE" && sudo chmod +x "$DEST_FILE"; then
+    echo "      Installed to $DEST_FILE (sudo)"
+else
+    echo "Error: Failed to install to $DEST_FILE"
+    rm -f "$TEMP_FILE"
+    exit 1
+fi
+rm -f "$TEMP_FILE"
+
+# Create symlink for dtt shortcut
+if ln -sf "$DEST_FILE" "$INSTALL_DIR/dtt" 2>/dev/null; then
+    echo "      Created symlink: $INSTALL_DIR/dtt"
+elif sudo ln -sf "$DEST_FILE" "$INSTALL_DIR/dtt" 2>/dev/null; then
+    echo "      Created symlink: $INSTALL_DIR/dtt (sudo)"
 fi
 
 # Step 2: Pull Docker image
@@ -118,15 +139,16 @@ elif [[ -n "$ZSH_VERSION" ]]; then
     SHELL_PROFILE="$HOME/.zshrc"
 fi
 
-# Add /usr/local/bin to PATH if not already there
+# Add ~/.local/bin to PATH if not already there
 if [[ -f "$SHELL_PROFILE" ]]; then
-    if ! grep -q "/usr/local/bin" "$SHELL_PROFILE" 2>/dev/null; then
+    # Add ~/.local/bin to PATH
+    if ! grep -q "$HOME/.local/bin" "$SHELL_PROFILE" 2>/dev/null; then
         echo "" >> "$SHELL_PROFILE"
         echo "# dingofs-Testsuite-tools" >> "$SHELL_PROFILE"
-        echo "export PATH=\"\$PATH:/usr/local/bin\"" >> "$SHELL_PROFILE"
-        echo "      Added /usr/local/bin to PATH in $SHELL_PROFILE"
+        echo "export PATH=\"\$PATH:$HOME/.local/bin\"" >> "$SHELL_PROFILE"
+        echo "      Added $HOME/.local/bin to PATH in $SHELL_PROFILE"
     else
-        echo "      /usr/local/bin already in PATH"
+        echo "      $HOME/.local/bin already in PATH"
     fi
 
     # Add alias for dtt if not already there
