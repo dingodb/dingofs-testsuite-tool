@@ -44,10 +44,10 @@ echo ""
 INSTALL_DIR="/usr/local/bin"
 DOWNLOAD_SUCCESS=false
 
-# Try download with proxy first
-if curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
+# Try direct download first, then with proxy if it fails
+if curl -fsSL "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
     DOWNLOAD_SUCCESS=true
-elif curl -fsSL "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
+elif curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
     DOWNLOAD_SUCCESS=true
 fi
 
