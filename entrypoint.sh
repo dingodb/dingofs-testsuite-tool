@@ -423,19 +423,15 @@ log_result() {
             fi
             ;;
         mdtest)
-            # Check if summary report has SUMMARY rate output
-            if [[ -f "$output_dir/mdtest_${scenario}_summary_"*.md ]]; then
-                local summary_file
-                summary_file=$(ls "$output_dir"/mdtest_${scenario}_summary_*.md 2>/dev/null | head -1)
-                if [[ -n "$summary_file" ]] && grep -q "SUMMARY rate" "$summary_file" 2>/dev/null; then
+            # Check for combined mdtest summary which has all scenario results
+            # The combined summary is generated after all scenarios complete
+            local summary_file
+            summary_file=$(ls "$output_dir"/mdtest_mdtest_summary_*.md 2>/dev/null | head -1)
+            if [[ -n "$summary_file" ]] && [[ -f "$summary_file" ]]; then
+                # Look for table rows with metrics (e.g., "| File creation | 45535.816 |")
+                if grep -qE '\|[[:space:]]+[a-zA-Z_ ]+[[:space:]]+\|[[:space:]]+[0-9]+\.[0-9]+[[:space:]]+\|' "$summary_file" 2>/dev/null; then
                     status="SUCCESS"
-                    details=$(grep "SUMMARY rate" "$summary_file" | head -1 | cut -d: -f2 | xargs || true)
-                fi
-            fi
-            # Also check combined summary
-            if [[ -f "$output_dir/mdtest_mdtest_summary_"*.md ]]; then
-                if grep -q "SUMMARY rate" "$output_dir"/mdtest_mdtest_summary_*.md 2>/dev/null; then
-                    status="SUCCESS"
+                    details="mdtest completed successfully"
                 fi
             fi
             ;;
@@ -688,6 +684,11 @@ mdtest_run() {
     local total=${#scenario_array[@]}
     local run_num=0
 
+    # Arrays to collect scenario info for later logging
+    local -a scenario_names=()
+    local -a scenario_exits=()
+    local -a scenario_times=()
+
     for script in "${scenario_array[@]}"; do
         [[ -z "$script" ]] && continue
 
@@ -720,15 +721,22 @@ mdtest_run() {
             overall_exit=$mdtest_exit
         fi
 
-        # Log result for this scenario
-        log_result "mdtest" "$scenario_name" "$mdtest_exit" "$scenario_start_time" "$scenario_output"
+        # Collect scenario info for later
+        scenario_names+=("$scenario_name")
+        scenario_exits+=("$mdtest_exit")
+        scenario_times+=("$scenario_start_time")
 
         echo "" || true
     done
 
-    # Generate combined report for all mdtest scenarios
+    # Generate combined report for all mdtest scenarios (BEFORE logging results)
     echo "Generating combined mdtest report..."
     python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
+
+    # Now log results for each scenario (combined summary now exists)
+    for i in "${!scenario_names[@]}"; do
+        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$OUTPUT"
+    done
 
     echo ""
     echo "All mdtest scenarios completed."
