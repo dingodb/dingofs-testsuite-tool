@@ -369,10 +369,14 @@ run_testsuite() {
         -o /output
     )
 
-    # Add scenario for all tools (including mdtest)
-    if [[ "$tool" != "ltp" ]]; then
+    # Add scenario for all tools (mdtest is optional, others required)
+    if [[ "$tool" == "mdtest" ]]; then
+        # mdtest scenario is optional
+        [[ -n "$scenario" ]] && entrypoint_cmd+=(-s "$scenario")
+    else
+        # fio, vdbench, pjdtest, ltp all require scenario
         if [[ -z "$scenario" ]]; then
-            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, and pjdtest"
+            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, and ltp"
             return 1
         fi
         entrypoint_cmd+=(-s "$scenario")
