@@ -3,11 +3,12 @@
 # dingofs-Testsuite-tools Installer
 # Usage: ./install.sh [-n|--no-pull]
 #
+# This script downloads dingofs-testsuite-tool from GitHub and installs it.
+#
 
 set -e
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-TESTSUITE_TOOL="$SCRIPT_DIR/dingofs-testsuite-tool"
+TESTSUITE_TOOL_URL="https://raw.githubusercontent.com/dingodb/dingofs-testsuite-tool/refs/heads/main/dingofs-testsuite-tool"
 IMAGE_NAME="${IMAGE_NAME:-harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest}"
 SKIP_BUILD=false
 
@@ -35,9 +36,41 @@ echo "dingofs-Testsuite-tools Installer"
 echo "=============================================="
 echo ""
 
-# Step 1: Pull Docker image
+# Step 1: Download dingofs-testsuite-tool from GitHub
+echo "[1/4] Downloading dingofs-testsuite-tool from GitHub..."
+echo "      URL: $TESTSUITE_TOOL_URL"
+echo ""
+
+INSTALL_DIR="/usr/local/bin"
+DOWNLOAD_SUCCESS=false
+
+# Try download with proxy first
+if curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
+    DOWNLOAD_SUCCESS=true
+elif curl -fsSL "$TESTSUITE_TOOL_URL" -o "$INSTALL_DIR/dingofs-testsuite-tool" 2>/dev/null; then
+    DOWNLOAD_SUCCESS=true
+fi
+
+if [[ "$DOWNLOAD_SUCCESS" == "true" ]]; then
+    chmod +x "$INSTALL_DIR/dingofs-testsuite-tool"
+    echo "      Downloaded to $INSTALL_DIR/dingofs-testsuite-tool"
+else
+    echo "Error: Failed to download dingofs-testsuite-tool"
+    exit 1
+fi
+
+# Create symlink for dtt shortcut
+if ln -sf "$INSTALL_DIR/dingofs-testsuite-tool" "$INSTALL_DIR/dtt" 2>/dev/null; then
+    echo "      Created symlink: /usr/local/bin/dtt"
+else
+    sudo ln -sf "$INSTALL_DIR/dingofs-testsuite-tool" "$INSTALL_DIR/dtt" 2>/dev/null && \
+        echo "      Created symlink: /usr/local/bin/dtt (sudo)"
+fi
+
+# Step 2: Pull Docker image
 if [[ "$SKIP_BUILD" == "false" ]]; then
-    echo "[1/3] Pulling Docker image..."
+    echo ""
+    echo "[2/4] Pulling Docker image..."
     echo "      Image: $IMAGE_NAME"
     echo ""
 
@@ -65,12 +98,13 @@ if [[ "$SKIP_BUILD" == "false" ]]; then
         exit 1
     fi
 else
-    echo "[1/3] Skipping Docker image pull (--no-pull specified)"
+    echo ""
+    echo "[2/4] Skipping Docker image pull (--no-pull specified)"
 fi
 
-# Step 2: Add dingofs-testsuite-tool to PATH
+# Step 3: Add to PATH via shell profile
 echo ""
-echo "[2/3] Adding dingofs-testsuite-tool to PATH..."
+echo "[3/4] Configuring PATH..."
 
 # Detect shell profile
 SHELL_PROFILE=""
@@ -84,54 +118,30 @@ elif [[ -n "$ZSH_VERSION" ]]; then
     SHELL_PROFILE="$HOME/.zshrc"
 fi
 
-# Add to shell profile if not already there
+# Add /usr/local/bin to PATH if not already there
 if [[ -f "$SHELL_PROFILE" ]]; then
-    if ! grep -q "dingofs-testsuite-tool" "$SHELL_PROFILE" 2>/dev/null; then
+    if ! grep -q "/usr/local/bin" "$SHELL_PROFILE" 2>/dev/null; then
         echo "" >> "$SHELL_PROFILE"
         echo "# dingofs-Testsuite-tools" >> "$SHELL_PROFILE"
-        echo "export PATH=\"\$PATH:$SCRIPT_DIR\"" >> "$SHELL_PROFILE"
-        echo "      Added to $SHELL_PROFILE"
+        echo "export PATH=\"\$PATH:/usr/local/bin\"" >> "$SHELL_PROFILE"
+        echo "      Added /usr/local/bin to PATH in $SHELL_PROFILE"
     else
-        echo "      Already configured in $SHELL_PROFILE"
+        echo "      /usr/local/bin already in PATH"
+    fi
+
+    # Add alias for dtt if not already there
+    if ! grep -q "^alias dtt=" "$SHELL_PROFILE" 2>/dev/null; then
+        echo "alias dtt='dingofs-testsuite-tool'" >> "$SHELL_PROFILE"
+        echo "      Added 'dtt' alias to $SHELL_PROFILE"
     fi
 else
     echo "Warning: Could not detect shell profile, manual setup may be required."
 fi
 
-# Create symlinks in /usr/local/bin
-if [[ -d "/usr/local/bin" ]]; then
-    # Try direct write first, then sudo if it fails
-    if ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null; then
-        echo "      Symlinked to /usr/local/bin/dingofs-testsuite-tool"
-    else
-        sudo ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dingofs-testsuite-tool 2>/dev/null && \
-            echo "      Symlinked to /usr/local/bin/dingofs-testsuite-tool (sudo)"
-    fi
-
-    if ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dtt 2>/dev/null; then
-        echo "      Symlinked to /usr/local/bin/dtt (shortcut)"
-    else
-        sudo ln -sf "$TESTSUITE_TOOL" /usr/local/bin/dtt 2>/dev/null && \
-            echo "      Symlinked to /usr/local/bin/dtt (shortcut, sudo)"
-    fi
-fi
-
-# Add alias for dtt in shell profile if not already there
-if [[ -f "$SHELL_PROFILE" ]]; then
-    if ! grep -q "^alias dtt=" "$SHELL_PROFILE" 2>/dev/null; then
-        echo "alias dtt='dingofs-testsuite-tool'" >> "$SHELL_PROFILE"
-        echo "      Added 'dtt' alias to $SHELL_PROFILE"
-    fi
-fi
-
-# Step 3: Set image in dingofs-testsuite-tool config
+# Step 4: Set image in dingofs-testsuite-tool config
 echo ""
-echo "[3/3] Setting Docker image in dingofs-testsuite-tool config..."
+echo "[4/4] Setting Docker image in dingofs-testsuite-tool config..."
 
-# Source the script to use its functions
-source "$TESTSUITE_TOOL"
-
-# Set the image
 dingofs-testsuite-tool config set image "$IMAGE_NAME"
 
 echo ""
@@ -145,6 +155,7 @@ echo "  2. Set test directory: dingofs-testsuite-tool config set testdir /mnt/te
 echo "  3. Set output directory: dingofs-testsuite-tool config set output /tmp/results"
 echo "  4. Run a test: dingofs-testsuite-tool -t fio -s seq_write"
 echo ""
-echo "Or use directly from current terminal:"
-echo "  source $TESTSUITE_TOOL"
+echo "Or use directly:"
+echo "  dingofs-testsuite-tool config set testdir /mnt/test"
+echo "  dtt -t fio -s seq_write"
 echo ""
