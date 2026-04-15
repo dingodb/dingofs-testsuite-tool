@@ -721,7 +721,7 @@ mdtest_run() {
         fi
 
         # Log result for this scenario
-        log_result "mdtest" "$scenario_name" "$mdtest_exit" "$scenario_start_time" "$OUTPUT"
+        log_result "mdtest" "$scenario_name" "$mdtest_exit" "$scenario_start_time" "$scenario_output"
 
         echo "" || true
     done
