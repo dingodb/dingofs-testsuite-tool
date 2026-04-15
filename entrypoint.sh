@@ -841,6 +841,13 @@ ltp_run() {
         echo "LTP tests completed successfully."
     fi
 
+    # Copy LTP results from /opt/ltp/results to OUTPUT directory
+    if [[ -d "/opt/ltp/results" ]] && [[ -n "$(ls -A /opt/ltp/results 2>/dev/null)" ]]; then
+        echo "Copying LTP results to ${OUTPUT}..."
+        cp -r /opt/ltp/results/* "$OUTPUT/" 2>/dev/null || true
+        echo "LTP results copied to: ${OUTPUT}"
+    fi
+
     # Log result
     log_result "ltp" "$SCENARIO" "$ltp_exit" "$ltp_start_time" "$OUTPUT"
 
