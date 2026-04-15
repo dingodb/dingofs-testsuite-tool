@@ -27,7 +27,6 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 CONFIG_DIR="$HOME/.dingofs_testsuite"
 IMAGE_NAME="harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest"
 
@@ -36,19 +35,33 @@ echo "dingofs-Testsuite-tools Uninstaller"
 echo "=============================================="
 echo ""
 
-# Step 1: Remove symlinks
-echo "[1/4] Removing symlinks from /usr/local/bin..."
+# Step 1: Remove installed files from ~/.local/bin and /usr/local/bin
+echo "[1/4] Removing dingofs-testsuite-tool..."
 
-if [[ -L "/usr/local/bin/dingofs-testsuite-tool" ]]; then
-    sudo rm /usr/local/bin/dingofs-testsuite-tool && echo "      Removed /usr/local/bin/dingofs-testsuite-tool"
-elif [[ -f "/usr/local/bin/dingofs-testsuite-tool" ]]; then
-    echo "      Warning: /usr/local/bin/dingofs-testsuite-tool is not a symlink, skipping"
+REMOVED_ANY=false
+
+# Remove from ~/.local/bin first (no sudo needed)
+if [[ -f "$HOME/.local/bin/dingofs-testsuite-tool" ]]; then
+    rm -f "$HOME/.local/bin/dingofs-testsuite-tool" && echo "      Removed $HOME/.local/bin/dingofs-testsuite-tool"
+    REMOVED_ANY=true
+fi
+
+if [[ -L "$HOME/.local/bin/dtt" ]]; then
+    rm -f "$HOME/.local/bin/dtt" && echo "      Removed $HOME/.local/bin/dtt"
+fi
+
+# Remove from /usr/local/bin if exists
+if [[ -f "/usr/local/bin/dingofs-testsuite-tool" ]]; then
+    sudo rm -f /usr/local/bin/dingofs-testsuite-tool && echo "      Removed /usr/local/bin/dingofs-testsuite-tool"
+    REMOVED_ANY=true
 fi
 
 if [[ -L "/usr/local/bin/dtt" ]]; then
-    sudo rm /usr/local/bin/dtt && echo "      Removed /usr/local/bin/dtt"
-elif [[ -f "/usr/local/bin/dtt" ]]; then
-    echo "      Warning: /usr/local/bin/dtt is not a symlink, skipping"
+    sudo rm -f /usr/local/bin/dtt && echo "      Removed /usr/local/bin/dtt"
+fi
+
+if [[ "$REMOVED_ANY" == "false" ]]; then
+    echo "      No installed files found"
 fi
 
 # Step 2: Remove PATH and alias from shell profile
@@ -68,8 +81,9 @@ elif [[ -n "$ZSH_VERSION" ]]; then
 fi
 
 if [[ -f "$SHELL_PROFILE" ]]; then
-    # Remove PATH export line
-    sed -i.bak "\|export PATH=.*dingofs-testsuite-tool|d" "$SHELL_PROFILE" 2>/dev/null || true
+    # Remove PATH export lines for dingofs-testsuite
+    sed -i.bak "\|export PATH=.*.local/bin|d" "$SHELL_PROFILE" 2>/dev/null || true
+    sed -i.bak "\|export PATH=.*dingofs-testsuite|d" "$SHELL_PROFILE" 2>/dev/null || true
     # Remove alias line
     sed -i.bak "/^alias dtt=/d" "$SHELL_PROFILE" 2>/dev/null || true
     # Remove comment line
