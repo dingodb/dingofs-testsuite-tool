@@ -177,9 +177,9 @@ Plans:
 | 2. Core Functionality | 3/3 | Complete   | 2026-04-03 |
 | 3. Output Formats | 2/2 | Complete | 2026-04-07 |
 | 4. Fio Scenario Enhancements | 1/1 | Complete | 2026-04-07 |
-| 5. LTP Build Setup | 0/1 | Not started | - |
-| 6. LTP Integration | 0/1 | Not started | - |
-| 7. LTP Runtime Safety | 0/1 | Not started | - |
+| 5. LTP Build Setup | 1/1 | Complete | 2026-04-15 |
+| 6. LTP Integration | 1/1 | Complete | 2026-04-15 |
+| 7. LTP Runtime Safety | 1/1 | Complete | 2026-04-15 |
 
 ## Coverage
 
