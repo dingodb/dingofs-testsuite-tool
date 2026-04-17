@@ -1,7 +1,7 @@
 #!/bin/bash
 #
 # dingofs-Testsuite-tools Docker Image Builder & Pusher
-# Usage: ./build.sh
+# Usage: ./build.sh [--debug]
 #
 
 set -e
@@ -9,6 +9,12 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_NAME="dingofs-testsuite-tools:latest"
 HARBOR_IMAGE="harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest"
+
+# Check for --debug flag
+DEBUG_MODE=false
+if [[ "$1" == "--debug" ]]; then
+    DEBUG_MODE=true
+fi
 
 echo "=============================================="
 echo "dingofs-Testsuite-tools Builder & Pusher"
@@ -71,6 +77,19 @@ fi
 
 echo ""
 echo "      Docker image built successfully."
+
+if [[ "$DEBUG_MODE" == "true" ]]; then
+    # Skip tagging and push in debug mode
+    echo ""
+    echo "=============================================="
+    echo "Build complete (debug mode - no push)"
+    echo "=============================================="
+    echo ""
+    echo "Image: $IMAGE_NAME"
+    echo ""
+    echo "Automation framework installed at: /dingofs-automation-framwork"
+    exit 0
+fi
 
 # Step 3: Tag image for Harbor
 echo ""
