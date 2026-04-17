@@ -123,6 +123,12 @@ COPY dingo /root/.dingo/bin/dingo
 RUN chmod +x /root/.dingo/bin/dingo && \
     echo 'export PATH=$PATH:/root/.dingo/bin' >> /root/.bashrc
 
+# Copy dingofs-automation-framework
+COPY dingofs-automation-framwork /dingofs-automation-framwork
+RUN cd /dingofs-automation-framwork && \
+    pip3 install --no-cache-dir -r requirements.txt && \
+    chmod +x run_tests.py
+
 # Phase 2: Copy and set entrypoint
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh

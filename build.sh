@@ -15,8 +15,19 @@ echo "dingofs-Testsuite-tools Builder & Pusher"
 echo "=============================================="
 echo ""
 
-# Step 1: Build Docker image
-echo "[1/3] Building Docker image..."
+# Step 1: Clone dingofs-automation-framework to build context
+echo "[1/4] Cloning dingofs-automation-framework..."
+cd "$SCRIPT_DIR"
+if [[ ! -d "dingofs-automation-framwork" ]]; then
+    git clone git@github.com:dingodb/dingofs-automation-framwork.git
+else
+    echo "      dingofs-automation-framwork already exists, skipping clone"
+fi
+echo "      Cloned to $SCRIPT_DIR/dingofs-automation-framwork"
+
+# Step 2: Build Docker image
+echo ""
+echo "[2/4] Building Docker image..."
 echo "      Image: $IMAGE_NAME"
 echo ""
 
@@ -47,15 +58,15 @@ fi
 echo ""
 echo "      Docker image built successfully."
 
-# Step 2: Tag image for Harbor
+# Step 3: Tag image for Harbor
 echo ""
-echo "[2/3] Tagging image for Harbor..."
+echo "[3/4] Tagging image for Harbor..."
 docker tag "$IMAGE_NAME" "$HARBOR_IMAGE"
 echo "      Tagged: $HARBOR_IMAGE"
 
-# Step 3: Push to Harbor
+# Step 4: Push to Harbor
 echo ""
-echo "[3/3] Pushing to Harbor..."
+echo "[4/4] Pushing to Harbor..."
 
 # Try push without proxy first, then with proxy if it fails
 if docker push "$HARBOR_IMAGE" 2>/dev/null; then
@@ -88,3 +99,4 @@ echo "=============================================="
 echo ""
 echo "Image pushed: $HARBOR_IMAGE"
 echo ""
+echo "Automation framework installed at: /dingofs-automation-framwork"
