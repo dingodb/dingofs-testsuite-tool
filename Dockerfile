@@ -61,6 +61,7 @@ RUN apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         fio \
         python3 \
+        python3-pip \
         default-jre-headless \
         wget \
         unzip \
@@ -126,7 +127,7 @@ RUN chmod +x /root/.dingo/bin/dingo && \
 # Copy dingofs-automation-framework
 COPY dingofs-automation-framwork /dingofs-automation-framwork
 RUN cd /dingofs-automation-framwork && \
-    pip3 install --no-cache-dir -r requirements.txt && \
+    pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
     chmod +x run_tests.py
 
 # Phase 2: Copy and set entrypoint
