@@ -120,9 +120,8 @@ RUN cd /pjdtest && \
 RUN mkdir -p /custom && chmod 777 /custom/
 
 # Copy dingo CLI tool
-COPY dingo /root/.dingo/bin/dingo
-RUN chmod +x /root/.dingo/bin/dingo && \
-    echo 'export PATH=$PATH:/root/.dingo/bin' >> /root/.bashrc
+COPY dingo /usr/local/bin/dingo
+RUN chmod +x /usr/local/bin/dingo
 
 # Copy dingofs-automation-framework
 COPY dingofs-automation-framwork /dingofs-automation-framwork

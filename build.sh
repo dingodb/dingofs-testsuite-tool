@@ -25,6 +25,20 @@ else
 fi
 echo "      Cloned to $SCRIPT_DIR/dingofs-automation-framwork"
 
+# Step 1b: Copy dingo binary to build context
+echo ""
+echo "[1b/4] Copying dingo binary..."
+DINGO_SRC="/home/jenkins/code/dingofs/scripts/docker/rocky9/dingofs/tools/sbin/dingo"
+DINGO_DEST="$SCRIPT_DIR/dingo"
+mkdir -p "$(dirname "$DINGO_DEST")"
+if [[ -f "$DINGO_SRC" ]]; then
+    cp "$DINGO_SRC" "$DINGO_DEST"
+    chmod +x "$DINGO_DEST"
+    echo "      Copied dingo to $DINGO_DEST"
+else
+    echo "      Warning: dingo not found at $DINGO_SRC"
+fi
+
 # Step 2: Build Docker image
 echo ""
 echo "[2/4] Building Docker image..."
