@@ -22,7 +22,7 @@ echo "=============================================="
 echo ""
 
 # Step 1: Clone dingofs-integration-test to build context
-echo "[1/5] Cloning dingofs-integration-test..."
+echo "[1/7] Cloning dingofs-integration-test..."
 cd "$SCRIPT_DIR"
 
 # Handle old directory name migration
@@ -41,7 +41,7 @@ echo "      Cloned to $SCRIPT_DIR/dingofs-integration-test"
 
 # Step 1b: Copy dingo binary to build context
 echo ""
-echo "[2/5] Copying dingo binary..."
+echo "[2/7] Copying dingo binary..."
 DINGO_SRC="/home/jenkins/code/dingofs/scripts/docker/rocky9/dingofs/tools/sbin/dingo"
 DINGO_DEST="$SCRIPT_DIR/dingo"
 mkdir -p "$(dirname "$DINGO_DEST")"
