@@ -126,6 +126,14 @@ RUN mkdir -p /custom && chmod 777 /custom/
 COPY dingo /usr/local/bin/dingo
 RUN chmod +x /usr/local/bin/dingo
 
+# Copy dingo-client
+COPY dingo-client /root/.dingo/components/dingo-client/main/dingo-client
+RUN chmod +x /root/.dingo/components/dingo-client/main/dingo-client
+
+# Copy dingo-cache
+COPY dingo-cache /root/.dingo/components/dingo-cache/main/dingo-cache
+RUN chmod +x /root/.dingo/components/dingo-cache/main/dingo-cache
+
 # Copy dingofs-integration-test
 COPY dingofs-integration-test /dingofs-integration-test
 RUN cd /dingofs-integration-test && \

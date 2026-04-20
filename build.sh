@@ -53,9 +53,37 @@ else
     echo "      Warning: dingo not found at $DINGO_SRC"
 fi
 
-# Step 2: Build Docker image
+# Step 3: Copy dingo-client to build context
 echo ""
-echo "[3/5] Building Docker image..."
+echo "[3/7] Copying dingo-client..."
+DINGO_CLIENT_SRC="$HOME/.dingo/components/dingo-client/main/dingo-client"
+DINGO_CLIENT_DEST="$SCRIPT_DIR/dingo-client"
+mkdir -p "$(dirname "$DINGO_CLIENT_DEST")"
+if [[ -f "$DINGO_CLIENT_SRC" ]]; then
+    cp "$DINGO_CLIENT_SRC" "$DINGO_CLIENT_DEST"
+    chmod +x "$DINGO_CLIENT_DEST"
+    echo "      Copied dingo-client to $DINGO_CLIENT_DEST"
+else
+    echo "      Warning: dingo-client not found at $DINGO_CLIENT_SRC"
+fi
+
+# Step 4: Copy dingo-cache to build context
+echo ""
+echo "[4/7] Copying dingo-cache..."
+DINGO_CACHE_SRC="$HOME/.dingo/components/dingo-cache/main/dingo-cache"
+DINGO_CACHE_DEST="$SCRIPT_DIR/dingo-cache"
+mkdir -p "$(dirname "$DINGO_CACHE_DEST")"
+if [[ -f "$DINGO_CACHE_SRC" ]]; then
+    cp "$DINGO_CACHE_SRC" "$DINGO_CACHE_DEST"
+    chmod +x "$DINGO_CACHE_DEST"
+    echo "      Copied dingo-cache to $DINGO_CACHE_DEST"
+else
+    echo "      Warning: dingo-cache not found at $DINGO_CACHE_SRC"
+fi
+
+# Step 5: Build Docker image
+echo ""
+echo "[5/7] Building Docker image..."
 echo "      Image: $IMAGE_NAME"
 echo ""
 
@@ -99,15 +127,15 @@ if [[ "$DEBUG_MODE" == "true" ]]; then
     exit 0
 fi
 
-# Step 3: Tag image for Harbor
+# Step 6: Tag image for Harbor
 echo ""
-echo "[4/5] Tagging image for Harbor..."
+echo "[6/7] Tagging image for Harbor..."
 docker tag "$IMAGE_NAME" "$HARBOR_IMAGE"
 echo "      Tagged: $HARBOR_IMAGE"
 
-# Step 4: Push to Harbor
+# Step 7: Push to Harbor
 echo ""
-echo "[5/5] Pushing to Harbor..."
+echo "[7/7] Pushing to Harbor..."
 
 # Try push without proxy first, then with proxy if it fails
 if docker push "$HARBOR_IMAGE" 2>/dev/null; then
