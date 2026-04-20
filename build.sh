@@ -27,7 +27,8 @@ cd "$SCRIPT_DIR"
 if [[ ! -d "dingofs-automation-framwork" ]]; then
     git clone git@github.com:dingodb/dingofs-automation-framwork.git
 else
-    echo "      dingofs-automation-framwork already exists, skipping clone"
+    echo "      dingofs-automation-framwork already exists, pulling latest..."
+    cd dingofs-automation-framwork && git pull && cd ..
 fi
 echo "      Cloned to $SCRIPT_DIR/dingofs-automation-framwork"
 
