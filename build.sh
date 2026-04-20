@@ -22,7 +22,7 @@ echo "=============================================="
 echo ""
 
 # Step 1: Clone dingofs-integration-test to build context
-echo "[1/4] Cloning dingofs-integration-test..."
+echo "[1/5] Cloning dingofs-integration-test..."
 cd "$SCRIPT_DIR"
 
 # Handle old directory name migration
@@ -41,7 +41,7 @@ echo "      Cloned to $SCRIPT_DIR/dingofs-integration-test"
 
 # Step 1b: Copy dingo binary to build context
 echo ""
-echo "[1b/4] Copying dingo binary..."
+echo "[2/5] Copying dingo binary..."
 DINGO_SRC="/home/jenkins/code/dingofs/scripts/docker/rocky9/dingofs/tools/sbin/dingo"
 DINGO_DEST="$SCRIPT_DIR/dingo"
 mkdir -p "$(dirname "$DINGO_DEST")"
@@ -55,7 +55,7 @@ fi
 
 # Step 2: Build Docker image
 echo ""
-echo "[2/4] Building Docker image..."
+echo "[3/5] Building Docker image..."
 echo "      Image: $IMAGE_NAME"
 echo ""
 
@@ -101,13 +101,13 @@ fi
 
 # Step 3: Tag image for Harbor
 echo ""
-echo "[3/4] Tagging image for Harbor..."
+echo "[4/5] Tagging image for Harbor..."
 docker tag "$IMAGE_NAME" "$HARBOR_IMAGE"
 echo "      Tagged: $HARBOR_IMAGE"
 
 # Step 4: Push to Harbor
 echo ""
-echo "[4/4] Pushing to Harbor..."
+echo "[5/5] Pushing to Harbor..."
 
 # Try push without proxy first, then with proxy if it fails
 if docker push "$HARBOR_IMAGE" 2>/dev/null; then
