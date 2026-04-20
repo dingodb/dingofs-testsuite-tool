@@ -77,7 +77,9 @@ RUN apt-get update && \
         libaio-dev \
         perl \
         libtimedate-perl \
-        vim && \
+        vim \
+        numactl \
+        libjemalloc-dev && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
