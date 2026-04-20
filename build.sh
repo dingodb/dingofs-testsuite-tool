@@ -41,7 +41,7 @@ echo "      Cloned to $SCRIPT_DIR/dingofs-integration-test"
 
 # Step 1b: Copy dingo binary to build context
 echo ""
-echo "[1/4] Copying dingo binary..."
+echo "[1b/4] Copying dingo binary..."
 DINGO_SRC="/home/jenkins/code/dingofs/scripts/docker/rocky9/dingofs/tools/sbin/dingo"
 DINGO_DEST="$SCRIPT_DIR/dingo"
 mkdir -p "$(dirname "$DINGO_DEST")"
