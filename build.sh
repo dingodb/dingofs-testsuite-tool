@@ -21,16 +21,23 @@ echo "dingofs-Testsuite-tools Builder & Pusher"
 echo "=============================================="
 echo ""
 
-# Step 1: Clone dingofs-automation-framework to build context
-echo "[1/4] Cloning dingofs-automation-framework..."
+# Step 1: Clone dingofs-integration-test to build context
+echo "[1/4] Cloning dingofs-integration-test..."
 cd "$SCRIPT_DIR"
-if [[ ! -d "dingofs-automation-framwork" ]]; then
-    git clone git@github.com:dingodb/dingofs-automation-framwork.git
-else
-    echo "      dingofs-automation-framwork already exists, pulling latest..."
-    cd dingofs-automation-framwork && git pull && cd ..
+
+# Handle old directory name migration
+if [[ -d "dingofs-automation-framwork" ]] && [[ ! -d "dingofs-integration-test" ]]; then
+    echo "      Renaming old directory to dingofs-integration-test..."
+    mv dingofs-automation-framwork dingofs-integration-test
 fi
-echo "      Cloned to $SCRIPT_DIR/dingofs-automation-framwork"
+
+if [[ ! -d "dingofs-integration-test" ]]; then
+    git clone git@github.com:dingodb/dingofs-automation-framwork.git dingofs-integration-test
+else
+    echo "      dingofs-integration-test already exists, pulling latest..."
+    cd dingofs-integration-test && git pull && cd ..
+fi
+echo "      Cloned to $SCRIPT_DIR/dingofs-integration-test"
 
 # Step 1b: Copy dingo binary to build context
 echo ""
@@ -88,7 +95,7 @@ if [[ "$DEBUG_MODE" == "true" ]]; then
     echo ""
     echo "Image: $IMAGE_NAME"
     echo ""
-    echo "Automation framework installed at: /dingofs-automation-framwork"
+    echo "Automation framework installed at: /dingofs-integration-test"
     exit 0
 fi
 
@@ -133,4 +140,4 @@ echo "=============================================="
 echo ""
 echo "Image pushed: $HARBOR_IMAGE"
 echo ""
-echo "Automation framework installed at: /dingofs-automation-framwork"
+echo "Automation framework installed at: /dingofs-integration-test"

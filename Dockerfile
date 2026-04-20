@@ -76,7 +76,8 @@ RUN apt-get update && \
         pkg-config \
         libaio-dev \
         perl \
-        libtimedate-perl && \
+        libtimedate-perl \
+        vim && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
@@ -123,9 +124,9 @@ RUN mkdir -p /custom && chmod 777 /custom/
 COPY dingo /usr/local/bin/dingo
 RUN chmod +x /usr/local/bin/dingo
 
-# Copy dingofs-automation-framework
-COPY dingofs-automation-framwork /dingofs-automation-framwork
-RUN cd /dingofs-automation-framwork && \
+# Copy dingofs-integration-test
+COPY dingofs-integration-test /dingofs-integration-test
+RUN cd /dingofs-integration-test && \
     pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
     chmod +x run_tests.py
 
