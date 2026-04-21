@@ -417,8 +417,6 @@ parse_args() {
     local app_args=()
     local found_separator=false
 
-    echo "DEBUG parse_args: received args: $*"
-
     for arg in "$@"; do
         if [[ "$found_separator" == true ]]; then
             app_args+=("$arg")
@@ -438,9 +436,7 @@ parse_args() {
         exit 1
     }
 
-    echo "DEBUG parse_args: getopt result: $opts"
     eval set -- "$opts"
-    echo "DEBUG parse_args: after eval set, args: $*"
 
     while true; do
         case "$1" in

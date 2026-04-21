@@ -266,7 +266,6 @@ run_docker_help() {
         return 1
     fi
 
-    echo "DEBUG: Running: docker run --rm $image -t $tool --help"
     docker run --rm "$image" -t "$tool" --help
 }
 
