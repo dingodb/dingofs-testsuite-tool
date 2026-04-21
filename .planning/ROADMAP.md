@@ -179,10 +179,10 @@ Plans:
 **Requirements:** INTG-01, AUTO-01
 
 **Success Criteria** (what must be TRUE):
-1. User can specify `-t integration` and container recognizes it as a valid tool
+1. User can specify `-t int` and container recognizes it as a valid tool
 2. `integration_run()` function exists and can be called
 3. dingofs-integration-test exists in the image at /dingofs-integration-test
-4. `dtt -t integration --help` displays help information
+4. `dtt -t int --help` displays help information
 
 ---
 

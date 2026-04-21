@@ -10,10 +10,10 @@
 
 ## Current Milestone: v1.2 集成测试命令
 
-**Goal:** 添加 `dtt -t integration` 命令，运行 DingoFS 自动化测试框架
+**Goal:** 添加 `dtt -t int` 命令，运行 DingoFS 自动化测试框架
 
 **Target features:**
-- 添加 `dtt -t integration` 命令
+- 添加 `dtt -t int` 命令
 - 支持传递 MDS 地址等必要参数
 - 解析并保存自动化框架测试结果
 - 集成 dingofs-integration-test 到镜像
