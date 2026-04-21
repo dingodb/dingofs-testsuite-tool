@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.1
-milestone_name: 新增 LTP 工具
-status: milestone_complete
-last_updated: "2026-04-15"
+milestone: v1.2
+milestone_name: 集成测试命令
+status: milestone_started
+last_updated: "2026-04-21"
 progress:
-  total_phases: 7
-  completed_phases: 7
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
@@ -31,10 +31,10 @@ progress:
 
 ## Current Position
 
-Phase: All 7 phases complete
-Plan: All 7/7 plans complete
-Status: v1.1 Milestone Complete
-Last activity: 2026-04-21 — Completed quick task 260421-dvj: Organize output into tool subdirectories
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-21 — Milestone v1.2 started
 
 ---
 

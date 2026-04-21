@@ -8,17 +8,41 @@
 
 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试，无需关注工具安装和配置细节。
 
-## Current Milestone: v1.1 新增 LTP 工具
+## Current Milestone: v1.2 集成测试命令
+
+**Goal:** 添加 `dtt -t integration` 命令，运行 DingoFS 自动化测试框架
+
+**Target features:**
+- 添加 `dtt -t integration` 命令
+- 支持传递 MDS 地址等必要参数
+- 解析并保存自动化框架测试结果
+- 集成 dingofs-integration-test 到镜像
+
+## Previous Milestone: v1.1 新增 LTP 工具
 
 **Goal:** 将 LTP (Linux Test Project) 测试套件添加到镜像中
 
-**Target features:**
+**Shipped:**
 - 安装 LTP 工具集到 Docker 镜像
 - 添加 ltp 运行命令（默认运行文件系统相关测试）
 - 支持通过命令行指定 LTP 测试子集
 - 支持 LTP 测试结果输出到指定目录
 
 ## Requirements
+
+### Validated (v1.1)
+
+- [x] 内置LTP (Linux Test Project) 测试工具
+- [x] 支持ltp工具运行模式
+- [x] 支持LTP测试结果输出
+- [x] 支持超时保护
+
+### Active (v1.2)
+
+- [ ] 添加 integration 工具命令
+- [ ] 支持传递 MDS 地址等参数
+- [ ] 解析自动化框架测试结果
+- [ ] 集成 dingofs-integration-test 到镜像
 
 ### Validated (v1.0)
 
@@ -89,4 +113,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-08 — v1.1 started*
+*Last updated: 2026-04-21 — v1.2 started*
