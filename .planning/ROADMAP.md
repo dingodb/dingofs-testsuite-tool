@@ -169,6 +169,51 @@ Plans:
 
 ---
 
+## v1.2: 集成测试命令
+
+### Phase 8: 集成测试基础
+**Goal:** Users can run integration tests via `-t integration` command.
+
+**Depends on:** Phase 1
+
+**Requirements:** INTG-01, AUTO-01
+
+**Success Criteria** (what must be TRUE):
+1. User can specify `-t integration` and container recognizes it as a valid tool
+2. `integration_run()` function exists and can be called
+3. dingofs-integration-test exists in the image at /dingofs-integration-test
+4. `dtt -t integration --help` displays help information
+
+---
+
+### Phase 9: 参数传递与执行
+**Goal:** MDS address is passed from `dtt config` to the automation framework, and tests execute successfully.
+
+**Depends on:** Phase 8
+
+**Requirements:** INTG-02, INTG-03, AUTO-02
+
+**Success Criteria** (what must be TRUE):
+1. MDSADDR is read from `dtt config mdsaddr` and passed to container
+2. Automation framework executes tests successfully
+3. Environment variables are correctly passed to the automation framework
+
+---
+
+### Phase 10: 结果解析与保存
+**Goal:** Automation framework test results are parsed and saved to the output directory.
+
+**Depends on:** Phase 9
+
+**Requirements:** INTG-04, INTG-05, AUTO-03
+
+**Success Criteria** (what must be TRUE):
+1. Automation framework output is parsed to identify success/failure
+2. Results are saved to `$OUTPUT/integration/` directory
+3. result.log correctly records integration test results
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -180,15 +225,27 @@ Plans:
 | 5. LTP Build Setup | 1/1 | Complete | 2026-04-15 |
 | 6. LTP Integration | 1/1 | Complete | 2026-04-15 |
 | 7. LTP Runtime Safety | 1/1 | Complete | 2026-04-15 |
+| 8. 集成测试基础 | 0/1 | Pending | — |
+| 9. 参数传递与执行 | 0/1 | Pending | — |
+| 10. 结果解析与保存 | 0/1 | Pending | — |
 
 ## Coverage
 
-- v1 Requirements: 43 total (34 from v1.0 + 9 from v1.1)
-- Mapped to phases: 43
-- Unmapped: 0
+- v1.2 Requirements: 8 total (INTG-01~05, AUTO-01~03)
+- v1.1 Requirements: 9 total (LTP-01~09)
+- v1.0 Requirements: 34 total
+- Mapped to phases: All ✓
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
+| INTG-01 | Phase 8 | Pending |
+| AUTO-01 | Phase 8 | Pending |
+| INTG-02 | Phase 9 | Pending |
+| INTG-03 | Phase 9 | Pending |
+| AUTO-02 | Phase 9 | Pending |
+| INTG-04 | Phase 10 | Pending |
+| INTG-05 | Phase 10 | Pending |
+| AUTO-03 | Phase 10 | Pending |
 | DOCK-01 | Phase 1 | Complete |
 | DOCK-02 | Phase 1 | Complete |
 | DOCK-03 | Phase 1 | Complete |
@@ -235,4 +292,4 @@ Plans:
 ---
 
 *Roadmap created: 2026-04-03*
-*Last updated: 2026-04-08*
+*Last updated: 2026-04-21 for v1.2*

@@ -111,21 +111,25 @@ This is a Docker image project for storage performance testing. v1.1 focuses on 
 | 3. Output Formats | Complete | 2026-04-07 | Reports in multiple formats |
 | 4. Fio Scenario Enhancements | Complete | 2026-04-07 | 96 fio scenarios |
 | 5. pjdtest POSIX Tests | Complete | 2026-04-07 | Added pjdtest tool |
-| 5. LTP Build Setup | Not started | - | Multi-stage Dockerfile for LTP |
-| 6. LTP Integration | Not started | - | entrypoint.sh and ltp_run function |
-| 7. LTP Runtime Safety | Not started | - | timeout, output, capability docs |
+| 5. LTP Build Setup | Complete | 2026-04-15 | Multi-stage Dockerfile for LTP |
+| 6. LTP Integration | Complete | 2026-04-15 | entrypoint.sh and ltp_run function |
+| 7. LTP Runtime Safety | Complete | 2026-04-15 | timeout, output, capability docs |
+| 8. 集成测试基础 | Not started | - | Add -t integration command |
+| 9. 参数传递与执行 | Not started | - | Pass MDSADDR to framework |
+| 10. 结果解析与保存 | Not started | - | Parse and save results |
 
 ---
 
 ## v1.1 Milestone: 新增 LTP 工具
 
 **Started:** 2026-04-08
+**Completed:** 2026-04-15
 
 **Target features:**
-- Install LTP toolset in Docker image (Phase 5)
-- Add ltp run command with filesystem tests by default (Phase 6)
-- Support LTP test results output to specified directory (Phase 7)
-- Timeout protection and capability documentation (Phase 7)
+- Install LTP toolset in Docker image (Phase 5) ✓
+- Add ltp run command with filesystem tests by default (Phase 6) ✓
+- Support LTP test results output to specified directory (Phase 7) ✓
+- Timeout protection and capability documentation (Phase 7) ✓
 
 **Roadmap created:** 2026-04-08
 **Coverage:** 9/9 requirements mapped to 3 phases
@@ -133,4 +137,4 @@ This is a Docker image project for storage performance testing. v1.1 focuses on 
 ---
 
 *State initialized: 2026-04-08*
-*Last updated: 2026-04-08*
+*Last updated: 2026-04-21 for v1.2*
