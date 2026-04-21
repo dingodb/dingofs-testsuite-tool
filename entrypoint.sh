@@ -240,10 +240,17 @@ LTP Linux 测试项目
 用法: dtt -t ltp -s <场景> [-m <挂载点>] [-o <输出目录>]
 
 测试套件:
-  all       - 运行所有LTP测试套件 (fs, dio, mm) (默认)
-  ltp_fs    - 文件系统测试 (fs)
-  ltp_dio   - Direct I/O测试 (dio)
-  ltp_mm    - 内存管理测试 (mm)
+  all       - 运行所有LTP测试套件 (默认)
+  fs        - 文件系统测试
+  fsx       - 文件系统扩展属性测试
+  io        - Direct I/O测试
+  dir       - 目录操作测试
+  lock      - 文件锁测试
+  syscalls  - 系统调用测试
+
+常用组合:
+  fs+fsx+dir+lock+syscalls - 常用文件系统测试 (推荐)
+  fs+io                       - 文件系统+IO测试
 
 注意: LTP需要 --privileged 以访问 /dev/kmsg 等内核接口。
 
@@ -251,8 +258,14 @@ LTP Linux 测试项目
   # 运行所有LTP测试 (默认)
   dtt -t ltp -s all
 
-  # 仅运行文件系统测试
-  dtt -t ltp -s ltp_fs
+  # 运行文件系统测试
+  dtt -t ltp -s fs
+
+  # 运行常用测试组合
+  dtt -t ltp -s fsx
+  dtt -t ltp -s dir
+  dtt -t ltp -s lock
+  dtt -t ltp -s syscalls
 EOF
 }
 
@@ -346,8 +359,8 @@ scenario_exists() {
             [[ "$scenario" == "all" ]] || [[ "$scenario" == "pjdtest" ]]
             ;;
         ltp)
-            # ltp scenarios: all (default), ltp_fs, ltp_dio, ltp_mm
-            [[ "$scenario" == "all" ]] || [[ "$scenario" == "ltp" ]] || [[ "$scenario" =~ ^ltp_ ]]
+            # ltp scenarios: all, fs, fsx, io, dir, lock, syscalls
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(fs|fsx|io|dir|lock|syscalls)$ ]]
             ;;
         *)
             return 1
@@ -927,24 +940,35 @@ ltp_run() {
     local output_file="${OUTPUT}/ltp/ltp_${timestamp}"
 
     # Map scenario names to LTP test suite names
-    # all -> fs, dio, mm (run all)
-    # ltp -> fs (default filesystem tests)
-    # ltp_fs -> fs (filesystem tests)
-    # ltp_dio -> dio (direct I/O tests)
-    # ltp_mm -> mm (memory management tests)
+    # all -> fs fsx io dir lock syscalls (run all common tests)
+    # fs -> fs (filesystem tests)
+    # fsx -> fsxattr (filesystem extended attribute tests)
+    # io -> dio (direct I/O tests)
+    # dir -> fs (directory tests use fs suite)
+    # lock -> fcntl-locktests (file lock tests)
+    # syscalls -> syscalls (system call tests)
     local scenarios
     case "${SCENARIO}" in
         all)
-            scenarios="fs dio mm"
+            scenarios="fs fsxattr dio fcntl-locktests syscalls"
             ;;
-        ltp|ltp_fs)
+        fs)
             scenarios="fs"
             ;;
-        ltp_dio)
+        fsx)
+            scenarios="fsxattr"
+            ;;
+        io)
             scenarios="dio"
             ;;
-        ltp_mm)
-            scenarios="mm"
+        dir)
+            scenarios="fs"
+            ;;
+        lock)
+            scenarios="fcntl-locktests"
+            ;;
+        syscalls)
+            scenarios="syscalls"
             ;;
         *)
             scenarios="${SCENARIO:-fs}"
