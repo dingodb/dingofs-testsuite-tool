@@ -155,104 +155,104 @@ EOF
 
 show_fio_help() {
     cat << EOF
-FIO Scenarios
-=============
+FIO 存储性能测试
+=================
 
-Usage: docker run dingofs-testsuite-tools -t fio -s <scenario> -m <mount> -o <output>
+用法: dtt -t fio -s <场景> [-m <挂载点>] [-o <输出目录>]
 
-Scenario Types (4 types, each runs 24 sub-scenarios):
-  seq_read    - Sequential read
-  seq_write   - Sequential write
-  rand_read   - Random read
-  rand_write  - Random write
-  all         - Run all 4 scenario types (96 tests total)
+场景类型 (4种类型，每种24个子场景):
+  seq_read    - 顺序读
+  seq_write   - 顺序写
+  rand_read   - 随机读
+  rand_write  - 随机写
+  all         - 运行所有4种场景类型 (96个测试)
 
-Each scenario runs with these variants:
+每个场景运行以下变体:
   direct:    0 (buffered), 1 (direct I/O)
   block size: 128k, 1m, 4m
   numjobs:   1, 8, 16, 32
-  iodepth:   1 (fixed)
-  size:      8G per job
+  iodepth:   1 (固定)
+  size:      每个job 8G
 
-Examples:
-  # Run all sequential read scenarios (24 tests)
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_read -m /data -o /data
+示例:
+  # 运行所有顺序读场景 (24个测试)
+  dtt -t fio -s seq_read
 
-  # Run all scenarios (96 tests)
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s all -m /data -o /data
+  # 运行所有场景 (96个测试)
+  dtt -t fio -s all
 
-  # Run single scenario
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
+  # 运行单个场景
+  dtt -t fio -s rand_read_0d_128k_1j
 EOF
 }
 
 show_mdtest_help() {
     cat << EOF
-MDTEST Scenarios
-================
+MDTEST 元数据测试
+==================
 
-Usage: docker run dingofs-testsuite-tools -t mdtest -s <scenario> -n <np> -m <mount> -o <output>
+用法: dtt -t mdtest -s <场景> [-n <进程数>] [-m <挂载点>] [-o <输出目录>]
 
-Scenario Types:
-  mdtest_z0_n100   - z=0, n=100 (flat directories, 3200 files)
-  mdtest_z5_b4_I1  - z=5, b=4, I=1 (multi-branch tree, 32736 items)
-  mdtest_z6_b3_I1  - z=6, b=3, I=1 (medium depth tree, 34976 items)
-  mdtest_z9_b2_I1  - z=9, b=2, I=1 (deep binary tree, 32736 items)
-  all              - Run all 4 scenarios (default)
+场景类型:
+  mdtest_z0_n100   - z=0, n=100 (扁平目录, 3200文件)
+  mdtest_z5_b4_I1  - z=5, b=4, I=1 (多分支树, 32736项)
+  mdtest_z6_b3_I1  - z=6, b=3, I=1 (中等深度树, 34976项)
+  mdtest_z9_b2_I1  - z=9, b=2, I=1 (深层二叉树, 32736项)
+  all              - 运行所有4个场景 (默认)
 
-Default NP: 16 (use -n or --np to adjust)
+默认进程数: 16 (可用 -n 或 --np 调整)
 
-Examples:
-  # Run all mdtest scenarios (default)
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s all -m /data -o /data
+示例:
+  # 运行所有mdtest场景 (默认)
+  dtt -t mdtest -s all
 
-  # Run single scenario
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+  # 运行单个场景
+  dtt -t mdtest -s mdtest_z0_n100
 
-  # Custom MPI process count
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s all -m /data -o /data -n 32
+  # 自定义MPI进程数
+  dtt -t mdtest -s all -n 32
 EOF
 }
 
 show_pjdtest_help() {
     cat << EOF
-PJDTEST - POSIX Filesystem Test Suite
-=====================================
+PJDTEST POSIX 文件系统测试
+===========================
 
-Usage: docker run dingofs-testsuite-tools -t pjdtest -s <scenario> -m <mount> -o <output>
+用法: dtt -t pjdtest -s <场景> [-m <挂载点>] [-o <输出目录>]
 
-Test Categories:
-  all       - Run all POSIX tests (default)
+测试类别:
+  all       - 运行所有POSIX测试 (默认)
 
-The pjdtest suite runs the DingoFS baseline POSIX compliance tests using 'prove -rv'.
+pjdtest套件使用 'prove -rv' 运行DingoFS基线POSIX兼容性测试。
 
-Example:
-  # Run all POSIX tests
-  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s all -m /data -o /data
+示例:
+  # 运行所有POSIX测试
+  dtt -t pjdtest -s all
 EOF
 }
 
 show_ltp_help() {
     cat << EOF
-LTP - Linux Test Project
-=======================
+LTP Linux 测试项目
+====================
 
-Usage: docker run dingofs-testsuite-tools -t ltp -s <scenario> -m <mount> -o <output>
+用法: dtt -t ltp -s <场景> [-m <挂载点>] [-o <输出目录>]
 
-Test Suites:
-  all       - Run all LTP test suites (fs, dio, mm) (default)
-  ltp_fs    - Filesystem tests (fs)
-  ltp_dio   - Direct I/O tests (dio)
-  ltp_mm    - Memory management tests (mm)
+测试套件:
+  all       - 运行所有LTP测试套件 (fs, dio, mm) (默认)
+  ltp_fs    - 文件系统测试 (fs)
+  ltp_dio   - Direct I/O测试 (dio)
+  ltp_mm    - 内存管理测试 (mm)
 
-Note: LTP requires --privileged to access /dev/kmsg and other kernel interfaces.
+注意: LTP需要 --privileged 以访问 /dev/kmsg 等内核接口。
 
-Examples:
-  # Run all LTP tests (default)
-  docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s all -m /data -o /data
+示例:
+  # 运行所有LTP测试 (默认)
+  dtt -t ltp -s all
 
-  # Run filesystem tests only
-  docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp_fs -m /data -o /data
+  # 仅运行文件系统测试
+  dtt -t ltp -s ltp_fs
 EOF
 }
 
