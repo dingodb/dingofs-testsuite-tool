@@ -1066,6 +1066,32 @@ integration_run() {
     local timestamp=$(date +"%Y%m%d_%H%M%S")
     local log_file="$OUTPUT/integration/int_${timestamp}.log"
 
+    # Create dynamic environment config in the framework's conf directory
+    local dynamic_env_dir="$INTEGRATION_DIR/conf/env"
+    local dynamic_env_file="$dynamic_env_dir/env_dynamic.yaml"
+
+    mkdir -p "$dynamic_env_dir"
+    cat > "$dynamic_env_file" << EOF
+env_dynamic:
+  mds_addr: ${mdsaddr}
+  webhook_url: ''
+  clients:
+  - host: localhost
+    mount_path: ${MOUNT}
+    fs_name: fs-test
+    dingo_tool_path: /usr/local/bin/dingo
+    client_count: 1
+    client_conf:
+      mds.addr: ${mdsaddr}
+  remote_caches: []
+  storage:
+    storage_type: s3
+    storage_env: minio
+EOF
+
+    echo "Using MDS address: $mdsaddr"
+    echo "Dynamic env file: $dynamic_env_file"
+    echo ""
     echo "Log file: $log_file"
     echo ""
 
@@ -1075,12 +1101,9 @@ integration_run() {
 
     cd "$INTEGRATION_DIR"
 
-    # Run tests and capture output
-    if python3 run_tests.py "$module" --env env_126_quota --skip-setup 2>&1 | tee "$log_file"; then
-        local exit_code=0
-    else
-        local exit_code=$?
-    fi
+    # Run tests with dynamic environment
+    python3 run_tests.py "$module" --env env_dynamic --skip-setup 2>&1 | tee "$log_file"
+    local exit_code=${PIPESTATUS[0]}
 
     echo ""
     echo "Integration tests completed with exit code: $exit_code"
