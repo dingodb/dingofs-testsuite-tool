@@ -34,7 +34,7 @@ progress:
 Phase: All 7 phases complete
 Plan: All 7/7 plans complete
 Status: v1.1 Milestone Complete
-Last activity: 2026-04-21 — Completed quick task 260421-d32: Add --help support for each tool
+Last activity: 2026-04-21 — Completed quick task 260421-dvj: Organize output into tool subdirectories
 
 ---
 
@@ -76,6 +76,7 @@ Last activity: 2026-04-21 — Completed quick task 260421-d32: Add --help suppor
 |---|-------------|------|--------|-----------|
 | 260413-m3k | Support multiple mdsaddr addresses (comma-separated) | 2026-04-13 | - | [260413-m3k-support-multiple-mdsaddr-addresses-comma](./quick/260413-m3k-support-multiple-mdsaddr-addresses-comma/) |
 | 260421-d32 | Add --help support for each tool and change -s mdtest/ltp defaults to -s all | 2026-04-21 | 9e85c7e | [260421-d32-add-help-support-for-each-tool-in-wrappe](./quick/260421-d32-add-help-support-for-each-tool-in-wrappe/) |
+| 260421-dvj | Organize output into tool-specific subdirectories | 2026-04-21 | 769ad97 | [260421-dvj-organize-output-into-tool-specific-subdi](./quick/260421-dvj-organize-output-into-tool-specific-subdi/) |
 
 ### Key Files
 
