@@ -663,8 +663,9 @@ fio_run() {
     echo "  Output: $OUTPUT"
     echo ""
 
-    # Create base output directory
+    # Create base output directory and tool subdirectory
     mkdir -p "$OUTPUT"
+    mkdir -p "$OUTPUT/fio"
 
     local overall_exit=0
     local run_num=0
@@ -676,7 +677,7 @@ fio_run() {
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(get_scenario_name "$config")
-        local scenario_output="$OUTPUT/$scenario_name"
+        local scenario_output="$OUTPUT/fio/$scenario_name"
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
@@ -738,29 +739,30 @@ vdbench_run() {
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
 
-    # Create output directory
+    # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
+    mkdir -p "$OUTPUT/vdbench"
 
     # Replace anchor paths in config with MOUNT if needed
     # vdbench configs often have wd= anchor=/path/to/mount
-    local vdbench_cmd=("$VDBENCH_BIN" "-f" "$config" "-o" "$OUTPUT")
+    local vdbench_cmd=("$VDBENCH_BIN" "-f" "$config" "-o" "$OUTPUT/vdbench")
 
     # Change to vdbench directory for execution
     cd "$VDBENCH_DIR"
 
-    echo "Executing: ./vdbench -f $config -o $OUTPUT"
+    echo "Executing: ./vdbench -f $config -o $OUTPUT/vdbench"
 
     # Capture console output to raw file while running vdbench
     # Use PIPESTATUS[0] to get vdbench exit code after tee
-    "./vdbench" -f "$config" -o "$OUTPUT" 2>&1 | tee "$OUTPUT/vdbench.raw"
+    "./vdbench" -f "$config" -o "$OUTPUT/vdbench" 2>&1 | tee "$OUTPUT/vdbench/vdbench.raw"
     local vdbench_exit=${PIPESTATUS[0]}
 
     # Generate reports
     echo "Generating reports..."
-    python3 /scripts/generate_report.py --tool vdbench --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT"
+    python3 /scripts/generate_report.py --tool vdbench --output-dir "$OUTPUT/vdbench" --scenario "$SCENARIO" --mount "$MOUNT"
 
     # Log result
-    log_result "vdbench" "$SCENARIO" "$vdbench_exit" "$vdbench_start_time" "$OUTPUT"
+    log_result "vdbench" "$SCENARIO" "$vdbench_exit" "$vdbench_start_time" "$OUTPUT/vdbench"
 
     return $vdbench_exit
 }
@@ -784,8 +786,9 @@ mdtest_run() {
     echo "  NP: $NP"
     echo ""
 
-    # Create base output directory
+    # Create base output directory and tool subdirectory
     mkdir -p "$OUTPUT"
+    mkdir -p "$OUTPUT/mdtest"
 
     local overall_exit=0
     local run_num=0
@@ -813,7 +816,7 @@ mdtest_run() {
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(basename "$script" .sh)
-        local scenario_output="$OUTPUT/$scenario_name"
+        local scenario_output="$OUTPUT/mdtest/$scenario_name"
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
@@ -849,11 +852,11 @@ mdtest_run() {
 
     # Generate combined report for all mdtest scenarios (BEFORE logging results)
     echo "Generating combined mdtest report..."
-    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
+    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT/mdtest" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
 
     # Now log results for each scenario (combined summary now exists)
     for i in "${!scenario_names[@]}"; do
-        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$OUTPUT"
+        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$OUTPUT/mdtest"
     done
 
     echo ""
@@ -868,8 +871,9 @@ pjdtest_run() {
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
 
-    # Create output directory
+    # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
+    mkdir -p "$OUTPUT/pjdtest"
 
     # Change to mount directory for test execution
     cd "$MOUNT"
@@ -877,7 +881,7 @@ pjdtest_run() {
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local output_file="${OUTPUT}/pjdtest_${timestamp}"
+    local output_file="${OUTPUT}/pjdtest/pjdtest_${timestamp}"
 
     echo "Executing: prove -rv /pjdtest/dingofs_baseline"
     echo "Output file: ${output_file}"
@@ -893,7 +897,7 @@ pjdtest_run() {
     fi
 
     # Log result
-    log_result "pjdtest" "pjdtest" "$pjdtest_exit" "$pjdtest_start_time" "$OUTPUT"
+    log_result "pjdtest" "pjdtest" "$pjdtest_exit" "$pjdtest_start_time" "$OUTPUT/pjdtest"
 
     echo ""
     echo "Results saved to: ${output_file}"
@@ -908,8 +912,9 @@ ltp_run() {
     echo "  Output: $OUTPUT"
     echo "  Scenario: $SCENARIO"
 
-    # Create output directory
+    # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
+    mkdir -p "$OUTPUT/ltp"
 
     # Change to mount directory for test execution
     cd "$MOUNT"
@@ -917,7 +922,7 @@ ltp_run() {
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local output_file="${OUTPUT}/ltp_${timestamp}"
+    local output_file="${OUTPUT}/ltp/ltp_${timestamp}"
 
     # Map scenario names to LTP test suite names
     # all -> fs, dio, mm (run all)
@@ -962,15 +967,15 @@ ltp_run() {
         echo "LTP tests completed successfully."
     fi
 
-    # Copy LTP results from /opt/ltp/results to OUTPUT directory
+    # Copy LTP results from /opt/ltp/results to OUTPUT/ltp directory
     if [[ -d "/opt/ltp/results" ]] && [[ -n "$(ls -A /opt/ltp/results 2>/dev/null)" ]]; then
-        echo "Copying LTP results to ${OUTPUT}..."
-        cp -r /opt/ltp/results/* "$OUTPUT/" 2>/dev/null || true
-        echo "LTP results copied to: ${OUTPUT}"
+        echo "Copying LTP results to ${OUTPUT}/ltp..."
+        cp -r /opt/ltp/results/* "$OUTPUT/ltp/" 2>/dev/null || true
+        echo "LTP results copied to: ${OUTPUT}/ltp"
     fi
 
     # Log result
-    log_result "ltp" "$SCENARIO" "$overall_exit" "$ltp_start_time" "$OUTPUT"
+    log_result "ltp" "$SCENARIO" "$overall_exit" "$ltp_start_time" "$OUTPUT/ltp"
 
     echo ""
     echo "Results saved to: ${output_file}_*.log"
