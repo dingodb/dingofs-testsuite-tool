@@ -150,6 +150,113 @@ EOF
 }
 
 # ==============================================================================
+# Per-Tool Help Functions
+# ==============================================================================
+
+show_fio_help() {
+    cat << EOF
+FIO Scenarios
+=============
+
+Usage: docker run dingofs-testsuite-tools -t fio -s <scenario> -m <mount> -o <output>
+
+Scenario Types (4 types, each runs 24 sub-scenarios):
+  seq_read    - Sequential read
+  seq_write   - Sequential write
+  rand_read   - Random read
+  rand_write  - Random write
+  all         - Run all 4 scenario types (96 tests total)
+
+Each scenario runs with these variants:
+  direct:    0 (buffered), 1 (direct I/O)
+  block size: 128k, 1m, 4m
+  numjobs:   1, 8, 16, 32
+  iodepth:   1 (fixed)
+  size:      8G per job
+
+Examples:
+  # Run all sequential read scenarios (24 tests)
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_read -m /data -o /data
+
+  # Run all scenarios (96 tests)
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s all -m /data -o /data
+
+  # Run single scenario
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
+EOF
+}
+
+show_mdtest_help() {
+    cat << EOF
+MDTEST Scenarios
+================
+
+Usage: docker run dingofs-testsuite-tools -t mdtest -s <scenario> -n <np> -m <mount> -o <output>
+
+Scenario Types:
+  mdtest_z0_n100   - z=0, n=100 (flat directories, 3200 files)
+  mdtest_z5_b4_I1  - z=5, b=4, I=1 (multi-branch tree, 32736 items)
+  mdtest_z6_b3_I1  - z=6, b=3, I=1 (medium depth tree, 34976 items)
+  mdtest_z9_b2_I1  - z=9, b=2, I=1 (deep binary tree, 32736 items)
+  all              - Run all 4 scenarios (default)
+
+Default NP: 16 (use -n or --np to adjust)
+
+Examples:
+  # Run all mdtest scenarios (default)
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s all -m /data -o /data
+
+  # Run single scenario
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
+
+  # Custom MPI process count
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s all -m /data -o /data -n 32
+EOF
+}
+
+show_pjdtest_help() {
+    cat << EOF
+PJDTEST - POSIX Filesystem Test Suite
+=====================================
+
+Usage: docker run dingofs-testsuite-tools -t pjdtest -s <scenario> -m <mount> -o <output>
+
+Test Categories:
+  all       - Run all POSIX tests (default)
+
+The pjdtest suite runs the DingoFS baseline POSIX compliance tests using 'prove -rv'.
+
+Example:
+  # Run all POSIX tests
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s all -m /data -o /data
+EOF
+}
+
+show_ltp_help() {
+    cat << EOF
+LTP - Linux Test Project
+=======================
+
+Usage: docker run dingofs-testsuite-tools -t ltp -s <scenario> -m <mount> -o <output>
+
+Test Suites:
+  all       - Run all LTP test suites (fs, dio, mm) (default)
+  ltp_fs    - Filesystem tests (fs)
+  ltp_dio   - Direct I/O tests (dio)
+  ltp_mm    - Memory management tests (mm)
+
+Note: LTP requires --privileged to access /dev/kmsg and other kernel interfaces.
+
+Examples:
+  # Run all LTP tests (default)
+  docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s all -m /data -o /data
+
+  # Run filesystem tests only
+  docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp_fs -m /data -o /data
+EOF
+}
+
+# ==============================================================================
 # Validation Functions
 # ==============================================================================
 
@@ -228,19 +335,19 @@ scenario_exists() {
             ;;
         mdtest)
             # mdtest scenarios: mdtest_z0_n100, mdtest_z5_b4_I1, mdtest_z6_b3_I1, mdtest_z9_b2_I1
-            # Also accept "mdtest" alone to run all scenarios
-            if [[ "$scenario" == "mdtest" ]]; then
+            # Also accept "all" or "mdtest" to run all scenarios
+            if [[ "$scenario" == "all" ]] || [[ "$scenario" == "mdtest" ]]; then
                 return 0
             fi
             [[ -f "${SCENARIOS_DIR}/mdtest/${scenario}.sh" ]]
             ;;
         pjdtest)
-            # pjdtest only has one scenario: pjdtest
-            [[ "$scenario" == "pjdtest" ]]
+            # pjdtest: accept "all" or "pjdtest" to run all tests
+            [[ "$scenario" == "all" ]] || [[ "$scenario" == "pjdtest" ]]
             ;;
         ltp)
-            # ltp scenarios: ltp (default), ltp_fs, ltp_mm, ltp_all
-            [[ "$scenario" == "ltp" ]] || [[ "$scenario" =~ ^ltp_ ]]
+            # ltp scenarios: all (default), ltp_fs, ltp_dio, ltp_mm
+            [[ "$scenario" == "all" ]] || [[ "$scenario" == "ltp" ]] || [[ "$scenario" =~ ^ltp_ ]]
             ;;
         *)
             return 1
@@ -278,7 +385,7 @@ get_scenario_paths() {
             ;;
         mdtest)
             # mdtest can run all scenarios at once
-            if [[ "$scenario" == "mdtest" ]]; then
+            if [[ "$scenario" == "all" ]] || [[ "$scenario" == "mdtest" ]]; then
                 for script in "${SCENARIOS_DIR}"/mdtest/*.sh; do
                     [[ -f "$script" ]] && paths+=("$script")
                 done
@@ -335,6 +442,17 @@ parse_args() {
         case "$1" in
             -t|--tool)
                 TOOL="$2"
+                # Check if next arg is --help
+                if [[ "$3" == "--help" ]]; then
+                    case "$TOOL" in
+                        fio) show_fio_help; exit 0 ;;
+                        vdbench) echo "vdbench: use --help for general help"; exit 0 ;;
+                        mdtest) show_mdtest_help; exit 0 ;;
+                        pjdtest) show_pjdtest_help; exit 0 ;;
+                        ltp) show_ltp_help; exit 0 ;;
+                        *) echo "Unknown tool: $TOOL"; exit 1 ;;
+                    esac
+                fi
                 shift 2
                 ;;
             -s|--scenario)
@@ -802,41 +920,44 @@ ltp_run() {
     local output_file="${OUTPUT}/ltp_${timestamp}"
 
     # Map scenario names to LTP test suite names
+    # all -> fs, dio, mm (run all)
     # ltp -> fs (default filesystem tests)
     # ltp_fs -> fs (filesystem tests)
     # ltp_dio -> dio (direct I/O tests)
     # ltp_mm -> mm (memory management tests)
-    local scenario
+    local scenarios
     case "${SCENARIO}" in
+        all)
+            scenarios="fs dio mm"
+            ;;
         ltp|ltp_fs)
-            scenario="fs"
+            scenarios="fs"
             ;;
         ltp_dio)
-            scenario="dio"
+            scenarios="dio"
             ;;
         ltp_mm)
-            scenario="mm"
+            scenarios="mm"
             ;;
         *)
-            scenario="${SCENARIO:-fs}"
+            scenarios="${SCENARIO:-fs}"
             ;;
     esac
 
-    echo "Executing: timeout 3600 /opt/ltp/runltp -f $scenario -d ."
-    echo "Output file: ${output_file}.log"
+    local overall_exit=0
+    for scenario in $scenarios; do
+        echo "Executing LTP scenario: $scenario"
+        timeout 3600 /opt/ltp/runltp -f "$scenario" -d . -p "$OUTPUT" -l "${output_file}_${scenario}.log" 2>&1 | tee "${output_file}_${scenario}.raw"
+        local ltp_exit=${PIPESTATUS[0]}
+        if [[ $ltp_exit -ne 0 ]]; then
+            overall_exit=$ltp_exit
+        fi
+    done
 
-    # Run LTP with timeout protection (1 hour max)
-    # -f: test suite (fs for filesystem tests)
-    # -d .: run in current directory (mount point)
-    # -p: output directory for results
-    # -l: log file
-    timeout 3600 /opt/ltp/runltp -f "$scenario" -d . -p "$OUTPUT" -l "${output_file}.log" 2>&1 | tee "${output_file}.raw"
-    local ltp_exit=${PIPESTATUS[0]}
-
-    if [[ $ltp_exit -eq 124 ]]; then
+    if [[ $overall_exit -eq 124 ]]; then
         echo "Warning: LTP test timed out after 3600 seconds"
-    elif [[ $ltp_exit -ne 0 ]]; then
-        echo "Warning: LTP exited with code $ltp_exit"
+    elif [[ $overall_exit -ne 0 ]]; then
+        echo "Warning: LTP exited with code $overall_exit"
     else
         echo "LTP tests completed successfully."
     fi
@@ -849,11 +970,11 @@ ltp_run() {
     fi
 
     # Log result
-    log_result "ltp" "$SCENARIO" "$ltp_exit" "$ltp_start_time" "$OUTPUT"
+    log_result "ltp" "$SCENARIO" "$overall_exit" "$ltp_start_time" "$OUTPUT"
 
     echo ""
-    echo "Results saved to: ${output_file}.log"
-    return $ltp_exit
+    echo "Results saved to: ${output_file}_*.log"
+    return $overall_exit
 }
 
 # ==============================================================================
