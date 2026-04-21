@@ -5,17 +5,17 @@ milestone_name: 集成测试命令
 status: milestone_started
 last_updated: "2026-04-21"
 progress:
-  total_phases: 1
-  completed_phases: 0
+  total_phases: 3
+  completed_phases: 1
   total_plans: 1
-  completed_plans: 0
-  percent: 0
+  completed_plans: 1
+  percent: 33
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
 
-**Last Updated:** 2026-04-13
-**Session:** v1.1 - 新增 LTP 工具
+**Last Updated:** 2026-04-21
+**Session:** v1.2 - 集成测试命令
 
 ---
 
@@ -23,18 +23,18 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Roadmap created for LTP tool integration
+**Current Focus:** Phase 8 complete, Phase 9 pending
 
-**Project Root:** `/home/jenkins/dgy/github/dingofs-storage-testsuite-tools`
+**Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
 ---
 
 ## Current Position
 
-Phase: 8. 集成测试基础 (Planned)
+Phase: 8. 集成测试基础 (Complete)
 Plan: 08-01-PLAN.md
-Status: Planning complete, ready to execute
-Last activity: 2026-04-21 — Phase 8 plan created
+Status: Execution complete
+Last activity: 2026-04-21 — Phase 8 executed, -t int command added
 
 ---
 
@@ -89,16 +89,15 @@ Last activity: 2026-04-21 — Phase 8 plan created
 
 ## Session Continuity
 
-**Last Session:** 2026-04-08T08:00:00.000Z
+**Last Session:** 2026-04-21T15:00:00.000Z
 
 **Next Actions:**
 
-1. Plan Phase 5: LTP Build Setup
-2. Implement multi-stage Dockerfile for LTP
-3. Integrate LTP into entrypoint.sh
+1. Plan Phase 9: 参数传递与执行
+2. Implement MDSADDR passing from dtt config to integration framework
 
 **Context for Next Session:**
-This is a Docker image project for storage performance testing. v1.1 focuses on adding LTP (Linux Test Project) tool to the existing testsuite tools image. LTP is a comprehensive test suite for Linux kernel testing. Phase 5 handles the Docker build setup with multi-stage builds.
+v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds basic -t int command support. Phase 9 will handle passing MDSADDR from `dtt config` to the integration framework.
 
 ---
 
@@ -114,7 +113,7 @@ This is a Docker image project for storage performance testing. v1.1 focuses on 
 | 5. LTP Build Setup | Complete | 2026-04-15 | Multi-stage Dockerfile for LTP |
 | 6. LTP Integration | Complete | 2026-04-15 | entrypoint.sh and ltp_run function |
 | 7. LTP Runtime Safety | Complete | 2026-04-15 | timeout, output, capability docs |
-| 8. 集成测试基础 | Planned | - | Add -t int command |
+| 8. 集成测试基础 | Complete | 2026-04-21 | Add -t int command |
 | 9. 参数传递与执行 | Not started | - | Pass MDSADDR to framework |
 | 10. 结果解析与保存 | Not started | - | Parse and save results |
 
@@ -133,6 +132,21 @@ This is a Docker image project for storage performance testing. v1.1 focuses on 
 
 **Roadmap created:** 2026-04-08
 **Coverage:** 9/9 requirements mapped to 3 phases
+
+---
+
+## v1.2 Milestone: 集成测试命令
+
+**Started:** 2026-04-21
+**Status:** In progress (Phase 8 complete)
+
+**Target features:**
+- Add -t int command support (Phase 8) ✓
+- Pass MDSADDR from dtt config to framework (Phase 9) - Pending
+- Parse and save integration test results (Phase 10) - Pending
+
+**Roadmap created:** 2026-04-21
+**Coverage:** 8/8 requirements mapped to 3 phases
 
 ---
 
