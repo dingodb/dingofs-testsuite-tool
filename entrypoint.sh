@@ -240,7 +240,7 @@ LTP Linux 测试项目
 用法: dtt -t ltp -s <场景> [-m <挂载点>] [-o <输出目录>]
 
 测试套件:
-  all       - 运行所有LTP测试套件 (默认)
+  all       - 运行所有测试 (fs, fsx, io, dir, lock, syscalls) (默认)
   fs        - 文件系统测试
   fsx       - 文件系统扩展属性测试
   io        - Direct I/O测试
@@ -248,21 +248,16 @@ LTP Linux 测试项目
   lock      - 文件锁测试
   syscalls  - 系统调用测试
 
-常用组合:
-  fs+fsx+dir+lock+syscalls - 常用文件系统测试 (推荐)
-  fs+io                       - 文件系统+IO测试
-
 注意: LTP需要 --privileged 以访问 /dev/kmsg 等内核接口。
 
 示例:
   # 运行所有LTP测试 (默认)
   dtt -t ltp -s all
 
-  # 运行文件系统测试
+  # 运行单个测试
   dtt -t ltp -s fs
-
-  # 运行常用测试组合
   dtt -t ltp -s fsx
+  dtt -t ltp -s io
   dtt -t ltp -s dir
   dtt -t ltp -s lock
   dtt -t ltp -s syscalls
