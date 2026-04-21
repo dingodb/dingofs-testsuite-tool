@@ -542,8 +542,15 @@ log_result() {
             ;;
         mdtest)
             # Check mdtest.raw for "SUMMARY rate" to determine success
-            local mdtest_raw="$output_dir/mdtest.raw"
-            if [[ -f "$mdtest_raw" ]] && grep -q "SUMMARY rate" "$mdtest_raw" 2>/dev/null; then
+            # mdtest.raw is in subdirectories: $output_dir/{scenario}/mdtest.raw
+            local found_summary=false
+            for raw_file in "$output_dir"/*/mdtest.raw; do
+                if [[ -f "$raw_file" ]] && grep -q "SUMMARY rate" "$raw_file" 2>/dev/null; then
+                    found_summary=true
+                    break
+                fi
+            done
+            if [[ "$found_summary" == "true" ]]; then
                 status="SUCCESS"
                 details="mdtest completed successfully"
             fi
