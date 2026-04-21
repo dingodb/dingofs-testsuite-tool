@@ -541,16 +541,11 @@ log_result() {
             fi
             ;;
         mdtest)
-            # Check for combined mdtest summary which has all scenario results
-            # The combined summary is generated after all scenarios complete
-            local summary_file
-            summary_file=$(ls "$output_dir"/mdtest_mdtest_summary_*.md 2>/dev/null | head -1)
-            if [[ -n "$summary_file" ]] && [[ -f "$summary_file" ]]; then
-                # Look for table rows with metrics (e.g., "| File creation | 45535.816 |")
-                if grep -qE '\|[[:space:]]+[a-zA-Z_ ]+[[:space:]]+\|[[:space:]]+[0-9]+\.[0-9]+[[:space:]]+\|' "$summary_file" 2>/dev/null; then
-                    status="SUCCESS"
-                    details="mdtest completed successfully"
-                fi
+            # Check mdtest.raw for "SUMMARY rate" to determine success
+            local mdtest_raw="$output_dir/mdtest.raw"
+            if [[ -f "$mdtest_raw" ]] && grep -q "SUMMARY rate" "$mdtest_raw" 2>/dev/null; then
+                status="SUCCESS"
+                details="mdtest completed successfully"
             fi
             ;;
         pjdtest)
