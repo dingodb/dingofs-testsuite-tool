@@ -226,7 +226,7 @@ Plans:
 | 6. LTP Integration | 1/1 | Complete | 2026-04-15 |
 | 7. LTP Runtime Safety | 1/1 | Complete | 2026-04-15 |
 | 8. 集成测试基础 | 1/1 | Complete | 2026-04-21 |
-| 9. 参数传递与执行 | 0/1 | Pending | — |
+| 9. 参数传递与执行 | 1/1 | Complete | 2026-04-21 |
 | 10. 结果解析与保存 | 0/1 | Pending | — |
 
 ## Coverage
@@ -240,9 +240,9 @@ Plans:
 |-------------|-------|--------|
 | INTG-01 | Phase 8 | Complete |
 | AUTO-01 | Phase 8 | Complete |
-| INTG-02 | Phase 9 | Pending |
-| INTG-03 | Phase 9 | Pending |
-| AUTO-02 | Phase 9 | Pending |
+| INTG-02 | Phase 9 | Complete |
+| INTG-03 | Phase 9 | Complete |
+| AUTO-02 | Phase 9 | Complete |
 | INTG-04 | Phase 10 | Pending |
 | INTG-05 | Phase 10 | Pending |
 | AUTO-03 | Phase 10 | Pending |

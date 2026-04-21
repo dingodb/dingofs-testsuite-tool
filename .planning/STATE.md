@@ -6,10 +6,10 @@ status: milestone_started
 last_updated: "2026-04-21"
 progress:
   total_phases: 3
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 1
   completed_plans: 1
-  percent: 33
+  percent: 66
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Phase 8 complete, Phase 9 pending
+**Current Focus:** Phase 9 complete, Phase 10 pending
 
 **Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
@@ -31,10 +31,10 @@ progress:
 
 ## Current Position
 
-Phase: 8. 集成测试基础 (Complete)
-Plan: 08-01-PLAN.md
+Phase: 9. 参数传递与执行 (Complete)
+Plan: 09-01-PLAN.md
 Status: Execution complete
-Last activity: 2026-04-21 — Phase 8 executed, -t int command added
+Last activity: 2026-04-21 — Phase 9 executed, MDSADDR passing implemented
 
 ---
 
@@ -114,7 +114,7 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 | 6. LTP Integration | Complete | 2026-04-15 | entrypoint.sh and ltp_run function |
 | 7. LTP Runtime Safety | Complete | 2026-04-15 | timeout, output, capability docs |
 | 8. 集成测试基础 | Complete | 2026-04-21 | Add -t int command |
-| 9. 参数传递与执行 | Planned | - | Pass MDSADDR to framework |
+| 9. 参数传递与执行 | Complete | 2026-04-21 | Pass MDSADDR to framework |
 | 10. 结果解析与保存 | Not started | - | Parse and save results |
 
 ---
@@ -138,11 +138,11 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 ## v1.2 Milestone: 集成测试命令
 
 **Started:** 2026-04-21
-**Status:** In progress (Phase 8 complete)
+**Status:** In progress (Phases 8-9 complete)
 
 **Target features:**
 - Add -t int command support (Phase 8) ✓
-- Pass MDSADDR from dtt config to framework (Phase 9) - Pending
+- Pass MDSADDR from dtt config to framework (Phase 9) ✓
 - Parse and save integration test results (Phase 10) - Pending
 
 **Roadmap created:** 2026-04-21
