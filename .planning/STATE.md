@@ -116,7 +116,7 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 | 8. 集成测试基础 | Complete | 2026-04-21 | Add -t int command |
 | 9. 参数传递与执行 | Complete | 2026-04-21 | Pass MDSADDR to framework |
 | 10. 结果解析与保存 | Complete | 2026-04-21 | Parse and save results |
-| 11. 通知功能基础 | Not started | - | Add --wechat/--email flags and config |
+| 11. 通知功能基础 | Complete | 2026-04-21 | Add --wechat/--email flags and config |
 | 12. WeChat 通知实现 | Not started | - | Webhook curl POST with markdown_v2 |
 | 13. Email 通知实现 | Not started | - | SMTP Outlook sending |
 | 14. 工具通知集成 | Not started | - | Extend to all tools |
