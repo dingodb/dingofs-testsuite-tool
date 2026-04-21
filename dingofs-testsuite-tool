@@ -78,65 +78,79 @@ show_help() {
 dingofs-Testsuite-tools (dtt)
 ============================
 
-A wrapper script for running DingoFS storage testsuite tests via Docker.
+DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
-Usage:
-  dingofs-testsuite-tool <command> [options]
-  dtt <command> [options]          # Shortcut alias
+用法:
+  dtt <命令> [选项]
+  dtt <命令> [选项]          # 快捷命令
 
-Commands:
-  config <subcommand>      Manage configuration
-  debug                    Start an interactive shell in the testsuite container
-  help                     Show this help message
-  (dtt is an alias for dingofs-testsuite-tool)
+命令:
+  config <子命令>    管理配置
+  debug              在测试容器中启动交互式Shell
+  -t <工具> --help   显示特定工具的帮助
 
-Config Subcommands:
-  dingofs-testsuite-tool config set testdir <dir>   Set test directory (mount point)
-  dingofs-testsuite-tool config set output <dir>    Set output directory
-  dingofs-testsuite-tool config set image <name>    Set Docker image
-  dingofs-testsuite-tool config set mdsaddr <addr>  Set MDS address (e.g., 172.30.14.126:6900 or comma-separated for multiple)
-  dingofs-testsuite-tool config show                Show current configuration
+工具:
+  fio       - 灵活I/O测试工具 (存储性能测试)
+  vdbench   - Oracle存储测试工具
+  mdtest    - MPI文件系统元数据测试
+  pjdtest   - POSIX文件系统测试套件
+  ltp       - Linux测试项目 (内核测试套件)
 
-Test Commands (run testsuite):
-  dingofs-testsuite-tool -t <tool> -s <scenario> [-n <np>] [options]
-                          Run a testsuite test
-                          (use config values for testdir/output if not specified)
+配置子命令:
+  dtt config set testdir <目录>    设置测试目录 (挂载点)
+  dtt config set output <目录>     设置输出目录
+  dtt config set image <镜像名>    设置Docker镜像
+  dtt config set mdsaddr <地址>   设置MDS地址 (例如: 172.30.14.126:6900)
+  dtt config show                 显示当前配置
 
-Options for test command:
-  -t, --tool <name>       Test tool: fio, vdbench, mdtest, pjdtest
-  -s, --scenario <name>   Test scenario name
-  -n, --np <num>          MPI process count for mdtest (default: 16)
-  -m, --mount <dir>       Override test directory (from config)
-  -o, --output <dir>      Override output directory (from config)
+测试命令:
+  dtt -t <工具> -s <场景> [-n <进程数>] [选项]
+                          运行测试套件
+                          (如未指定则使用配置中的testdir/output)
 
-Examples:
-  # First-time setup: configure settings
-  dingofs-testsuite-tool config set testdir /mnt/test
-  dingofs-testsuite-tool config set output /tmp/results
-  dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
+选项:
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp
+  -s, --scenario <名称>   测试场景名称
+  -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
+  -m, --mount <目录>      覆盖测试目录 (从配置读取)
+  -o, --output <目录>     覆盖输出目录 (从配置读取)
 
-  # Show current configuration
-  dingofs-testsuite-tool config show
+示例:
+  # 首次设置: 配置参数
+  dtt config set testdir /mnt/test
+  dtt config set output /tmp/results
+  dtt config set image localhost/dingofs-testsuite-tools:latest
 
-  # Run fio sequential write test (uses config values for testdir/output)
-  dingofs-testsuite-tool -t fio -s seq_write
+  # 显示当前配置
+  dtt config show
 
-  # Run fio with explicit directories
-  dingofs-testsuite-tool -m /mnt/test -o /tmp/results -t fio -s seq_write
+  # 运行 fio 顺序写测试 (使用配置中的testdir/output)
+  dtt -t fio -s seq_write
 
-  # Run mdtest with custom process count
-  dingofs-testsuite-tool -t mdtest -s mdtest -n 32
+  # 运行所有 fio 顺序读场景
+  dtt -t fio -s seq_read
 
-  # Run pjdtest
-  dingofs-testsuite-tool -t pjdtest -s pjdtest
+  # 运行所有 mdtest 场景
+  dtt -t mdtest -s all
 
-  # Enter debug shell
-  dingofs-testsuite-tool debug
+  # 运行所有 pjdtest 测试
+  dtt -t pjdtest -s all
 
-Notes:
-  - Configuration is persisted in $CONFIG_DIR
-  - If -m/-o not provided, uses values from 'config set'
-  - If config values not set, you will be prompted to set them
+  # 运行所有 ltp 测试
+  dtt -t ltp -s all
+
+  # 进入调试Shell
+  dtt debug
+
+  # 显示特定工具帮助
+  dtt -t fio --help
+  dtt -t mdtest --help
+  dtt -t ltp --help
+
+注意:
+  - 配置保存在 ~/.dingofs_testsuite/
+  - 如果未提供 -m/-o，则使用 'config set' 的值
+  - 如果配置值未设置，系统会提示设置
 
 EOF
 }
