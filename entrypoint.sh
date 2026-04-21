@@ -33,6 +33,12 @@ INTEGRATION_DIR="/dingofs-integration-test"
 # Scenario directories
 SCENARIOS_DIR="/scenarios"
 
+# Notification settings
+WECHAT_ENABLED="${WECHAT:-no}"
+WEBHOOK_URL="${WEBHOOK_URL:-}"
+EMAIL_ENABLED="${EMAIL:-no}"
+EMAIL_TO="${EMAIL_TO:-daigy@zetyun.com}"
+
 # ==============================================================================
 # Help Function
 # ==============================================================================
@@ -66,6 +72,14 @@ Tools:
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
   long-running   - 容器启动 → 运行测试 → 容器保持运行，可用 docker exec 执行更多测试
+
+通知选项:
+  --wechat    启用企业微信通知 (需要配置 webhook_url)
+  --email      启用邮件通知 (需要配置 email)
+
+配置通知:
+  dtt config set webhook_url <url>  设置企业微信webhook地址
+  dtt config set email <地址>      设置邮件通知地址
 
 FIO Scenarios (4 types, each runs 24 sub-scenarios):
   rand_read   - Random read  (24 variants: 2 direct × 3 block size × 4 numjobs)

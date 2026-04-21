@@ -17,9 +17,17 @@ TESTDIR_FILE="$CONFIG_DIR/testdir"
 OUTPUT_FILE="$CONFIG_DIR/output"
 IMAGE_FILE="$CONFIG_DIR/image"
 MDSADDR_FILE="$CONFIG_DIR/mdsaddr"
+WEBHOOK_URL_FILE="$CONFIG_DIR/webhook_url"
+EMAIL_FILE="$CONFIG_DIR/email"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
+
+# Default webhook URL for WeChat
+DEFAULT_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=9051ba90-dd37-4023-b49f-5db8ce78ac31"
+
+# Default email
+DEFAULT_EMAIL="daigy@zetyun.com"
 
 # Ensure config directory exists
 mkdir -p "$CONFIG_DIR"
@@ -43,6 +51,12 @@ load_config() {
         mdsaddr)
             [[ -f "$MDSADDR_FILE" ]] && cat "$MDSADDR_FILE" || echo ""
             ;;
+        webhook_url)
+            [[ -f "$WEBHOOK_URL_FILE" ]] && cat "$WEBHOOK_URL_FILE" || echo "$DEFAULT_WEBHOOK_URL"
+            ;;
+        email)
+            [[ -f "$EMAIL_FILE" ]] && cat "$EMAIL_FILE" || echo "$DEFAULT_EMAIL"
+            ;;
     esac
 }
 
@@ -61,6 +75,12 @@ save_config() {
             ;;
         mdsaddr)
             echo "$value" > "$MDSADDR_FILE"
+            ;;
+        webhook_url)
+            echo "$value" > "$WEBHOOK_URL_FILE"
+            ;;
+        email)
+            echo "$value" > "$EMAIL_FILE"
             ;;
     esac
 }
@@ -102,6 +122,8 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt config set output <目录>     设置输出目录
   dtt config set image <镜像名>    设置Docker镜像
   dtt config set mdsaddr <地址>   设置MDS地址 (例如: 172.30.14.126:6900)
+  dtt config set webhook_url <url> 设置企业微信webhook地址
+  dtt config set email <地址>      设置邮件通知地址 (默认: daigy@zetyun.com)
   dtt config show                 显示当前配置
 
 测试命令:
@@ -115,6 +137,8 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录 (从配置读取)
   -o, --output <目录>     覆盖输出目录 (从配置读取)
+  --wechat                 启用企业微信通知
+  --email                  启用邮件通知
 
 示例:
   # 首次设置: 配置参数
@@ -148,6 +172,16 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt -t mdtest --help
   dtt -t ltp --help
 
+通知示例:
+  # 启用微信通知
+  dtt -t pjdtest -s all --wechat
+
+  # 启用邮件通知
+  dtt -t pjdtest -s all --email
+
+  # 同时启用微信和邮件通知
+  dtt -t pjdtest -s all --wechat --email
+
 注意:
   - 配置保存在 ~/.dingofs_testsuite/
   - 如果未提供 -m/-o，则使用 'config set' 的值
@@ -176,13 +210,13 @@ cmd_config() {
             fi
 
             case "$key" in
-                testdir|output|image|mdsaddr)
+                testdir|output|image|mdsaddr|webhook_url|email)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir, output, image, mdsaddr"
+                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email"
                     return 1
                     ;;
             esac
@@ -193,10 +227,14 @@ cmd_config() {
             local out=$(load_config output)
             local img=$(load_config image)
             local mds=$(load_config mdsaddr)
+            local webhook=$(load_config webhook_url)
+            local email=$(load_config email)
             echo "  testdir: ${td:-not set}"
             echo "  output:  ${out:-not set}"
             echo "  image:   ${img:-not set}"
             echo "  mdsaddr: ${mds:-not set}"
+            echo "  webhook_url: ${webhook:-not set}"
+            echo "  email: ${email:-not set}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then
@@ -300,6 +338,7 @@ run_testsuite() {
 
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}"
+    local wechat="" email_to=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -322,6 +361,14 @@ run_testsuite() {
             -n|--np)
                 np="$2"
                 shift 2
+                ;;
+            --wechat)
+                wechat="yes"
+                shift
+                ;;
+            --email)
+                email_to="yes"
+                shift
                 ;;
             --help|-h)
                 # Check if tool is already set, show tool-specific help
@@ -404,6 +451,20 @@ run_testsuite() {
                 fi
             done
         done <<< "$config_mdsaddr"
+    fi
+
+    # Pass webhook_url if wechat notification enabled
+    if [[ -n "$wechat" ]]; then
+        local webhook_url=$(load_config webhook_url)
+        docker_cmd+=("-e" "WECHAT=yes")
+        docker_cmd+=("-e" "WEBHOOK_URL=$webhook_url")
+    fi
+
+    # Pass email if email notification enabled
+    if [[ -n "$email_to" ]]; then
+        local email_addr=$(load_config email)
+        docker_cmd+=("-e" "EMAIL=yes")
+        docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
 
     # Build entrypoint command
