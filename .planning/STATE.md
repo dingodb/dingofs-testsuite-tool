@@ -114,7 +114,7 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 | 6. LTP Integration | Complete | 2026-04-15 | entrypoint.sh and ltp_run function |
 | 7. LTP Runtime Safety | Complete | 2026-04-15 | timeout, output, capability docs |
 | 8. 集成测试基础 | Complete | 2026-04-21 | Add -t int command |
-| 9. 参数传递与执行 | Not started | - | Pass MDSADDR to framework |
+| 9. 参数传递与执行 | Planned | - | Pass MDSADDR to framework |
 | 10. 结果解析与保存 | Not started | - | Parse and save results |
 
 ---
