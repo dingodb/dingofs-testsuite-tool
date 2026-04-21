@@ -5,9 +5,9 @@ milestone_name: 集成测试命令
 status: milestone_started
 last_updated: "2026-04-21"
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
-  total_plans: 0
+  total_plans: 1
   completed_plans: 0
   percent: 0
 ---
@@ -31,10 +31,10 @@ progress:
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-04-21 — Milestone v1.2 started
+Phase: 8. 集成测试基础 (Planned)
+Plan: 08-01-PLAN.md
+Status: Planning complete, ready to execute
+Last activity: 2026-04-21 — Phase 8 plan created
 
 ---
 
@@ -114,7 +114,7 @@ This is a Docker image project for storage performance testing. v1.1 focuses on 
 | 5. LTP Build Setup | Complete | 2026-04-15 | Multi-stage Dockerfile for LTP |
 | 6. LTP Integration | Complete | 2026-04-15 | entrypoint.sh and ltp_run function |
 | 7. LTP Runtime Safety | Complete | 2026-04-15 | timeout, output, capability docs |
-| 8. 集成测试基础 | Not started | - | Add -t integration command |
+| 8. 集成测试基础 | Planned | - | Add -t int command |
 | 9. 参数传递与执行 | Not started | - | Pass MDSADDR to framework |
 | 10. 结果解析与保存 | Not started | - | Parse and save results |
 
