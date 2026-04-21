@@ -28,6 +28,7 @@ FIO_BIN="/usr/bin/fio"
 VDBENCH_BIN="/opt/vdbench/vdbench"
 VDBENCH_DIR="/opt/vdbench"
 MDTEST_BIN="/usr/local/bin/mdtest"
+INTEGRATION_DIR="/dingofs-integration-test"
 
 # Scenario directories
 SCENARIOS_DIR="/scenarios"
@@ -60,6 +61,7 @@ Tools:
   mdtest    - MPI filesystem metadata test
   pjdtest   - POSIX filesystem test suite
   ltp       - Linux Test Project (内核测试套件)
+  int       - DingoFS integration test (自动化框架)
 
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
@@ -125,6 +127,9 @@ Examples:
 
   # ltp 测试 (默认运行文件系统测试，需要 --privileged)
   docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
+
+  # int 测试 (需要配置MDS地址)
+  docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t int -s quota -m /data -o /data
 
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data --mode long-running
@@ -264,6 +269,33 @@ LTP Linux 测试项目
 EOF
 }
 
+show_int_help() {
+    cat << EOF
+INT 集成测试 (DingoFS Automation Framework)
+============================================
+
+用法: dtt -t int -s <场景> [-m <挂载点>] [-o <输出目录>]
+
+测试模块:
+  quota       - Quota 配额测试 (默认)
+  client      - Client 客户端测试
+  cache_node  - Cache Node 缓存节点测试
+  chaos       - Chaos 混沌测试
+
+示例:
+  # 运行所有 quota 测试 (默认)
+  dtt -t int -s quota
+
+  # 运行 client 测试
+  dtt -t int -s client
+
+  # 运行所有集成测试
+  dtt -t int -s all
+
+注意: 需要配置 MDS 地址 (dtt config set mdsaddr)
+EOF
+}
+
 # ==============================================================================
 # Validation Functions
 # ==============================================================================
@@ -273,10 +305,10 @@ validate_params() {
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
-        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp)."
+        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp)$ ]]; then
-        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp"
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int)$ ]]; then
+        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int"
         error=1
     fi
 
@@ -356,6 +388,10 @@ scenario_exists() {
         ltp)
             # ltp scenarios: all, fs, fsx, io, dir, lock, syscalls
             [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(fs|fsx|io|dir|lock|syscalls)$ ]]
+            ;;
+        int|integration)
+            # int scenarios: quota, client, cache_node, chaos, all
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|chaos)$ ]]
             ;;
         *)
             return 1
@@ -458,6 +494,7 @@ parse_args() {
                         mdtest) show_mdtest_help; exit 0 ;;
                         pjdtest) show_pjdtest_help; exit 0 ;;
                         ltp) show_ltp_help; exit 0 ;;
+                        int|integration) show_int_help; exit 0 ;;
                         *) echo "Unknown tool: $TOOL"; exit 1 ;;
                     esac
                 fi
@@ -647,6 +684,9 @@ dispatch_tool() {
             ;;
         ltp)
             ltp_run
+            ;;
+        int|integration)
+            integration_run
             ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
@@ -1001,6 +1041,55 @@ ltp_run() {
     echo ""
     echo "Results saved to: ${output_file}_*.log"
     return $overall_exit
+}
+
+integration_run() {
+    echo "Running DingoFS Integration Tests..."
+    echo "  Module: $SCENARIO"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+    echo ""
+
+    # Get MDS address from environment
+    local mdsaddr="${MDSADDR:-}"
+    if [[ -z "$mdsaddr" ]]; then
+        echo "Error: MDSADDR environment variable not set"
+        echo "Please set MDS address via: dtt config set mdsaddr <address>"
+        exit 1
+    fi
+
+    # Create output directory
+    mkdir -p "$OUTPUT"
+    mkdir -p "$OUTPUT/integration"
+
+    local start_time=$(date +"%Y-%m-%d %H:%M:%S")
+    local timestamp=$(date +"%Y%m%d_%H%M%S")
+    local log_file="$OUTPUT/integration/int_${timestamp}.log"
+
+    echo "Log file: $log_file"
+    echo ""
+
+    # Run the integration test framework
+    # Default module is quota if not specified
+    local module="${SCENARIO:-quota}"
+
+    cd "$INTEGRATION_DIR"
+
+    # Run tests and capture output
+    if python3 run_tests.py "$module" --env env_126_quota --skip-setup 2>&1 | tee "$log_file"; then
+        local exit_code=0
+    else
+        local exit_code=$?
+    fi
+
+    echo ""
+    echo "Integration tests completed with exit code: $exit_code"
+    echo "Log saved to: $log_file"
+
+    # Log result
+    log_result "int" "$module" "$exit_code" "$start_time" "$OUTPUT"
+
+    exit $exit_code
 }
 
 # ==============================================================================

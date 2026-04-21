@@ -95,6 +95,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   mdtest    - MPI文件系统元数据测试
   pjdtest   - POSIX文件系统测试套件
   ltp       - Linux测试项目 (内核测试套件)
+  int       - DingoFS集成测试 (自动化框架)
 
 配置子命令:
   dtt config set testdir <目录>    设置测试目录 (挂载点)
@@ -109,7 +110,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                           (如未指定则使用配置中的testdir/output)
 
 选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int
   -s, --scenario <名称>   测试场景名称
   -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录 (从配置读取)
@@ -357,7 +358,7 @@ run_testsuite() {
     fi
 
     if [[ -z "$tool" ]]; then
-        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest)"
+        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int)"
         return 1
     fi
 
@@ -418,9 +419,9 @@ run_testsuite() {
         # mdtest scenario is optional
         [[ -n "$scenario" ]] && entrypoint_cmd+=(-s "$scenario")
     else
-        # fio, vdbench, pjdtest, ltp all require scenario
+        # fio, vdbench, pjdtest, ltp, int all require scenario
         if [[ -z "$scenario" ]]; then
-            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, and ltp"
+            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, ltp, and int"
             return 1
         fi
         entrypoint_cmd+=(-s "$scenario")
