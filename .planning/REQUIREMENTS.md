@@ -100,17 +100,59 @@
 
 ### 集成测试命令
 
-- [ ] **INTG-01**: 添加 `-t int` 命令行参数支持
-- [ ] **INTG-02**: 创建 `integration_run()` 函数执行自动化框架
-- [ ] **INTG-03**: 从 `dtt config` 获取 MDS 地址并传递到自动化框架
-- [ ] **INTG-04**: 解析自动化框架测试结果
-- [ ] **INTG-05**: 保存结果到指定输出目录
+- [x] **INTG-01**: 添加 `-t int` 命令行参数支持
+- [x] **INTG-02**: 创建 `integration_run()` 函数执行自动化框架
+- [x] **INTG-03**: 从 `dtt config` 获取 MDS 地址并传递到自动化框架
+- [x] **INTG-04**: 解析自动化框架测试结果
+- [x] **INTG-05**: 保存结果到指定输出目录
 
 ### 自动化框架集成
 
-- [ ] **AUTO-01**: 集成 dingofs-integration-test 到镜像
-- [ ] **AUTO-02**: 配置自动化框架运行环境
-- [ ] **AUTO-03**: 提供 --help 显示集成测试帮助信息
+- [x] **AUTO-01**: 集成 dingofs-integration-test 到镜像
+- [x] **AUTO-02**: 配置自动化框架运行环境
+- [x] **AUTO-03**: 提供 --help 显示集成测试帮助信息
+
+## v1.3 Requirements
+
+### 结果通知命令行参数
+
+- [ ] **NOTIFY-01**: 添加 `--wechat` 命令行参数启用微信通知
+- [ ] **NOTIFY-02**: 添加 `--email` 命令行参数启用邮件通知
+
+### 通知配置
+
+- [ ] **NOTIFY-03**: 在 dtt config 中设置 webhook_url（微信）
+- [ ] **NOTIFY-04**: 在 dtt config 中设置 email 地址
+- [ ] **NOTIFY-05**: webhook_url 默认值使用配置中的值
+- [ ] **NOTIFY-06**: email 默认发送到 daigy@zetyun.com
+
+### WeChat 通知
+
+- [ ] **WECHAT-01**: 实现 WeChat webhook 发送功能（curl POST）
+- [ ] **WECHAT-02**: 使用 markdown_v2 消息格式
+- [ ] **WECHAT-03**: 发送失败时记录日志
+
+### Email 通知
+
+- [ ] **EMAIL-01**: 实现 Email 发送功能（SMTP）
+- [ ] **EMAIL-02**: 使用 Outlook SMTP 服务器 (smtp.partner.outlook.cn:587)
+- [ ] **EMAIL-03**: 邮件标题: "DingoFS Testsuite Tool 自动化测试结果"
+- [ ] **EMAIL-04**: CC 固定抄送给 daigy@zetyun.com
+
+### 消息内容
+
+- [ ] **MSG-01**: 消息第一行显示结果（通过/失败）
+- [ ] **MSG-02**: 通过显示绿色加粗，失败显示红色加粗
+- [ ] **MSG-03**: 构建 markdown 表格显示详情
+
+### 工具支持
+
+- [ ] **TOOLS-01**: pjdtest 测试结果通知
+- [ ] **TOOLS-02**: 扩展到 fio
+- [ ] **TOOLS-03**: 扩展到 vdbench
+- [ ] **TOOLS-04**: 扩展到 mdtest
+- [ ] **TOOLS-05**: 扩展到 ltp
+- [ ] **TOOLS-06**: 扩展到 int
 
 ## Traceability
 

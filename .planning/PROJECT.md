@@ -8,11 +8,22 @@
 
 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试，无需关注工具安装和配置细节。
 
-## Current Milestone: v1.2 集成测试命令
+## Current Milestone: v1.3 测试结果通知
+
+**Goal:** 测试完成后自动发送结果到企业微信和邮箱
+
+**Target features:**
+- 添加 `--wechat` 命令行参数启用微信通知
+- 添加 `--email` 命令行参数启用邮件通知
+- 在 dtt config 中设置 webhook_url 和 email 地址
+- 解析测试结果并构建 markdown 格式消息
+- 首先支持 pjdtest，再推广到其他工具
+
+## Previous Milestone: v1.2 集成测试命令
 
 **Goal:** 添加 `dtt -t int` 命令，运行 DingoFS 自动化测试框架
 
-**Target features:**
+**Shipped:**
 - 添加 `dtt -t int` 命令
 - 支持传递 MDS 地址等必要参数
 - 解析并保存自动化框架测试结果
@@ -30,19 +41,30 @@
 
 ## Requirements
 
+### Validated (v1.2)
+
+- [x] 添加 integration 工具命令
+- [x] 支持传递 MDS 地址等参数
+- [x] 解析自动化框架测试结果
+- [x] 集成 dingofs-integration-test 到镜像
+
+### Active (v1.3)
+
+- [ ] 添加 --wechat 命令行参数
+- [ ] 添加 --email 命令行参数
+- [ ] 在 dtt config 中设置 webhook_url
+- [ ] 在 dtt config 中设置 email 地址
+- [ ] 实现 WeChat webhook 发送功能
+- [ ] 实现 Email 发送功能
+- [ ] pjdtest 测试结果通知
+- [ ] 扩展到其他工具 (fio, vdbench, mdtest, ltp, int)
+
 ### Validated (v1.1)
 
 - [x] 内置LTP (Linux Test Project) 测试工具
 - [x] 支持ltp工具运行模式
 - [x] 支持LTP测试结果输出
 - [x] 支持超时保护
-
-### Active (v1.2)
-
-- [ ] 添加 integration 工具命令
-- [ ] 支持传递 MDS 地址等参数
-- [ ] 解析自动化框架测试结果
-- [ ] 集成 dingofs-integration-test 到镜像
 
 ### Validated (v1.0)
 
@@ -113,4 +135,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 — v1.2 started*
+*Last updated: 2026-04-21 — v1.3 started*

@@ -214,6 +214,67 @@ Plans:
 
 ---
 
+## v1.3: 测试结果通知
+
+### Phase 11: 通知功能基础
+**Goal:** Add --wechat and --email CLI flags, add notify_config() function, update dtt config to support webhook_url and email settings.
+
+**Depends on:** Phase 1
+
+**Requirements:** NOTIFY-01, NOTIFY-02, NOTIFY-03, NOTIFY-04
+
+**Success Criteria** (what must be TRUE):
+1. User can specify --wechat to enable WeChat notification
+2. User can specify --email to enable Email notification
+3. dtt config supports webhook_url setting
+4. dtt config supports email setting
+
+---
+
+### Phase 12: WeChat 通知实现
+**Goal:** Implement WeChat webhook notification with markdown_v2 format.
+
+**Depends on:** Phase 11
+
+**Requirements:** WECHAT-01, WECHAT-02, WECHAT-03, MSG-01, MSG-02, MSG-03
+
+**Success Criteria** (what must be TRUE):
+1. WeChat webhook curl POST sends correctly
+2. Message uses markdown_v2 format
+3. First line shows pass/fail with color
+4. Table shows test details
+5. Send failure is logged
+
+---
+
+### Phase 13: Email 通知实现
+**Goal:** Implement Email notification via SMTP.
+
+**Depends on:** Phase 11
+
+**Requirements:** EMAIL-01, EMAIL-02, EMAIL-03, EMAIL-04
+
+**Success Criteria** (what must be TRUE):
+1. Email sends via Outlook SMTP
+2. Subject: "DingoFS Testsuite Tool 自动化测试结果"
+3. CC sent to daigy@zetyun.com
+4. Email content matches WeChat content
+
+---
+
+### Phase 14: pjdtest 通知集成
+**Goal:** Add pjdtest result notification support first, then extend to other tools.
+
+**Depends on:** Phase 12, Phase 13
+
+**Requirements:** TOOLS-01, TOOLS-02, TOOLS-03, TOOLS-04, TOOLS-05, TOOLS-06
+
+**Success Criteria** (what must be TRUE):
+1. pjdtest sends WeChat/Email notification after test
+2. All tools (fio, vdbench, mdtest, ltp, int) can send notifications
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -228,9 +289,14 @@ Plans:
 | 8. 集成测试基础 | 1/1 | Complete | 2026-04-21 |
 | 9. 参数传递与执行 | 1/1 | Complete | 2026-04-21 |
 | 10. 结果解析与保存 | 1/1 | Complete | 2026-04-21 |
+| 11. 通知功能基础 | 0/1 | Pending | — |
+| 12. WeChat 通知实现 | 0/1 | Pending | — |
+| 13. Email 通知实现 | 0/1 | Pending | — |
+| 14. 工具通知集成 | 0/1 | Pending | — |
 
 ## Coverage
 
+- v1.3 Requirements: 17 total (NOTIFY-01~06, WECHAT-01~03, EMAIL-01~04, MSG-01~03, TOOLS-01~06)
 - v1.2 Requirements: 8 total (INTG-01~05, AUTO-01~03)
 - v1.1 Requirements: 9 total (LTP-01~09)
 - v1.0 Requirements: 34 total
@@ -288,8 +354,33 @@ Plans:
 | LTP-07 | Phase 7 | Pending |
 | LTP-08 | Phase 7 | Pending |
 | LTP-09 | Phase 7 | Pending |
+| NOTIFY-01 | Phase 11 | Pending |
+| NOTIFY-02 | Phase 11 | Pending |
+| NOTIFY-03 | Phase 11 | Pending |
+| NOTIFY-04 | Phase 11 | Pending |
+| NOTIFY-05 | Phase 11 | Pending |
+| NOTIFY-06 | Phase 11 | Pending |
+| WECHAT-01 | Phase 12 | Pending |
+| WECHAT-02 | Phase 12 | Pending |
+| WECHAT-03 | Phase 12 | Pending |
+| MSG-01 | Phase 12 | Pending |
+| MSG-02 | Phase 12 | Pending |
+| MSG-03 | Phase 12 | Pending |
+| EMAIL-01 | Phase 13 | Pending |
+| EMAIL-02 | Phase 13 | Pending |
+| EMAIL-03 | Phase 13 | Pending |
+| EMAIL-04 | Phase 13 | Pending |
+| TOOLS-01 | Phase 14 | Pending |
+| TOOLS-02 | Phase 14 | Pending |
+| TOOLS-03 | Phase 14 | Pending |
+| TOOLS-04 | Phase 14 | Pending |
+| TOOLS-05 | Phase 14 | Pending |
+| TOOLS-06 | Phase 14 | Pending |
 
 ---
+
+*Roadmap created: 2026-04-03*
+*Last updated: 2026-04-21 for v1.3*
 
 *Roadmap created: 2026-04-03*
 *Last updated: 2026-04-21 for v1.2*
