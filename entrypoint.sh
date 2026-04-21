@@ -541,13 +541,15 @@ parse_args() {
 # ==============================================================================
 
 # Log test result to result.log
-# Usage: log_result <tool> <scenario> <exit_code> <start_time> <output_dir>
+# Usage: log_result <tool> <scenario> <exit_code> <start_time> <output_dir> [status_override] [details_override]
 log_result() {
     local tool="$1"
     local scenario="$2"
     local exit_code="$3"
     local start_time_str="$4"
     local output_dir="$5"
+    local status_override="${6:-}"
+    local details_override="${7:-}"
     local result_log="$output_dir/result.log"
 
     # Calculate execution time using epoch seconds
@@ -623,6 +625,30 @@ log_result() {
             # ltp success based on exit code
             if [[ $exit_code -eq 0 ]]; then
                 status="SUCCESS"
+            fi
+            ;;
+        int)
+            # For integration tests, use the parsed results if provided
+            # Otherwise, try to parse from log file
+            if [[ -n "$status_override" ]]; then
+                status="$status_override"
+                details="$details_override"
+            else
+                # Try to find passed/failed counts from log
+                local int_log_file
+                int_log_file=$(ls -t "$output_dir"/int_*.log 2>/dev/null | head -1)
+                if [[ -n "$int_log_file" ]] && [[ -f "$int_log_file" ]]; then
+                    local passed_count=$(grep "Passed:" "$int_log_file" 2>/dev/null | tail -1 | sed 's/.*Passed: //' | sed 's/[^0-9].*//' || echo "0")
+                    local failed_count=$(grep "Failed:" "$int_log_file" 2>/dev/null | tail -1 | sed 's/.*Failed: //' | sed 's/[^0-9].*//' || echo "0")
+
+                    if [[ -n "$failed_count" ]] && [[ "$failed_count" == "0" ]]; then
+                        status="SUCCESS"
+                        details="Integration tests passed (Passed: ${passed_count:-0}, Failed: ${failed_count:-0})"
+                    elif [[ -n "$failed_count" ]] && [[ "$failed_count" -gt "0" ]]; then
+                        status="FAIL"
+                        details="Integration tests failed (Passed: ${passed_count:-0}, Failed: ${failed_count:-0})"
+                    fi
+                fi
             fi
             ;;
     esac
@@ -1061,6 +1087,7 @@ integration_run() {
     # Create output directory
     mkdir -p "$OUTPUT"
     mkdir -p "$OUTPUT/integration"
+    mkdir -p "$OUTPUT/integration/allure-results"
 
     local start_time=$(date +"%Y-%m-%d %H:%M:%S")
     local timestamp=$(date +"%Y%m%d_%H%M%S")
@@ -1101,16 +1128,51 @@ EOF
 
     cd "$INTEGRATION_DIR"
 
-    # Run tests with dynamic environment
-    python3 run_tests.py "$module" --env env_dynamic --skip-setup 2>&1 | tee "$log_file"
+    # Run tests with dynamic environment and proper report directory
+    python3 run_tests.py "$module" --env env_dynamic --skip-setup \
+        --report-dir "$OUTPUT/integration/allure-results" 2>&1 | tee "$log_file"
     local exit_code=${PIPESTATUS[0]}
 
-    echo ""
-    echo "Integration tests completed with exit code: $exit_code"
-    echo "Log saved to: $log_file"
+    # Parse test results from the log output
+    local int_passed=0
+    local int_failed=0
+    local int_total=0
+    local int_skipped=0
 
-    # Log result
-    log_result "int" "$module" "$exit_code" "$start_time" "$OUTPUT"
+    # Extract test statistics from log (format: "Passed: X", "Failed: Y", "Total Cases: Z")
+    if grep -q "Passed:" "$log_file"; then
+        int_total=$(grep "Total Cases:" "$log_file" | sed 's/.*Total Cases: //' | sed 's/ .*//' || echo "0")
+        int_passed=$(grep "Passed:" "$log_file" | sed 's/.*Passed: //' | sed 's/ .*//' || echo "0")
+        int_failed=$(grep "Failed:" "$log_file" | sed 's/.*Failed: //' | sed 's/ .*//' || echo "0")
+        int_skipped=$(grep "Skipped:" "$log_file" | sed 's/.*Skipped: //' | sed 's/ .*//' || echo "0")
+    fi
+
+    echo ""
+    echo "=========================================="
+    echo "Integration Test Summary:"
+    echo "  Total: $int_total"
+    echo "  Passed: $int_passed"
+    echo "  Failed: $int_failed"
+    echo "  Skipped: $int_skipped"
+    echo "=========================================="
+    echo ""
+
+    # Determine success based on parsed results
+    local status="FAIL"
+    if [[ "$int_failed" == "0" ]] && [[ "$int_total" -gt "0" ]]; then
+        status="SUCCESS"
+    fi
+
+    # Set details string for log_result
+    local details="Total: $int_total, Passed: $int_passed, Failed: $int_failed"
+
+    echo "Integration tests completed with exit code: $exit_code"
+    echo "Status: $status"
+    echo "Log saved to: $log_file"
+    echo "Allure results saved to: $OUTPUT/integration/allure-results"
+
+    # Log result with parsed details
+    log_result "int" "$module" "$exit_code" "$start_time" "$OUTPUT" "$status" "$details"
 
     exit $exit_code
 }
