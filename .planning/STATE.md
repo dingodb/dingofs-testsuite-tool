@@ -34,7 +34,7 @@ progress:
 Phase: All 7 phases complete
 Plan: All 7/7 plans complete
 Status: v1.1 Milestone Complete
-Last activity: 2026-04-15 — v1.1 completed (LTP tool integrated)
+Last activity: 2026-04-21 — Completed quick task 260421-d32: Add --help support for each tool
 
 ---
 
@@ -75,6 +75,7 @@ Last activity: 2026-04-15 — v1.1 completed (LTP tool integrated)
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260413-m3k | Support multiple mdsaddr addresses (comma-separated) | 2026-04-13 | - | [260413-m3k-support-multiple-mdsaddr-addresses-comma](./quick/260413-m3k-support-multiple-mdsaddr-addresses-comma/) |
+| 260421-d32 | Add --help support for each tool and change -s mdtest/ltp defaults to -s all | 2026-04-21 | 9e85c7e | [260421-d32-add-help-support-for-each-tool-in-wrappe](./quick/260421-d32-add-help-support-for-each-tool-in-wrappe/) |
 
 ### Key Files
 
