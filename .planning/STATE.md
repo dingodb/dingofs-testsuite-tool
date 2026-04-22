@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.3
-milestone_name: 测试结果通知
-status: milestone_started
-last_updated: "2026-04-21"
+milestone: v1.2
+milestone_name: 集成测试命令
+status: executing
+last_updated: "2026-04-22T01:27:34.961Z"
+last_activity: 2026-04-22 -- Phase 12 execution started
 progress:
-  total_phases: 4
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 14
+  completed_phases: 7
+  total_plans: 11
+  completed_plans: 11
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** All phases complete - v1.2 milestone ready for completion
+**Current Focus:** Phase 12 — WeChat 通知实现
 
 **Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
@@ -31,10 +31,10 @@ progress:
 
 ## Current Position
 
-Phase: 10. 结果解析与保存 (Complete)
-Plan: 10-01-PLAN.md
-Status: Planning complete, ready to execute
-Last activity: 2026-04-21 — Phase 10 plan created
+Phase: 12 (WeChat 通知实现) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 12
+Last activity: 2026-04-22 -- Phase 12 execution started
 
 ---
 
@@ -129,6 +129,7 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 **Completed:** 2026-04-15
 
 **Target features:**
+
 - Install LTP toolset in Docker image (Phase 5) ✓
 - Add ltp run command with filesystem tests by default (Phase 6) ✓
 - Support LTP test results output to specified directory (Phase 7) ✓
@@ -142,9 +143,10 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 ## v1.2 Milestone: 集成测试命令
 
 **Started:** 2026-04-21
-**Status:** Complete (All phases done)
+**Status:** Executing Phase 12
 
 **Target features:**
+
 - Add -t int command support (Phase 8) ✓
 - Pass MDSADDR from dtt config to framework (Phase 9) ✓
 - Parse and save integration test results (Phase 10) ✓
@@ -160,6 +162,7 @@ v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds
 **Status:** In progress (Planning)
 
 **Target features:**
+
 - Add --wechat and --email CLI flags (Phase 11)
 - WeChat webhook notification with markdown_v2 (Phase 12)
 - Email notification via SMTP Outlook (Phase 13)

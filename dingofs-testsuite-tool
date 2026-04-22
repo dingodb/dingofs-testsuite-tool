@@ -527,7 +527,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;
