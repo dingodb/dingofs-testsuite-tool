@@ -79,7 +79,7 @@ RUN apt-get update && \
         libtimedate-perl \
         vim \
         numactl \
-        libjemalloc-dev && \
+        libjemalloc2 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
