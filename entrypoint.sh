@@ -39,6 +39,11 @@ WEBHOOK_URL="${WEBHOOK_URL:-}"
 EMAIL_ENABLED="${EMAIL:-no}"
 EMAIL_TO="${EMAIL_TO:-daigy@zetyun.com}"
 
+# Source notification script
+if [[ -f "/scripts/notify.sh" ]]; then
+    source /scripts/notify.sh
+fi
+
 # ==============================================================================
 # Help Function
 # ==============================================================================
@@ -805,6 +810,26 @@ fio_run() {
         # Log result
         log_result "fio" "$scenario_name" "$fio_exit" "$scenario_start_time" "$scenario_output"
 
+        # Calculate duration for notification
+        local scenario_end_time=$(date +%s)
+        local scenario_start_epoch=$(date -d "$scenario_start_time" +%s 2>/dev/null || echo "$scenario_end_time")
+        local scenario_duration=$((scenario_end_time - scenario_start_epoch))
+        local scenario_duration_str=""
+        if [[ $scenario_duration -ge 60 ]]; then
+            scenario_duration_str="${scenario_duration}s ($((${scenario_duration} / 60))m $((${scenario_duration} % 60))s)"
+        else
+            scenario_duration_str="${scenario_duration}s"
+        fi
+
+        # Send WeChat notification if enabled
+        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+            local fio_status="FAIL"
+            if [[ $fio_exit -eq 0 ]]; then
+                fio_status="SUCCESS"
+            fi
+            send_wechat_notification "fio" "$scenario_name" "$fio_status" "$scenario_duration_str"
+        fi
+
         echo ""
     done <<< "$scenario_paths"
 
@@ -853,6 +878,26 @@ vdbench_run() {
 
     # Log result
     log_result "vdbench" "$SCENARIO" "$vdbench_exit" "$vdbench_start_time" "$OUTPUT/vdbench"
+
+    # Calculate duration for notification
+    local vdbench_end_time=$(date +%s)
+    local vdbench_start_epoch=$(date -d "$vdbench_start_time" +%s 2>/dev/null || echo "$vdbench_end_time")
+    local vdbench_duration=$((vdbench_end_time - vdbench_start_epoch))
+    local vdbench_duration_str=""
+    if [[ $vdbench_duration -ge 60 ]]; then
+        vdbench_duration_str="${vdbench_duration}s ($((${vdbench_duration} / 60))m $((${vdbench_duration} % 60))s)"
+    else
+        vdbench_duration_str="${vdbench_duration}s"
+    fi
+
+    # Send WeChat notification if enabled
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        local vdbench_status="FAIL"
+        if [[ $vdbench_exit -eq 0 ]]; then
+            vdbench_status="SUCCESS"
+        fi
+        send_wechat_notification "vdbench" "$SCENARIO" "$vdbench_status" "$vdbench_duration_str"
+    fi
 
     return $vdbench_exit
 }
@@ -947,6 +992,26 @@ mdtest_run() {
     # Now log results for each scenario (combined summary now exists)
     for i in "${!scenario_names[@]}"; do
         log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$OUTPUT/mdtest"
+
+        # Calculate duration for notification
+        local mdtest_end_time=$(date +%s)
+        local mdtest_start_epoch=$(date -d "${scenario_times[$i]}" +%s 2>/dev/null || echo "$mdtest_end_time")
+        local mdtest_duration=$((mdtest_end_time - mdtest_start_epoch))
+        local mdtest_duration_str=""
+        if [[ $mdtest_duration -ge 60 ]]; then
+            mdtest_duration_str="${mdtest_duration}s ($((${mdtest_duration} / 60))m $((${mdtest_duration} % 60))s)"
+        else
+            mdtest_duration_str="${mdtest_duration}s"
+        fi
+
+        # Send WeChat notification if enabled
+        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+            local mdtest_status="FAIL"
+            if [[ ${scenario_exits[$i]} -eq 0 ]]; then
+                mdtest_status="SUCCESS"
+            fi
+            send_wechat_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
+        fi
     done
 
     echo ""
@@ -988,6 +1053,26 @@ pjdtest_run() {
 
     # Log result
     log_result "pjdtest" "pjdtest" "$pjdtest_exit" "$pjdtest_start_time" "$OUTPUT/pjdtest"
+
+    # Calculate duration for notification
+    local pjdtest_end_time=$(date +%s)
+    local pjdtest_start_epoch=$(date -d "$pjdtest_start_time" +%s 2>/dev/null || echo "$pjdtest_end_time")
+    local pjdtest_duration=$((pjdtest_end_time - pjdtest_start_epoch))
+    local pjdtest_duration_str=""
+    if [[ $pjdtest_duration -ge 60 ]]; then
+        pjdtest_duration_str="${pjdtest_duration}s ($((${pjdtest_duration} / 60))m $((${pjdtest_duration} % 60))s)"
+    else
+        pjdtest_duration_str="${pjdtest_duration}s"
+    fi
+
+    # Send WeChat notification if enabled
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        local pjdtest_status="FAIL"
+        if [[ $pjdtest_exit -eq 0 ]]; then
+            pjdtest_status="SUCCESS"
+        fi
+        send_wechat_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
+    fi
 
     echo ""
     echo "Results saved to: ${output_file}"
@@ -1077,6 +1162,26 @@ ltp_run() {
 
     # Log result
     log_result "ltp" "$SCENARIO" "$overall_exit" "$ltp_start_time" "$OUTPUT/ltp"
+
+    # Calculate duration for notification
+    local ltp_end_time=$(date +%s)
+    local ltp_start_epoch=$(date -d "$ltp_start_time" +%s 2>/dev/null || echo "$ltp_end_time")
+    local ltp_duration=$((ltp_end_time - ltp_start_epoch))
+    local ltp_duration_str=""
+    if [[ $ltp_duration -ge 60 ]]; then
+        ltp_duration_str="${ltp_duration}s ($((${ltp_duration} / 60))m $((${ltp_duration} % 60))s)"
+    else
+        ltp_duration_str="${ltp_duration}s"
+    fi
+
+    # Send WeChat notification if enabled
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        local ltp_status="FAIL"
+        if [[ $overall_exit -eq 0 ]]; then
+            ltp_status="SUCCESS"
+        fi
+        send_wechat_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
+    fi
 
     echo ""
     echo "Results saved to: ${output_file}_*.log"
@@ -1187,6 +1292,22 @@ EOF
 
     # Log result with parsed details
     log_result "int" "$module" "$exit_code" "$start_time" "$OUTPUT" "$status" "$details"
+
+    # Calculate duration for notification
+    local int_end_time=$(date +%s)
+    local int_start_epoch=$(date -d "$start_time" +%s 2>/dev/null || echo "$int_end_time")
+    local int_duration=$((int_end_time - int_start_epoch))
+    local int_duration_str=""
+    if [[ $int_duration -ge 60 ]]; then
+        int_duration_str="${int_duration}s ($((${int_duration} / 60))m $((${int_duration} % 60))s)"
+    else
+        int_duration_str="${int_duration}s"
+    fi
+
+    # Send WeChat notification if enabled
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        send_wechat_notification "int" "$module" "$status" "$int_duration_str" "$details"
+    fi
 
     exit $exit_code
 }
