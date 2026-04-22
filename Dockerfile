@@ -81,7 +81,9 @@ RUN apt-get update && \
         numactl \
         libjemalloc2 && \
     apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
+    # Create symlink for libjemalloc.so.2 at /lib64/ path used by dingofs tools
+    ln -sf /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 /lib64/libjemalloc.so.2
 
 # Copy vdbench archive and install vdbench
 COPY vdbench50406.zip /tmp/vdbench.zip
