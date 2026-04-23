@@ -821,8 +821,12 @@ fio_run() {
 
         echo "Executing: ${fio_cmd[*]}"
 
-        # Run fio and capture output
-        "${fio_cmd[@]}" 2>&1 | tee "$scenario_output/fio.raw" > "$scenario_output/fio.json"
+        # Run fio and capture output - allow Ctrl+C to interrupt
+        # Use subshell to handle signals properly
+        (
+            trap 'kill -INT $$' INT TERM
+            "${fio_cmd[@]}" 2>&1 | tee "$scenario_output/fio.raw" > "$scenario_output/fio.json"
+        )
         local fio_exit=${PIPESTATUS[0]}
 
         if [[ $fio_exit -ne 0 ]]; then
@@ -896,8 +900,11 @@ vdbench_run() {
     echo "Executing: ./vdbench -f $config -o $vdbench_output"
 
     # Capture console output to raw file while running vdbench
-    # Use PIPESTATUS[0] to get vdbench exit code after tee
-    "./vdbench" -f "$config" -o "$vdbench_output" 2>&1 | tee "$vdbench_output/vdbench.raw"
+    # Use subshell to allow Ctrl+C to interrupt
+    (
+        trap 'kill -INT $$' INT TERM
+        "./vdbench" -f "$config" -o "$vdbench_output" 2>&1 | tee "$vdbench_output/vdbench.raw"
+    )
     local vdbench_exit=${PIPESTATUS[0]}
 
     # Generate reports
@@ -1073,8 +1080,11 @@ pjdtest_run() {
     echo "Executing: prove -rv /pjdtest/dingofs_baseline"
     echo "Output file: ${output_file}"
 
-    # Run pjdtest using prove
-    prove -rv /pjdtest/dingofs_baseline > "${output_file}" 2>&1
+    # Run pjdtest using prove - allow Ctrl+C to interrupt
+    (
+        trap 'kill -INT $$' INT TERM
+        prove -rv /pjdtest/dingofs_baseline > "${output_file}" 2>&1
+    )
     local pjdtest_exit=$?
 
     if [[ $pjdtest_exit -ne 0 ]]; then
@@ -1171,7 +1181,11 @@ ltp_run() {
     local overall_exit=0
     for scenario in $scenarios; do
         echo "Executing LTP scenario: $scenario"
-        timeout 3600 /opt/ltp/runltp -f "$scenario" -d . -p "$OUTPUT" -l "${output_file}_${scenario}.log" 2>&1 | tee "${output_file}_${scenario}.raw"
+        # Use subshell to allow Ctrl+C to interrupt
+        (
+            trap 'kill -INT $$' INT TERM
+            timeout 3600 /opt/ltp/runltp -f "$scenario" -d . -p "$OUTPUT" -l "${output_file}_${scenario}.log" 2>&1 | tee "${output_file}_${scenario}.raw"
+        )
         local ltp_exit=${PIPESTATUS[0]}
         if [[ $ltp_exit -ne 0 ]]; then
             overall_exit=$ltp_exit
@@ -1282,8 +1296,12 @@ EOF
     cd "$INTEGRATION_DIR"
 
     # Run tests with dynamic environment and proper report directory
-    python3 run_tests.py "$module" --env env_dynamic --skip-setup \
-        --report-dir "$int_output/allure-results" 2>&1 | tee "$log_file"
+    # Use subshell to allow Ctrl+C to interrupt
+    (
+        trap 'kill -INT $$' INT TERM
+        python3 run_tests.py "$module" --env env_dynamic --skip-setup \
+            --report-dir "$int_output/allure-results" 2>&1 | tee "$log_file"
+    )
     local exit_code=${PIPESTATUS[0]}
 
     # Parse test results from the log output
