@@ -89,7 +89,11 @@
       "Bash(bash -n dingofs-testsuite-tool)",
       "Bash(awk 'NR>=361 && NR<=375' dingofs-testsuite-tool)",
       "Bash(/bin/bash --norc --noprofile -c 'source dingofs-testsuite-tool && type run_testsuite')",
-      "Read(//home/jenkins/**)"
+      "Read(//home/jenkins/**)",
+      "Bash(grep -n \"fio_\\\\${RUN_TIMESTAMP}\" /mnt/disk5/daigy/dingofs-testsuite-tool/entrypoint.sh)",
+      "Bash(grep -n 'fio_${RUN_TIMESTAMP}' /mnt/disk5/daigy/dingofs-testsuite-tool/entrypoint.sh)",
+      "Bash(python3 -c ' *)",
+      "Bash(python3 -c \"import sys; sys.path.insert\\(0, 'scripts'\\); from generate_report import aggregate_fio_results; print\\('Import OK'\\)\")"
     ],
     "additionalDirectories": [
       "/mnt/disk0/daigy/tmp",

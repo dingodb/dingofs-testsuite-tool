@@ -80,6 +80,62 @@ def parse_fio_scenario_name(scenario_name):
     return None
 
 
+def process_fio_json(fio_json_path, scenario_name, direct_0, direct_1):
+    """Process a single fio.json file and add metrics to the appropriate dictionary.
+
+    Args:
+        fio_json_path: Path to the fio.json file
+        scenario_name: Name of the scenario (used for parsing parameters)
+        direct_0: Dictionary to store direct=0 results (modified in place)
+        direct_1: Dictionary to store direct=1 results (modified in place)
+    """
+    # Parse scenario name to get parameters
+    params = parse_fio_scenario_name(scenario_name)
+    if not params:
+        return
+
+    # Read and parse fio JSON
+    try:
+        with open(fio_json_path, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return
+
+    # Extract metrics from jobs
+    jobs = data.get("jobs", [])
+    if not jobs:
+        return
+
+    # Determine if read or write based on scenario name
+    is_read = params["rw"] in ("seq_read", "rand_read")
+    job = jobs[0]
+
+    if is_read:
+        metrics = job.get("read", {})
+    else:
+        metrics = job.get("write", {})
+
+    if not metrics:
+        return
+
+    # Get bandwidth (KiB/s) and latency mean (ns)
+    bw_kib = metrics.get("bw", 0)
+    latency_ns_mean = metrics.get("lat_ns", {}).get("mean", 0)
+
+    key = (params["bs"], params["numjobs"])
+
+    if params["direct"] == 0:
+        direct_0[key] = {
+            "bandwidth_kib": bw_kib,
+            "latency_ns_mean": latency_ns_mean
+        }
+    else:
+        direct_1[key] = {
+            "bandwidth_kib": bw_kib,
+            "latency_ns_mean": latency_ns_mean
+        }
+
+
 def aggregate_fio_results(output_dir):
     """Aggregate fio results from all subdirectories into summary tables.
 
@@ -102,69 +158,21 @@ def aggregate_fio_results(output_dir):
         if not os.path.isdir(subdir_path):
             continue
 
-        # Check for fio.json at this level
+        # Check for fio.json at this level (flat structure)
         fio_json_path = os.path.join(subdir_path, "fio.json")
-        scenario_name = subdir
 
-        # If no fio.json here, check nested structure (scenario_type/scenario_name)
-        if not os.path.exists(fio_json_path):
-            fio_json_path = None
+        if os.path.exists(fio_json_path):
+            # fio.json directly in subdir - process this single scenario
+            scenario_name = subdir
+            process_fio_json(fio_json_path, scenario_name, direct_0, direct_1)
+        else:
+            # Nested structure (scenario_type/scenario_name/) - process all nested
             for nested in os.listdir(subdir_path):
                 nested_path = os.path.join(subdir_path, nested)
                 if os.path.isdir(nested_path):
                     candidate_path = os.path.join(nested_path, "fio.json")
                     if os.path.exists(candidate_path):
-                        fio_json_path = candidate_path
-                        scenario_name = nested  # Use the nested dir name as scenario
-                        break
-            if fio_json_path is None:
-                continue
-
-        # Parse scenario name to get parameters
-        params = parse_fio_scenario_name(scenario_name)
-        if not params:
-            continue
-
-        # Read and parse fio JSON
-        try:
-            with open(fio_json_path, "r") as f:
-                data = json.load(f)
-        except (json.JSONDecodeError, IOError):
-            continue
-
-        # Extract metrics from jobs
-        jobs = data.get("jobs", [])
-        if not jobs:
-            continue
-
-        # Determine if read or write based on scenario name
-        is_read = params["rw"] in ("seq_read", "rand_read")
-        job = jobs[0]
-
-        if is_read:
-            metrics = job.get("read", {})
-        else:
-            metrics = job.get("write", {})
-
-        if not metrics:
-            continue
-
-        # Get bandwidth (KiB/s) and latency mean (ns)
-        bw_kib = metrics.get("bw", 0)
-        latency_ns_mean = metrics.get("lat_ns", {}).get("mean", 0)
-
-        key = (params["bs"], params["numjobs"])
-
-        if params["direct"] == 0:
-            direct_0[key] = {
-                "bandwidth_kib": bw_kib,
-                "latency_ns_mean": latency_ns_mean
-            }
-        else:
-            direct_1[key] = {
-                "bandwidth_kib": bw_kib,
-                "latency_ns_mean": latency_ns_mean
-            }
+                        process_fio_json(candidate_path, nested, direct_0, direct_1)
 
     return direct_0, direct_1
 
