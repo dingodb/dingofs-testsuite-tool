@@ -1,14 +1,149 @@
 #!/bin/bash
-# DingoFS Storage Testsuite Tools - WeChat Notification Script
-# Sends test results to WeChat webhook
+# DingoFS Storage Testsuite Tools - WeChat and Email Notification Script
+# Sends test results to WeChat webhook or Email
 
 # Global variables (set by entrypoint.sh via environment)
-WECHAT_ENABLED="${WECHAT_ENABLED:-no}"
+WECHAT_ENABLED="${WECHAT:-no}"
 WEBHOOK_URL="${WEBHOOK_URL:-}"
+EMAIL_ENABLED="${EMAIL:-no}"
+EMAIL_TO="${EMAIL_TO:-daigy@zetyun.com}"
+
+# Email settings
+EMAIL_HOST="${EMAILHOST:-smtp.partner.outlook.cn}"
+EMAIL_PORT="${EMAILPORT:-587}"
+EMAIL_USER="${EMAILUSER:-dingodb-ci@zetyun.com}"
+EMAIL_PASS="${EMAILPASS:-_Dbfs@2025!}"
+EMAIL_CC="${EMAILCC:-daigy@zetyun.com}"
 
 # Log function for notifications
 log_notify() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
+}
+
+# Send email notification
+# Usage: send_email_notification <tool> <scenario> <status> <duration> [details]
+send_email_notification() {
+    local tool="$1"
+    local scenario="$2"
+    local status="$3"
+    local duration="$4"
+    local details="${5:-}"
+
+    # Skip if email is not enabled
+    if [[ "$EMAIL_ENABLED" != "yes" ]]; then
+        log_notify "Email notification disabled (EMAIL=$EMAIL_ENABLED)"
+        return 0
+    fi
+
+    # Skip if email address is not set
+    if [[ -z "$EMAIL_TO" ]]; then
+        log_notify "Email address not set (EMAIL_TO is empty)"
+        return 1
+    fi
+
+    log_notify "Sending email notification..."
+    log_notify "To: $EMAIL_TO"
+
+    # Build email content
+    local subject="[DingoFS] $tool 测试报告 - ${status}"
+    local html_content="<!DOCTYPE html>
+<html>
+<body>
+<h2>DingoFS 自动化测试报告</h2>
+<table border='1' cellpadding='5' cellspacing='0'>
+<tr><td><b>来源</b></td><td>DingoFS Testsuite Tools</td></tr>
+<tr><td><b>工具</b></td><td>$tool</td></tr>
+<tr><td><b>场景</b></td><td>$scenario</td></tr>
+<tr><td><b>状态</b></td><td>$status</td></tr>
+<tr><td><b>耗时</b></td><td>$duration</td></tr>
+</table>
+<br>"
+
+    if [[ -n "$details" ]]; then
+        html_content="${html_content}
+<p><b>详情:</b> $details</p>"
+    fi
+
+    html_content="${html_content}
+</body>
+</html>"
+
+    # Send email using curl with SMTP
+    local payload=$(cat <<EOF
+To: $EMAIL_TO
+From: $EMAIL_USER
+Cc: $EMAIL_CC
+Subject: $subject
+MIME-Version: 1.0
+Content-Type: text/html; charset=utf-8
+
+$html_content
+EOF
+)
+
+    # Use swaks or curl to send email, fallback to simple mail command
+    local sent=false
+
+    if command -v swaks &> /dev/null; then
+        swaks --to "$EMAIL_TO" \
+              --from "$EMAIL_USER" \
+              --cc "$EMAIL_CC" \
+              --server "$EMAIL_HOST" \
+              --port "$EMAIL_PORT" \
+              --tls \
+              --auth-user "$EMAIL_USER" \
+              --auth-password "$EMAIL_PASS" \
+              --header "Subject: $subject" \
+              --html-body "$html_content" \
+              &> /dev/null && sent=true
+    elif command -v sendmail &> /dev/null; then
+        echo "$payload" | sendmail -t &> /dev/null && sent=true
+    else
+        # Try using python3 to send email
+        python3 << PYEOF
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import os
+
+try:
+    msg = MIMEMultipart('alternative')
+    msg['Subject'] = '$subject'
+    msg['From'] = '$EMAIL_USER'
+    msg['To'] = '$EMAIL_TO'
+    if '$EMAIL_CC':
+        msg['Cc'] = '$EMAIL_CC'
+
+    html_part = MIMEText('''$html_content''', 'html')
+    msg.attach(html_part)
+
+    server = smtplib.SMTP('$EMAIL_HOST', $EMAIL_PORT)
+    server.starttls()
+    server.login('$EMAIL_USER', '$EMAIL_PASS')
+
+    to_addrs = ['$EMAIL_TO']
+    if '$EMAIL_CC':
+        to_addrs.append('$EMAIL_CC')
+
+    server.sendmail('$EMAIL_USER', to_addrs, msg.as_string())
+    server.quit()
+    print("Email sent successfully")
+except Exception as e:
+    print(f"Email error: {e}")
+    exit(1)
+PYEOF
+        if [[ $? -eq 0 ]]; then
+            sent=true
+        fi
+    fi
+
+    if [[ "$sent" == "true" ]]; then
+        log_notify "Email notification sent successfully to $EMAIL_TO"
+        return 0
+    else
+        log_notify "Failed to send email notification"
+        return 1
+    fi
 }
 
 # Send WeChat notification

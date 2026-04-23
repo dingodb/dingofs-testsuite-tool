@@ -865,6 +865,14 @@ echo ""
             send_wechat_notification "fio" "$scenario_name" "$fio_status" "$scenario_duration_str"
         fi
 
+        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+            local fio_status="FAIL"
+            if [[ $fio_exit -eq 0 ]]; then
+                fio_status="SUCCESS"
+            fi
+            send_email_notification "fio" "$scenario_name" "$fio_status" "$scenario_duration_str"
+        fi
+
         echo ""
     done <<< "$scenario_paths"
 
@@ -942,6 +950,15 @@ vdbench_run() {
             vdbench_status="SUCCESS"
         fi
         send_wechat_notification "vdbench" "$SCENARIO" "$vdbench_status" "$vdbench_duration_str"
+    fi
+
+    # Send Email notification if enabled
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        local vdbench_status="FAIL"
+        if [[ $vdbench_exit -eq 0 ]]; then
+            vdbench_status="SUCCESS"
+        fi
+        send_email_notification "vdbench" "$SCENARIO" "$vdbench_status" "$vdbench_duration_str"
     fi
 
     return $vdbench_exit
@@ -1071,6 +1088,15 @@ mdtest_run() {
             fi
             send_wechat_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
         fi
+
+        # Send Email notification if enabled
+        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+            local mdtest_status="FAIL"
+            if [[ ${scenario_exits[$i]} -eq 0 ]]; then
+                mdtest_status="SUCCESS"
+            fi
+            send_email_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
+        fi
     done
 
     echo ""
@@ -1135,6 +1161,15 @@ pjdtest_run() {
             pjdtest_status="SUCCESS"
         fi
         send_wechat_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
+    fi
+
+    # Send Email notification if enabled
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        local pjdtest_status="FAIL"
+        if [[ $pjdtest_exit -eq 0 ]]; then
+            pjdtest_status="SUCCESS"
+        fi
+        send_email_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
     fi
 
     echo ""
@@ -1249,6 +1284,15 @@ ltp_run() {
             ltp_status="SUCCESS"
         fi
         send_wechat_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
+    fi
+
+    # Send Email notification if enabled
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        local ltp_status="FAIL"
+        if [[ $overall_exit -eq 0 ]]; then
+            ltp_status="SUCCESS"
+        fi
+        send_email_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
     fi
 
     echo ""
@@ -1380,6 +1424,11 @@ EOF
     # Send WeChat notification if enabled
     if [[ "$WECHAT_ENABLED" == "yes" ]]; then
         send_wechat_notification "int" "$module" "$status" "$int_duration_str" "$details"
+    fi
+
+    # Send Email notification if enabled
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        send_email_notification "int" "$module" "$status" "$int_duration_str" "$details"
     fi
 
     exit $exit_code
