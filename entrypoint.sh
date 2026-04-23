@@ -989,7 +989,9 @@ mdtest_run() {
     local -a scenario_times=()
 
     # Output subdirectory for mdtest
-    local mdtest_output_base="$OUTPUT/mdtest/$SCENARIO"
+    # For "all", each scenario goes to its own subdirectory
+    # For specific scenario, use that scenario's subdirectory
+    local mdtest_base="$OUTPUT/mdtest"
 
     for script in "${scenario_array[@]}"; do
         [[ -z "$script" ]] && continue
@@ -997,7 +999,8 @@ mdtest_run() {
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(basename "$script" .sh)
-        local scenario_output="$mdtest_output_base"
+        # Each scenario gets its own subdirectory
+        local scenario_output="$mdtest_base/$scenario_name"
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
@@ -1032,12 +1035,20 @@ mdtest_run() {
     done
 
     # Generate combined report for all mdtest scenarios (BEFORE logging results)
+    # For "all", generate combined report at base mdtest dir
+    # For specific scenario, generate at that scenario's dir
     echo "Generating combined mdtest report..."
-    python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_output_base" --scenario "$SCENARIO" --mount "$MOUNT" --np "$NP" --combined
+    if [[ "$SCENARIO" == "all" ]]; then
+        python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_base" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
+        local mdtest_report_dir="$mdtest_base"
+    else
+        python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_base/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --np "$NP" --combined
+        local mdtest_report_dir="$mdtest_base/$SCENARIO"
+    fi
 
     # Now log results for each scenario (combined summary now exists)
     for i in "${!scenario_names[@]}"; do
-        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$mdtest_output_base"
+        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$mdtest_report_dir"
 
         # Calculate duration for notification
         local mdtest_end_time=$(date +%s)
