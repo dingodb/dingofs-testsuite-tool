@@ -966,7 +966,7 @@ mdtest_run() {
 
     # Create base output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/mdtest/$SCENARIO"
+    mkdir -p "$OUTPUT/mdtest"
 
     local overall_exit=0
     local run_num=0
