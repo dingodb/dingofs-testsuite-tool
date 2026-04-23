@@ -1216,9 +1216,13 @@ def main():
         # Determine rw_type from scenario name
         rw_type = "seq_read"  # default
         if scenario:
-            params = parse_fio_scenario_name(scenario)
-            if params:
-                rw_type = params["rw"]
+            # Check if scenario is a simple rw type name (seq_read, seq_write, rand_read, rand_write)
+            if scenario in ("seq_read", "seq_write", "rand_read", "rand_write"):
+                rw_type = scenario
+            else:
+                params = parse_fio_scenario_name(scenario)
+                if params:
+                    rw_type = params["rw"]
 
         # Generate and append summary tables to HTML report
         summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type)

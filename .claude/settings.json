@@ -75,7 +75,9 @@
       "Bash(/opt/ltp/runltp --help)",
       "Bash(/opt/ltp/runltp -h)",
       "Read(//opt/ltp/runtest/**)",
-      "Bash(node __TRACKED_VAR__/.claude/get-shit-done/bin/gsd-tools.cjs commit 'fix: change -t integration to -t int' --files .planning/REQUIREMENTS.md .planning/ROADMAP.md .planning/PROJECT.md)"
+      "Bash(node __TRACKED_VAR__/.claude/get-shit-done/bin/gsd-tools.cjs commit 'fix: change -t integration to -t int' --files .planning/REQUIREMENTS.md .planning/ROADMAP.md .planning/PROJECT.md)",
+      "Bash(mkdir -p test_output)",
+      "Bash(tree test_output)"
     ],
     "additionalDirectories": [
       "/mnt/disk0/daigy/tmp"
