@@ -792,7 +792,7 @@ fio_run() {
         scenario_name=$(get_scenario_name "$config")
 
         # For "all" scenario, group by scenario type (seq_read, seq_write, etc.)
-        # For specific scenario, use SCENARIO directly
+        # For specific scenario, also use subdirectory for each variant
         if [[ "$SCENARIO" == "all" ]]; then
             # Extract scenario type from config filename (e.g., seq_read_0d_128k_1j -> seq_read)
             # Use first two underscore-separated parts
@@ -800,7 +800,8 @@ fio_run() {
             scenario_type=$(echo "$scenario_name" | cut -d'_' -f1,2)
             local scenario_output="$OUTPUT/fio/$scenario_type/$scenario_name"
         else
-            local scenario_output="$OUTPUT/fio/$SCENARIO"
+            # Each variant gets its own subdirectory
+            local scenario_output="$OUTPUT/fio/$SCENARIO/$scenario_name"
         fi
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
