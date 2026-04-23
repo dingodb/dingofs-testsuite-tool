@@ -108,7 +108,8 @@ COPY --from=ltp-builder /opt/ltp /opt/ltp
 # Phase 3: Python and report generation scripts
 RUN mkdir -p /scripts
 COPY scripts/generate_report.py /scripts/generate_report.py
-RUN chmod +x /scripts/generate_report.py
+COPY scripts/notify.sh /scripts/notify.sh
+RUN chmod +x /scripts/generate_report.py /scripts/notify.sh
 
 # Phase 2: Copy scenario files
 COPY scenarios/ /scenarios/

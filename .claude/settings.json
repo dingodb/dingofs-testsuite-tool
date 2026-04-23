@@ -78,10 +78,22 @@
       "Bash(node __TRACKED_VAR__/.claude/get-shit-done/bin/gsd-tools.cjs commit 'fix: change -t integration to -t int' --files .planning/REQUIREMENTS.md .planning/ROADMAP.md .planning/PROJECT.md)",
       "Bash(mkdir -p test_output)",
       "Bash(tree test_output)",
-      "Bash(python3 -c ':*)"
+      "Bash(python3 -c ':*)",
+      "Bash(bash --version)",
+      "Bash(bash -c 'source dingofs-testsuite-tool && dingofs-testsuite-tool -t mdtest -s all --email 2>&1')",
+      "Bash(bash -c ':*)",
+      "Bash(xxd)",
+      "Bash(bash --noprofile --norc -c 'source dingofs-testsuite-tool && dingofs-testsuite-tool -t mdtest -s all --email 2>&1')",
+      "Bash(bash --noprofile --norc --noreturnhistory -c 'source dingofs-testsuite-tool && dingofs-testsuite-tool -t mdtest -s all --email 2>&1')",
+      "Bash(bash -c 'source dingofs-testsuite-tool && type run_testsuite')",
+      "Bash(bash -n dingofs-testsuite-tool)",
+      "Bash(awk 'NR>=361 && NR<=375' dingofs-testsuite-tool)",
+      "Bash(/bin/bash --norc --noprofile -c 'source dingofs-testsuite-tool && type run_testsuite')",
+      "Read(//home/jenkins/**)"
     ],
     "additionalDirectories": [
-      "/mnt/disk0/daigy/tmp"
+      "/mnt/disk0/daigy/tmp",
+      "/home/jenkins/.local/bin"
     ]
   }
 }
