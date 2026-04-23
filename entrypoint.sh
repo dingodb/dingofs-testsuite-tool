@@ -775,6 +775,11 @@ fio_run() {
     mkdir -p "$OUTPUT"
     mkdir -p "$OUTPUT/fio"
 
+    # Determine output subdirectory based on SCENARIO
+    # For "all", use scenario type subdirectories (seq_read, seq_write, rand_read, rand_write)
+    # For specific scenario, use SCENARIO directly
+    local output_subdir="$SCENARIO"
+
     local overall_exit=0
     local run_num=0
 
@@ -785,7 +790,16 @@ fio_run() {
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(get_scenario_name "$config")
-        local scenario_output="$OUTPUT/fio/$scenario_name"
+
+        # For "all" scenario, group by scenario type (seq_read, seq_write, etc.)
+        # For specific scenario, use SCENARIO directly
+        if [[ "$SCENARIO" == "all" ]]; then
+            # Extract scenario type from config filename (e.g., seq_read_0d_128k_1j -> seq_read)
+            local scenario_type="${scenario_name%%_*}"
+            local scenario_output="$OUTPUT/fio/$scenario_type/$scenario_name"
+        else
+            local scenario_output="$OUTPUT/fio/$SCENARIO"
+        fi
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
