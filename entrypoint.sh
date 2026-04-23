@@ -883,28 +883,29 @@ vdbench_run() {
 
     # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/vdbench"
+    mkdir -p "$OUTPUT/vdbench/$SCENARIO"
 
     # Replace anchor paths in config with MOUNT if needed
     # vdbench configs often have wd= anchor=/path/to/mount
-    local vdbench_cmd=("$VDBENCH_BIN" "-f" "$config" "-o" "$OUTPUT/vdbench")
+    local vdbench_output="$OUTPUT/vdbench/$SCENARIO"
+    local vdbench_cmd=("$VDBENCH_BIN" "-f" "$config" "-o" "$vdbench_output")
 
     # Change to vdbench directory for execution
     cd "$VDBENCH_DIR"
 
-    echo "Executing: ./vdbench -f $config -o $OUTPUT/vdbench"
+    echo "Executing: ./vdbench -f $config -o $vdbench_output"
 
     # Capture console output to raw file while running vdbench
     # Use PIPESTATUS[0] to get vdbench exit code after tee
-    "./vdbench" -f "$config" -o "$OUTPUT/vdbench" 2>&1 | tee "$OUTPUT/vdbench/vdbench.raw"
+    "./vdbench" -f "$config" -o "$vdbench_output" 2>&1 | tee "$vdbench_output/vdbench.raw"
     local vdbench_exit=${PIPESTATUS[0]}
 
     # Generate reports
     echo "Generating reports..."
-    python3 /scripts/generate_report.py --tool vdbench --output-dir "$OUTPUT/vdbench" --scenario "$SCENARIO" --mount "$MOUNT"
+    python3 /scripts/generate_report.py --tool vdbench --output-dir "$vdbench_output" --scenario "$SCENARIO" --mount "$MOUNT"
 
     # Log result
-    log_result "vdbench" "$SCENARIO" "$vdbench_exit" "$vdbench_start_time" "$OUTPUT/vdbench"
+    log_result "vdbench" "$SCENARIO" "$vdbench_exit" "$vdbench_start_time" "$vdbench_output"
 
     # Calculate duration for notification
     local vdbench_end_time=$(date +%s)
@@ -950,7 +951,7 @@ mdtest_run() {
 
     # Create base output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/mdtest"
+    mkdir -p "$OUTPUT/mdtest/$SCENARIO"
 
     local overall_exit=0
     local run_num=0
@@ -972,13 +973,16 @@ mdtest_run() {
     local -a scenario_exits=()
     local -a scenario_times=()
 
+    # Output subdirectory for mdtest
+    local mdtest_output_base="$OUTPUT/mdtest/$SCENARIO"
+
     for script in "${scenario_array[@]}"; do
         [[ -z "$script" ]] && continue
 
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(basename "$script" .sh)
-        local scenario_output="$OUTPUT/mdtest/$scenario_name"
+        local scenario_output="$mdtest_output_base"
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
         echo "=============================================="
@@ -1018,7 +1022,7 @@ mdtest_run() {
 
     # Now log results for each scenario (combined summary now exists)
     for i in "${!scenario_names[@]}"; do
-        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$OUTPUT/mdtest"
+        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$mdtest_output_base"
 
         # Calculate duration for notification
         local mdtest_end_time=$(date +%s)
@@ -1055,7 +1059,7 @@ pjdtest_run() {
 
     # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/pjdtest"
+    mkdir -p "$OUTPUT/pjdtest/$SCENARIO"
 
     # Change to mount directory for test execution
     cd "$MOUNT"
@@ -1063,7 +1067,8 @@ pjdtest_run() {
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local output_file="${OUTPUT}/pjdtest/pjdtest_${timestamp}"
+    local pjdtest_output="$OUTPUT/pjdtest/$SCENARIO"
+    local output_file="${pjdtest_output}/pjdtest_${timestamp}"
 
     echo "Executing: prove -rv /pjdtest/dingofs_baseline"
     echo "Output file: ${output_file}"
@@ -1079,7 +1084,7 @@ pjdtest_run() {
     fi
 
     # Log result
-    log_result "pjdtest" "pjdtest" "$pjdtest_exit" "$pjdtest_start_time" "$OUTPUT/pjdtest"
+    log_result "pjdtest" "pjdtest" "$pjdtest_exit" "$pjdtest_start_time" "$pjdtest_output"
 
     # Calculate duration for notification
     local pjdtest_end_time=$(date +%s)
@@ -1116,7 +1121,7 @@ ltp_run() {
 
     # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/ltp"
+    mkdir -p "$OUTPUT/ltp/$SCENARIO"
 
     # Change to mount directory for test execution
     cd "$MOUNT"
@@ -1124,7 +1129,8 @@ ltp_run() {
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local output_file="${OUTPUT}/ltp/ltp_${timestamp}"
+    local ltp_output="$OUTPUT/ltp/$SCENARIO"
+    local output_file="${ltp_output}/ltp_${timestamp}"
 
     # Map scenario names to LTP test suite names
     # all -> fs fsx io dir lock syscalls (run all common tests)
@@ -1182,13 +1188,13 @@ ltp_run() {
 
     # Copy LTP results from /opt/ltp/results to OUTPUT/ltp directory
     if [[ -d "/opt/ltp/results" ]] && [[ -n "$(ls -A /opt/ltp/results 2>/dev/null)" ]]; then
-        echo "Copying LTP results to ${OUTPUT}/ltp..."
-        cp -r /opt/ltp/results/* "$OUTPUT/ltp/" 2>/dev/null || true
-        echo "LTP results copied to: ${OUTPUT}/ltp"
+        echo "Copying LTP results to ${ltp_output}..."
+        cp -r /opt/ltp/results/* "$ltp_output/" 2>/dev/null || true
+        echo "LTP results copied to: ${ltp_output}"
     fi
 
     # Log result
-    log_result "ltp" "$SCENARIO" "$overall_exit" "$ltp_start_time" "$OUTPUT/ltp"
+    log_result "ltp" "$SCENARIO" "$overall_exit" "$ltp_start_time" "$ltp_output"
 
     # Calculate duration for notification
     local ltp_end_time=$(date +%s)
@@ -1232,12 +1238,13 @@ integration_run() {
 
     # Create output directory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/integration"
-    mkdir -p "$OUTPUT/integration/allure-results"
+    mkdir -p "$OUTPUT/integration/$SCENARIO"
+    mkdir -p "$OUTPUT/integration/$SCENARIO/allure-results"
 
     local start_time=$(date +"%Y-%m-%d %H:%M:%S")
     local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local log_file="$OUTPUT/integration/int_${timestamp}.log"
+    local int_output="$OUTPUT/integration/$SCENARIO"
+    local log_file="$int_output/int_${timestamp}.log"
 
     # Create dynamic environment config in the framework's conf directory
     local dynamic_env_dir="$INTEGRATION_DIR/conf/env"
@@ -1276,7 +1283,7 @@ EOF
 
     # Run tests with dynamic environment and proper report directory
     python3 run_tests.py "$module" --env env_dynamic --skip-setup \
-        --report-dir "$OUTPUT/integration/allure-results" 2>&1 | tee "$log_file"
+        --report-dir "$int_output/allure-results" 2>&1 | tee "$log_file"
     local exit_code=${PIPESTATUS[0]}
 
     # Parse test results from the log output
@@ -1318,7 +1325,7 @@ EOF
     echo "Allure results saved to: $OUTPUT/integration/allure-results"
 
     # Log result with parsed details
-    log_result "int" "$module" "$exit_code" "$start_time" "$OUTPUT" "$status" "$details"
+    log_result "int" "$module" "$exit_code" "$start_time" "$int_output" "$status" "$details"
 
     # Calculate duration for notification
     local int_end_time=$(date +%s)
