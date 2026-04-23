@@ -429,8 +429,17 @@ get_scenario_paths() {
 
     case "$tool" in
         fio)
+            # If "all", run all 4 scenario types
+            if [[ "$scenario" == "all" ]]; then
+                # Run all 4 scenario types: seq_read, seq_write, rand_read, rand_write
+                local all_types="seq_read seq_write rand_read rand_write"
+                for type in $all_types; do
+                    while IFS= read -r file; do
+                        paths+=("$file")
+                    done < <(ls "${SCENARIOS_DIR}/fio/${type}"_*.fio 2>/dev/null | sort)
+                done
             # Check custom override first (exact match only)
-            if [[ -f "/custom/${scenario}.fio" ]]; then
+            elif [[ -f "/custom/${scenario}.fio" ]]; then
                 paths+=("/custom/${scenario}.fio")
             elif [[ -f "/custom/${scenario}.conf" ]]; then
                 paths+=("/custom/${scenario}.conf")
