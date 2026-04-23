@@ -177,6 +177,98 @@ def aggregate_fio_results(output_dir):
     return direct_0, direct_1
 
 
+def aggregate_fio_results_by_rw(output_dir):
+    """Aggregate fio results grouped by rw_type.
+
+    Returns a dictionary:
+    {
+        'seq_read': {'direct_0': {}, 'direct_1': {}},
+        'seq_write': {'direct_0': {}, 'direct_1': {}},
+        'rand_read': {'direct_0': {}, 'direct_1': {}},
+        'rand_write': {'direct_0': {}, 'direct_1': {}}
+    }
+    """
+    results = {
+        'seq_read': {'direct_0': {}, 'direct_1': {}},
+        'seq_write': {'direct_0': {}, 'direct_1': {}},
+        'rand_read': {'direct_0': {}, 'direct_1': {}},
+        'rand_write': {'direct_0': {}, 'direct_1': {}}
+    }
+
+    if not os.path.isdir(output_dir):
+        return results
+
+    # Scan subdirectories
+    for subdir in os.listdir(output_dir):
+        subdir_path = os.path.join(output_dir, subdir)
+        if not os.path.isdir(subdir_path):
+            continue
+
+        # Check for fio.json at this level (flat structure)
+        fio_json_path = os.path.join(subdir_path, "fio.json")
+
+        if os.path.exists(fio_json_path):
+            scenario_name = subdir
+            _process_fio_json_by_rw(fio_json_path, scenario_name, results)
+        else:
+            # Nested structure (scenario_type/scenario_name/) - process all nested
+            for nested in os.listdir(subdir_path):
+                nested_path = os.path.join(subdir_path, nested)
+                if os.path.isdir(nested_path):
+                    candidate_path = os.path.join(nested_path, "fio.json")
+                    if os.path.exists(candidate_path):
+                        _process_fio_json_by_rw(candidate_path, nested, results)
+
+    return results
+
+
+def _process_fio_json_by_rw(fio_json_path, scenario_name, results):
+    """Process a fio.json file and group by rw_type."""
+    params = parse_fio_scenario_name(scenario_name)
+    if not params:
+        return
+
+    try:
+        with open(fio_json_path, "r") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, IOError):
+        return
+
+    jobs = data.get("jobs", [])
+    if not jobs:
+        return
+
+    rw_type = params["rw"]
+    if rw_type not in results:
+        return
+
+    is_read = rw_type in ("seq_read", "rand_read")
+    job = jobs[0]
+
+    if is_read:
+        metrics = job.get("read", {})
+    else:
+        metrics = job.get("write", {})
+
+    if not metrics:
+        return
+
+    bw_kib = metrics.get("bw", 0)
+    latency_ns_mean = metrics.get("lat_ns", {}).get("mean", 0)
+    key = (params["bs"], params["numjobs"])
+
+    if params["direct"] == 0:
+        results[rw_type]['direct_0'][key] = {
+            "bandwidth_kib": bw_kib,
+            "latency_ns_mean": latency_ns_mean
+        }
+    else:
+        results[rw_type]['direct_1'][key] = {
+            "bandwidth_kib": bw_kib,
+            "latency_ns_mean": latency_ns_mean
+        }
+
+
 # ==============================================================================
 # FIO JSON Parser
 # ==============================================================================
@@ -1173,6 +1265,75 @@ def generate_fio_summary_tables_text(direct_0, direct_1, rw_type):
     return "\n".join(lines)
 
 
+def generate_fio_summary_tables_all_text(results_by_rw):
+    """Generate markdown summary tables for all rw_types combined."""
+    lines = []
+    rw_type_names = {
+        'seq_read': '顺序读 (Sequential Read)',
+        'seq_write': '顺序写 (Sequential Write)',
+        'rand_read': '随机读 (Random Read)',
+        'rand_write': '随机写 (Random Write)'
+    }
+
+    bs_order = ["128k", "1m", "4m"]
+    numjobs_order = [1, 8, 16, 32]
+
+    for rw_type, rw_name in rw_type_names.items():
+        if rw_type not in results_by_rw:
+            continue
+
+        direct_0 = results_by_rw[rw_type]['direct_0']
+        direct_1 = results_by_rw[rw_type]['direct_1']
+
+        # Skip if no data
+        if not direct_0 and not direct_1:
+            continue
+
+        is_read = rw_type in ("seq_read", "rand_read")
+        bw_label = "读带宽 (MiB/s)" if is_read else "写带宽 (MiB/s)"
+
+        lines.append("")
+        lines.append(f"## {rw_name}")
+        lines.append("")
+
+        # direct=0 table
+        lines.append("### 汇总表 (direct=0, 缓存 I/O)")
+        lines.append("")
+        lines.append(f"| 块大小 | 任务数 | {bw_label} | 延迟 (us) |")
+        lines.append(f"|--------|--------|------------------|------------|")
+
+        for bs in bs_order:
+            for numjobs in numjobs_order:
+                key = (bs, numjobs)
+                if key in direct_0:
+                    data = direct_0[key]
+                    bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                    lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                    lines.append(f"| {bs} | {numjobs} | {bw_mib:.2f} | {lat_us:.2f} |")
+                else:
+                    lines.append(f"| {bs} | {numjobs} | - | - |")
+
+        # direct=1 table
+        lines.append("")
+        lines.append("### 汇总表 (direct=1, 直接 I/O)")
+        lines.append("")
+        lines.append(f"| 块大小 | 任务数 | {bw_label} | 延迟 (us) |")
+        lines.append(f"|--------|--------|------------------|------------|")
+
+        for bs in bs_order:
+            for numjobs in numjobs_order:
+                key = (bs, numjobs)
+                if key in direct_1:
+                    data = direct_1[key]
+                    bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                    lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                    lines.append(f"| {bs} | {numjobs} | {bw_mib:.2f} | {lat_us:.2f} |")
+                else:
+                    lines.append(f"| {bs} | {numjobs} | - | - |")
+
+    return "\n".join(lines)
+
+
 # ==============================================================================
 # Main
 # ==============================================================================
@@ -1219,23 +1380,30 @@ def main():
 
     # Generate combined summary tables if requested
     if is_combined and tool == "fio":
-        direct_0, direct_1 = aggregate_fio_results(output_dir)
+        # When scenario is "all", generate tables for all rw_types
+        if scenario == "all":
+            results_by_rw = aggregate_fio_results_by_rw(output_dir)
+            summary_text = generate_fio_summary_tables_all_text(results_by_rw)
+            # For HTML, we still use seq_read as default since we don't have full HTML tables for all
+            summary_html = "<p>See text report for full combined summary</p>"
+        else:
+            direct_0, direct_1 = aggregate_fio_results(output_dir)
 
-        # Determine rw_type from scenario name
-        rw_type = "seq_read"  # default
-        if scenario:
-            # Check if scenario is a simple rw type name (seq_read, seq_write, rand_read, rand_write)
-            if scenario in ("seq_read", "seq_write", "rand_read", "rand_write"):
-                rw_type = scenario
-            else:
-                params = parse_fio_scenario_name(scenario)
-                if params:
-                    rw_type = params["rw"]
+            # Determine rw_type from scenario name
+            rw_type = "seq_read"  # default
+            if scenario:
+                # Check if scenario is a simple rw type name (seq_read, seq_write, rand_read, rand_write)
+                if scenario in ("seq_read", "seq_write", "rand_read", "rand_write"):
+                    rw_type = scenario
+                else:
+                    params = parse_fio_scenario_name(scenario)
+                    if params:
+                        rw_type = params["rw"]
+
+            summary_text = generate_fio_summary_tables_text(direct_0, direct_1, rw_type)
+            summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type)
 
         # Generate and append summary tables to HTML report
-        summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type)
-
-        # Read existing HTML and insert summary before the footer
         with open(html_path, "r") as f:
             html_content = f.read()
 
@@ -1255,8 +1423,6 @@ def main():
         print(f"Combined summary HTML appended: {html_path}")
 
         # Generate and append summary tables to text summary
-        summary_text = generate_fio_summary_tables_text(direct_0, direct_1, rw_type)
-
         with open(txt_path, "a") as f:
             f.write("\n" + summary_text)
         print(f"Combined summary text appended: {txt_path}")
