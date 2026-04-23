@@ -795,7 +795,9 @@ fio_run() {
         # For specific scenario, use SCENARIO directly
         if [[ "$SCENARIO" == "all" ]]; then
             # Extract scenario type from config filename (e.g., seq_read_0d_128k_1j -> seq_read)
-            local scenario_type="${scenario_name%%_*}"
+            # Use first two underscore-separated parts
+            local scenario_type
+            scenario_type=$(echo "$scenario_name" | cut -d'_' -f1,2)
             local scenario_output="$OUTPUT/fio/$scenario_type/$scenario_name"
         else
             local scenario_output="$OUTPUT/fio/$SCENARIO"
