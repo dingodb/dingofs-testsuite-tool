@@ -379,6 +379,10 @@ scenario_exists() {
     # Check custom override first
     case "$tool" in
         fio)
+            # Accept "all" to run all scenarios
+            if [[ "$scenario" == "all" ]]; then
+                return 0
+            fi
             # Check exact match first
             if [[ -f "/custom/${scenario}.fio" ]] || [[ -f "/custom/${scenario}.conf" ]] || [[ -f "${SCENARIOS_DIR}/fio/${scenario}.fio" ]]; then
                 return 0
