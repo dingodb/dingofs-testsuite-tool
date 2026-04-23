@@ -867,7 +867,13 @@ fio_run() {
     # Generate combined report if multiple scenarios
     if [[ $path_count -gt 1 ]]; then
         echo "Generating combined report..."
-        python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+        # For "all" scenario, aggregate from all scenario type subdirectories
+        # For specific scenario, use that scenario's subdirectory
+        if [[ "$SCENARIO" == "all" ]]; then
+            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+        else
+            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+        fi
     fi
 
     echo ""
@@ -1025,7 +1031,7 @@ mdtest_run() {
 
     # Generate combined report for all mdtest scenarios (BEFORE logging results)
     echo "Generating combined mdtest report..."
-    python3 /scripts/generate_report.py --tool mdtest --output-dir "$OUTPUT/mdtest" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
+    python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_output_base" --scenario "$SCENARIO" --mount "$MOUNT" --np "$NP" --combined
 
     # Now log results for each scenario (combined summary now exists)
     for i in "${!scenario_names[@]}"; do
