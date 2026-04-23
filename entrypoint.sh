@@ -20,6 +20,7 @@ TOOL=""              # Storage testing tool (fio, vdbench, mdtest)
 SCENARIO=""          # Test scenario name (e.g., seq_read, rand_write)
 MOUNT="/data"        # Filesystem mount point
 OUTPUT="/data/results"  # Output directory
+RUN_TIMESTAMP=""     # Timestamp for this run (format: YYYYmmdd_HHMMSS)
 MODE="one-shot"      # Mode: one-shot or long-running
 NP=16                # Number of MPI processes for mdtest (default: 16)
 
@@ -769,11 +770,11 @@ fio_run() {
     echo "Found $path_count scenario(s) for '$SCENARIO'"
     echo "  Mount: $MOUNT"
     echo "  Output: $OUTPUT"
-    echo ""
+echo ""
 
-    # Create base output directory and tool subdirectory
+    # Create base output directory and tool subdirectory with timestamp
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/fio"
+    mkdir -p "$OUTPUT/fio_${RUN_TIMESTAMP}"
 
     # Determine output subdirectory based on SCENARIO
     # For "all", use scenario type subdirectories (seq_read, seq_write, rand_read, rand_write)
@@ -798,10 +799,10 @@ fio_run() {
             # Use first two underscore-separated parts
             local scenario_type
             scenario_type=$(echo "$scenario_name" | cut -d'_' -f1,2)
-            local scenario_output="$OUTPUT/fio/$scenario_type/$scenario_name"
+            local scenario_output="$OUTPUT/fio_${RUN_TIMESTAMP}/$scenario_type/$scenario_name"
         else
             # Each variant gets its own subdirectory
-            local scenario_output="$OUTPUT/fio/$SCENARIO/$scenario_name"
+            local scenario_output="$OUTPUT/fio_${RUN_TIMESTAMP}/$SCENARIO/$scenario_name"
         fi
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
@@ -873,9 +874,9 @@ fio_run() {
         # For "all" scenario, aggregate from all scenario type subdirectories
         # For specific scenario, use that scenario's subdirectory
         if [[ "$SCENARIO" == "all" ]]; then
-            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}" --scenario "$SCENARIO" --mount "$MOUNT" --combined
         else
-            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --combined
         fi
     fi
 
@@ -896,11 +897,11 @@ vdbench_run() {
 
     # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/vdbench/$SCENARIO"
+    mkdir -p "$OUTPUT/vdbench_${RUN_TIMESTAMP}/$SCENARIO"
 
     # Replace anchor paths in config with MOUNT if needed
     # vdbench configs often have wd= anchor=/path/to/mount
-    local vdbench_output="$OUTPUT/vdbench/$SCENARIO"
+    local vdbench_output="$OUTPUT/vdbench_${RUN_TIMESTAMP}/$SCENARIO"
     local vdbench_cmd=("$VDBENCH_BIN" "-f" "$config" "-o" "$vdbench_output")
 
     # Change to vdbench directory for execution
@@ -967,7 +968,7 @@ mdtest_run() {
 
     # Create base output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/mdtest"
+    mkdir -p "$OUTPUT/mdtest_${RUN_TIMESTAMP}"
 
     local overall_exit=0
     local run_num=0
@@ -992,7 +993,7 @@ mdtest_run() {
     # Output subdirectory for mdtest
     # For "all", each scenario goes to its own subdirectory
     # For specific scenario, use that scenario's subdirectory
-    local mdtest_base="$OUTPUT/mdtest"
+    local mdtest_base="$OUTPUT/mdtest_${RUN_TIMESTAMP}"
 
     for script in "${scenario_array[@]}"; do
         [[ -z "$script" ]] && continue
@@ -1086,7 +1087,7 @@ pjdtest_run() {
 
     # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/pjdtest/$SCENARIO"
+    mkdir -p "$OUTPUT/pjdtest_${RUN_TIMESTAMP}/$SCENARIO"
 
     # Change to mount directory for test execution
     cd "$MOUNT"
@@ -1094,7 +1095,7 @@ pjdtest_run() {
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local pjdtest_output="$OUTPUT/pjdtest/$SCENARIO"
+    local pjdtest_output="$OUTPUT/pjdtest_${RUN_TIMESTAMP}/$SCENARIO"
     local output_file="${pjdtest_output}/pjdtest_${timestamp}"
 
     echo "Executing: prove -rv /pjdtest/dingofs_baseline"
@@ -1151,7 +1152,7 @@ ltp_run() {
 
     # Create output directory and tool subdirectory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/ltp/$SCENARIO"
+    mkdir -p "$OUTPUT/ltp_${RUN_TIMESTAMP}/$SCENARIO"
 
     # Change to mount directory for test execution
     cd "$MOUNT"
@@ -1159,7 +1160,7 @@ ltp_run() {
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
-    local ltp_output="$OUTPUT/ltp/$SCENARIO"
+    local ltp_output="$OUTPUT/ltp_${RUN_TIMESTAMP}/$SCENARIO"
     local output_file="${ltp_output}/ltp_${timestamp}"
 
     # Map scenario names to LTP test suite names
@@ -1272,12 +1273,12 @@ integration_run() {
 
     # Create output directory
     mkdir -p "$OUTPUT"
-    mkdir -p "$OUTPUT/integration/$SCENARIO"
-    mkdir -p "$OUTPUT/integration/$SCENARIO/allure-results"
+    mkdir -p "$OUTPUT/integration_${RUN_TIMESTAMP}/$SCENARIO"
+    mkdir -p "$OUTPUT/integration_${RUN_TIMESTAMP}/$SCENARIO/allure-results"
 
     local start_time=$(date +"%Y-%m-%d %H:%M:%S")
     local timestamp=$(date +"%Y%m%d_%H%M%S")
-    local int_output="$OUTPUT/integration/$SCENARIO"
+    local int_output="$OUTPUT/integration_${RUN_TIMESTAMP}/$SCENARIO"
     local log_file="$int_output/int_${timestamp}.log"
 
     # Create dynamic environment config in the framework's conf directory
@@ -1360,7 +1361,7 @@ EOF
     echo "Integration tests completed with exit code: $exit_code"
     echo "Status: $status"
     echo "Log saved to: $log_file"
-    echo "Allure results saved to: $OUTPUT/integration/allure-results"
+    echo "Allure results saved to: $OUTPUT/integration_${RUN_TIMESTAMP}/allure-results"
 
     # Log result with parsed details
     log_result "int" "$module" "$exit_code" "$start_time" "$int_output" "$status" "$details"
@@ -1439,6 +1440,9 @@ main() {
     # Validate parameters
     validate_params
 
+    # Generate run timestamp for output directory
+    RUN_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+
     echo "=============================================="
     echo "DingoFS Storage Testsuite Tools"
     echo "=============================================="
@@ -1446,6 +1450,7 @@ main() {
     echo "Scenario: $SCENARIO"
     echo "Mount:    $MOUNT"
     echo "Output:   $OUTPUT"
+    echo "Run Time: $RUN_TIMESTAMP"
     echo "NP:       $NP"
     echo "Mode:     $MODE"
     echo "=============================================="
