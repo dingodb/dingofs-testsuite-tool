@@ -85,6 +85,10 @@ def aggregate_fio_results(output_dir):
 
     Returns two dictionaries (direct=0 and direct=1), each containing
     aggregated data grouped by (bs, numjobs).
+
+    Supports two directory structures:
+    1. output/fio/<scenario_name>/fio.json (specific scenario)
+    2. output/fio/<rw_type>/<scenario_name>/fio.json (all scenarios)
     """
     direct_0 = {}  # direct=0 results
     direct_1 = {}  # direct=1 results
@@ -98,12 +102,26 @@ def aggregate_fio_results(output_dir):
         if not os.path.isdir(subdir_path):
             continue
 
+        # Check for fio.json at this level
         fio_json_path = os.path.join(subdir_path, "fio.json")
+        scenario_name = subdir
+
+        # If no fio.json here, check nested structure (scenario_type/scenario_name)
         if not os.path.exists(fio_json_path):
-            continue
+            fio_json_path = None
+            for nested in os.listdir(subdir_path):
+                nested_path = os.path.join(subdir_path, nested)
+                if os.path.isdir(nested_path):
+                    candidate_path = os.path.join(nested_path, "fio.json")
+                    if os.path.exists(candidate_path):
+                        fio_json_path = candidate_path
+                        scenario_name = nested  # Use the nested dir name as scenario
+                        break
+            if fio_json_path is None:
+                continue
 
         # Parse scenario name to get parameters
-        params = parse_fio_scenario_name(subdir)
+        params = parse_fio_scenario_name(scenario_name)
         if not params:
             continue
 
