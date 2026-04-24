@@ -193,28 +193,34 @@ show_fio_help() {
 FIO 存储性能测试
 =================
 
-用法: dtt -t fio -s <场景> [-m <挂载点>] [-o <输出目录>]
+用法: dtt -t fio -s <场景> [-m <挂载点>] [-o <输出目录>] [--bs_size <类型>]
 
-场景类型 (4种类型，每种24个子场景):
+场景类型:
   seq_read    - 顺序读
   seq_write   - 顺序写
   rand_read   - 随机读
   rand_write  - 随机写
-  all         - 运行所有4种场景类型 (96个测试)
+  all         - 运行所有4种场景类型
+
+块大小类型 (--bs_size):
+  normal (默认) - 128K, 1M, 4M (每种类型24个测试)
+  small          - 128B, 256B, 512B, 1K, 2K, 4K, 8K (每种类型56个测试)
 
 每个场景运行以下变体:
   direct:    0 (buffered), 1 (direct I/O)
-  block size: 128k, 1m, 4m
   numjobs:   1, 8, 16, 32
   iodepth:   1 (固定)
   size:      每个job 8G
 
 示例:
-  # 运行所有顺序读场景 (24个测试)
+  # 运行所有顺序读场景 (normal块大小: 24个测试)
   dtt -t fio -s seq_read
 
-  # 运行所有场景 (96个测试)
+  # 运行所有场景 (normal块大小: 96个测试)
   dtt -t fio -s all
+
+  # 运行所有场景 (小块模式: 224个测试)
+  dtt -t fio -s all --bs_size small
 
   # 运行单个场景
   dtt -t fio -s rand_read_0d_128k_1j
