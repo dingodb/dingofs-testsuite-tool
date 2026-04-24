@@ -396,16 +396,23 @@ scenario_exists() {
     # Check custom override first
     case "$tool" in
         fio)
+            # When BS_SIZE=small, files are in /scenarios/fio/bs_small
+            # When BS_SIZE=normal, files are in /scenarios/fio/bs_normal
+            local fio_scenarios_dir="/scenarios/fio/bs_normal"
+            if [[ "$BS_SIZE" == "small" ]]; then
+                fio_scenarios_dir="/scenarios/fio/bs_small"
+            fi
+
             # Accept "all" to run all scenarios
             if [[ "$scenario" == "all" ]]; then
                 return 0
             fi
             # Check exact match first
-            if [[ -f "/custom/${scenario}.fio" ]] || [[ -f "/custom/${scenario}.conf" ]] || [[ -f "${SCENARIOS_DIR}/fio/${scenario}.fio" ]]; then
+            if [[ -f "/custom/${scenario}.fio" ]] || [[ -f "/custom/${scenario}.conf" ]] || [[ -f "${fio_scenarios_dir}/${scenario}.fio" ]]; then
                 return 0
             fi
             # Check for prefix matches (e.g., seq_read matches seq_read_*.fio)
-            if [[ -n "$(ls "${SCENARIOS_DIR}/fio/${scenario}"_*.fio 2>/dev/null | head -1)" ]]; then
+            if [[ -n "$(ls "${fio_scenarios_dir}/${scenario}"_*.fio 2>/dev/null | head -1)" ]]; then
                 return 0
             fi
             return 1
@@ -446,6 +453,13 @@ get_scenario_paths() {
 
     case "$tool" in
         fio)
+            # When BS_SIZE=small, files are in /scenarios/fio/bs_small
+            # When BS_SIZE=normal, files are in /scenarios/fio/bs_normal
+            local fio_subdir="/bs_normal"
+            if [[ "$BS_SIZE" == "small" ]]; then
+                fio_subdir="/bs_small"
+            fi
+
             # If "all", run all 4 scenario types
             if [[ "$scenario" == "all" ]]; then
                 # Run all 4 scenario types: seq_read, seq_write, rand_read, rand_write
@@ -453,20 +467,20 @@ get_scenario_paths() {
                 for type in $all_types; do
                     while IFS= read -r file; do
                         paths+=("$file")
-                    done < <(ls "${SCENARIOS_DIR}/fio/${type}"_*.fio 2>/dev/null | sort)
+                    done < <(ls "${SCENARIOS_DIR}${fio_subdir}/${type}"_*.fio 2>/dev/null | sort)
                 done
             # Check custom override first (exact match only)
             elif [[ -f "/custom/${scenario}.fio" ]]; then
                 paths+=("/custom/${scenario}.fio")
             elif [[ -f "/custom/${scenario}.conf" ]]; then
                 paths+=("/custom/${scenario}.conf")
-            elif [[ -f "${SCENARIOS_DIR}/fio/${scenario}.fio" ]]; then
-                paths+=("${SCENARIOS_DIR}/fio/${scenario}.fio")
+            elif [[ -f "${SCENARIOS_DIR}${fio_subdir}/${scenario}.fio" ]]; then
+                paths+=("${SCENARIOS_DIR}${fio_subdir}/${scenario}.fio")
             else
                 # Check for prefix matches
                 while IFS= read -r file; do
                     paths+=("$file")
-                done < <(ls "${SCENARIOS_DIR}/fio/${scenario}"_*.fio 2>/dev/null | sort)
+                done < <(ls "${SCENARIOS_DIR}${fio_subdir}/${scenario}"_*.fio 2>/dev/null | sort)
             fi
             ;;
         vdbench)
@@ -775,14 +789,16 @@ fio_run() {
     local scenario_paths
 
     # Set fio scenarios directory based on BS_SIZE
-    local fio_scenarios_dir="/scenarios/fio_${BS_SIZE}"
-    if [[ ! -d "$fio_scenarios_dir" ]]; then
-        fio_scenarios_dir="/scenarios/fio"
+    # When BS_SIZE=small, files are in /scenarios/fio/bs_small
+    # When BS_SIZE=normal, files are in /scenarios/fio/bs_normal
+    local fio_base_dir="/scenarios/fio/bs_normal"
+    if [[ "$BS_SIZE" == "small" ]]; then
+        fio_base_dir="/scenarios/fio/bs_small"
     fi
 
     # Override SCENARIOS_DIR temporarily for fio
     local orig_scenarios_dir="$SCENARIOS_DIR"
-    SCENARIOS_DIR="${fio_scenarios_dir}"
+    SCENARIOS_DIR="${fio_base_dir}"
     scenario_paths=$(get_scenario_paths fio "$SCENARIO")
     SCENARIOS_DIR="$orig_scenarios_dir"
 

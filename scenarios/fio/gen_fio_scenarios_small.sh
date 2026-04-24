@@ -1,10 +1,10 @@
 #!/bin/bash
-# Generator script for fio scenarios with small block sizes
+# Generator script for fio scenarios with small block sizes (128B-8K)
 # 4 types x 2 direct x 7 bs x 4 numjobs = 224 files
-# Output: scenarios/fio_small/
+# Output: scenarios/fio/bs_small/
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-OUTPUT_DIR="${SCRIPT_DIR}/fio_small"
+OUTPUT_DIR="${SCRIPT_DIR}/bs_small"
 
 # Create output directory
 mkdir -p "$OUTPUT_DIR"
@@ -31,7 +31,7 @@ iodepth=1
 runtime=60
 time_based=1
 directory=/data
-size=8G
+size=400M
 group_reporting=1
 EOF
 
