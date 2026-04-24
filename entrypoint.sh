@@ -64,6 +64,8 @@ Options:
   -m, --mount     被测存储的挂载点 (例如: /mnt/test)
   -o, --output    测试结果输出目录 (例如: /output)
   -n, --np        mdtest MPI 进程数 (默认: 16)
+  --bs_size       fio块大小类型: normal (128K/1M/4K), small (128B/256B/512B/1K/2K/4K/8K)
+                   默认: normal
   --mode          运行模式: one-shot (默认) 或 long-running
 
 注意: -o 指定的是容器内路径，需要通过 -v 将容器内目录映射到本机路径
@@ -88,15 +90,19 @@ Tools:
   dtt config set webhook_url <url>  设置企业微信webhook地址
   dtt config set email <地址>      设置邮件通知地址
 
-FIO Scenarios (4 types, each runs 24 sub-scenarios):
-  rand_read   - Random read  (24 variants: 2 direct × 3 block size × 4 numjobs)
+FIO Scenarios (4 types, each runs multiple sub-scenarios):
+  rand_read   - Random read
   rand_write  - Random write
   seq_read    - Sequential read
   seq_write   - Sequential write
+  all         - 运行以上所有4个场景
+
+FIO Block Sizes (--bs_size):
+  normal (默认) - 128K, 1M, 4M
+  small          - 128B, 256B, 512B, 1K, 2K, 4K, 8K
 
 FIO Parameters:
   direct:    0 (buffered), 1 (direct I/O)
-  block size: 128k, 1m, 4m
   numjobs:   1, 8, 16, 32
   iodepth:   1 (fixed)
   size:      8G per job
@@ -122,10 +128,13 @@ LTP:
 注意: LTP 需要 --privileged 运行以访问 /dev/kmsg 等设备
 
 Examples:
-  # 运行所有 rand_read 场景 (24 tests)
+  # 运行所有 rand_read 场景 (normal块大小: 24 tests)
   docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data
 
-  # 运行所有 seq_write 场景 (24 tests)
+  # 运行所有 fio 场景 (小块模式: 128B-8K, 224 tests)
+  docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s all --bs_size small -m /data -o /data
+
+  # 运行所有 seq_write 场景 (normal块大小)
   docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_write -m /data -o /data
 
   # 运行单个特定场景
