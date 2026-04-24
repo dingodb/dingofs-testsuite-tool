@@ -94,7 +94,8 @@
       "Bash(grep -n 'fio_${RUN_TIMESTAMP}' /mnt/disk5/daigy/dingofs-testsuite-tool/entrypoint.sh)",
       "Bash(python3 -c ' *)",
       "Bash(python3 -c \"import sys; sys.path.insert\\(0, 'scripts'\\); from generate_report import aggregate_fio_results; print\\('Import OK'\\)\")",
-      "Bash(python3 -c \"from scripts.generate_report import aggregate_fio_results_by_rw, generate_fio_summary_tables_all_text; print\\('Import OK'\\)\")"
+      "Bash(python3 -c \"from scripts.generate_report import aggregate_fio_results_by_rw, generate_fio_summary_tables_all_text; print\\('Import OK'\\)\")",
+      "Bash(bash /mnt/disk5/daigy/dingofs-testsuite-tool/scenarios/fio/gen_fio_scenarios_small.sh)"
     ],
     "additionalDirectories": [
       "/mnt/disk0/daigy/tmp",

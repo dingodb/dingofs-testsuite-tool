@@ -111,11 +111,8 @@ COPY scripts/generate_report.py /scripts/generate_report.py
 COPY scripts/notify.sh /scripts/notify.sh
 RUN chmod +x /scripts/generate_report.py /scripts/notify.sh
 
-# Phase 2: Copy scenario files
+# Phase 2: Copy scenario files (includes fio and fio_small directories)
 COPY scenarios/ /scenarios/
-
-# Generate fio_small scenarios (small block sizes: 128B-8K)
-RUN bash /scenarios/fio/gen_fio_scenarios_small.sh
 
 # Phase 5: Copy and build pjdtest tool
 COPY pjdtest/ /pjdtest/
