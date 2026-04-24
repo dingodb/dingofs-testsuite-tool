@@ -77,6 +77,8 @@ Last activity: 2026-04-22 -- Phase 12 execution started
 | 260413-m3k | Support multiple mdsaddr addresses (comma-separated) | 2026-04-13 | - | [260413-m3k-support-multiple-mdsaddr-addresses-comma](./quick/260413-m3k-support-multiple-mdsaddr-addresses-comma/) |
 | 260421-d32 | Add --help support for each tool and change -s mdtest/ltp defaults to -s all | 2026-04-21 | 9e85c7e | [260421-d32-add-help-support-for-each-tool-in-wrappe](./quick/260421-d32-add-help-support-for-each-tool-in-wrappe/) |
 | 260421-dvj | Organize output into tool-specific subdirectories | 2026-04-21 | 769ad97 | [260421-dvj-organize-output-into-tool-specific-subdi](./quick/260421-dvj-organize-output-into-tool-specific-subdi/) |
+| 260424-b84 | Fix BS_SIZE=small path and filesize (400M) | 2026-04-24 | - | [260424-b84-fix-bs-size-small-path-and-size](./quick/260424-b84-fix-bs-size-small-path-and-size/) |
+| 260424-kv8 | Reorganize fio scenarios into /scenarios/fio/bs_normal and bs_small | 2026-04-24 | 505ca27 | [260424-kv8-reorganize-fio-scenarios-into-scenarios-](./quick/260424-kv8-reorganize-fio-scenarios-into-scenarios-/) |
 
 ### Key Files
 
@@ -89,15 +91,15 @@ Last activity: 2026-04-22 -- Phase 12 execution started
 
 ## Session Continuity
 
-**Last Session:** 2026-04-21T15:00:00.000Z
+**Last Session:** 2026-04-24T15:00:00.000Z
 
 **Next Actions:**
 
-1. Plan Phase 9: 参数传递与执行
-2. Implement MDSADDR passing from dtt config to integration framework
+1. Complete Phase 12 WeChat notification implementation
+2. Rebuild Docker image and test fio scenario paths
 
 **Context for Next Session:**
-v1.2 milestone focuses on adding integration test command (-t int). Phase 8 adds basic -t int command support. Phase 9 will handle passing MDSADDR from `dtt config` to the integration framework.
+v1.3 milestone on notification features. Phase 11 completed (basic flags), Phase 12 in progress (WeChat webhook). Quick task 260424-kv8 reorganized fio scenarios into bs_normal/bs_small subdirectories.
 
 ---
 
