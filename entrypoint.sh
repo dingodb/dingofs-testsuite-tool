@@ -23,6 +23,7 @@ OUTPUT="/data/results"  # Output directory
 RUN_TIMESTAMP=""     # Timestamp for this run (format: YYYYmmdd_HHMMSS)
 MODE="one-shot"      # Mode: one-shot or long-running
 NP=16                # Number of MPI processes for mdtest (default: 16)
+BS_SIZE="${BS_SIZE:-normal}"  # Block size type: normal (128K/1M/4M) or small (128B-8K)
 
 # Tool paths (from Dockerfile)
 FIO_BIN="/usr/bin/fio"
@@ -757,7 +758,18 @@ dispatch_tool() {
 fio_run() {
     # Get all matching scenario paths
     local scenario_paths
+
+    # Set fio scenarios directory based on BS_SIZE
+    local fio_scenarios_dir="/scenarios/fio_${BS_SIZE}"
+    if [[ ! -d "$fio_scenarios_dir" ]]; then
+        fio_scenarios_dir="/scenarios/fio"
+    fi
+
+    # Override SCENARIOS_DIR temporarily for fio
+    local orig_scenarios_dir="$SCENARIOS_DIR"
+    SCENARIOS_DIR="${fio_scenarios_dir}"
     scenario_paths=$(get_scenario_paths fio "$SCENARIO")
+    SCENARIOS_DIR="$orig_scenarios_dir"
 
     local path_count
     path_count=$(echo "$scenario_paths" | grep -c "^" || true)

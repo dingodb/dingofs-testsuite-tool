@@ -1,12 +1,16 @@
 #!/bin/bash
 # Generator script for fio scenarios with small block sizes
 # 4 types x 2 direct x 7 bs x 4 numjobs = 224 files
+# Output: scenarios/fio_small/
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-SCENARIOS_DIR="$SCRIPT_DIR"
+OUTPUT_DIR="${SCRIPT_DIR}/fio_small"
+
+# Create output directory
+mkdir -p "$OUTPUT_DIR"
 
 # Remove old scenario files
-rm -f "$SCENARIOS_DIR"/*.fio
+rm -f "$OUTPUT_DIR"/*.fio
 
 generate_fio_scenario() {
     local rw="$1"
@@ -16,7 +20,7 @@ generate_fio_scenario() {
     local filename="$5"
     local is_random="$6"
 
-    cat > "$SCENARIOS_DIR/$filename" << EOF
+    cat > "$OUTPUT_DIR/$filename" << EOF
 [global]
 rw=$rw
 bs=$bs
@@ -32,11 +36,11 @@ group_reporting=1
 EOF
 
     if [ "$is_random" = "true" ]; then
-        echo "norandommap=1" >> "$SCENARIOS_DIR/$filename"
+        echo "norandommap=1" >> "$OUTPUT_DIR/$filename"
     fi
 
-    echo "" >> "$SCENARIOS_DIR/$filename"
-    echo "[job1]" >> "$SCENARIOS_DIR/$filename"
+    echo "" >> "$OUTPUT_DIR/$filename"
+    echo "[job1]" >> "$OUTPUT_DIR/$filename"
 }
 
 # Generate all 224 scenarios (4 types x 2 direct x 7 bs x 4 numjobs)
@@ -53,5 +57,5 @@ for direct in 0 1; do
     done
 done
 
-count=$(ls "$SCENARIOS_DIR"/*.fio 2>/dev/null | wc -l)
-echo "Generated $count fio scenario files in $SCENARIOS_DIR"
+count=$(ls "$OUTPUT_DIR"/*.fio 2>/dev/null | wc -l)
+echo "Generated $count fio scenario files in $OUTPUT_DIR"

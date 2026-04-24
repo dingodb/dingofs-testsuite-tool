@@ -137,6 +137,8 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录 (从配置读取)
   -o, --output <目录>     覆盖输出目录 (从配置读取)
+  --bs_size <类型>        fio块大小类型: normal (128K/1M/4M), small (128B/256B/512B/1K/2K/4K/8K)
+                          默认: normal
   --wechat                 启用企业微信通知
   --email                  启用邮件通知
 
@@ -154,6 +156,9 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
   # 运行所有 fio 顺序读场景
   dtt -t fio -s seq_read
+
+  # 运行所有 fio 场景 (使用小块大小 128B-8K)
+  dtt -t fio -s all --bs_size small
 
   # 运行所有 mdtest 场景
   dtt -t mdtest -s all
@@ -337,7 +342,7 @@ run_testsuite() {
     fi
 
     # Parse arguments
-    local mount="" output="" tool="" scenario="" np="${NP:-16}"
+    local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local wechat="" email_to=""
 
     while [[ $# -gt 0 ]]; do
@@ -369,6 +374,10 @@ run_testsuite() {
             --email)
                 email_to="yes"
                 shift
+                ;;
+            --bs_size)
+                bs_size="$2"
+                shift 2
                 ;;
             --help|-h)
                 # Check if tool is already set, show tool-specific help
@@ -467,6 +476,11 @@ run_testsuite() {
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
 
+    # Pass bs_size if specified (for fio)
+    if [[ -n "$bs_size" ]]; then
+        docker_cmd+=("-e" "BS_SIZE=$bs_size")
+    fi
+
     # Build entrypoint command
     local entrypoint_cmd=(
         /entrypoint.sh
@@ -527,7 +541,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;
