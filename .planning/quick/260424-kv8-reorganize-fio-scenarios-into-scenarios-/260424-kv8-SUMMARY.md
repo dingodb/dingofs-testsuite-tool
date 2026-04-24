@@ -83,7 +83,8 @@ completed: 2026-04-24
 None - plan executed exactly as written.
 
 ## Issues Encountered
-None
+- Initial implementation had path bug: get_scenario_paths() added extra /bs_small/ to already-complete path, resulting in /scenarios/fio/bs_small/bs_small/
+- Fixed by removing fio_subdir variable in get_scenario_paths() since SCENARIOS_DIR is already set to the complete path by fio_run()
 
 ## Next Phase Readiness
 - Fio scenario paths updated throughout codebase
