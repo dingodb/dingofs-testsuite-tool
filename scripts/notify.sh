@@ -60,8 +60,58 @@ send_email_notification() {
 <br>"
 
     if [[ -n "$details" ]]; then
+        # Parse details string: "Total: X, Passed: Y, Failed: Z. Failed: test1, test2, ..."
+        local total_val=""
+        local passed_val=""
+        local failed_val=""
+        local pass_rate=""
+        local failed_tests_list=""
+
+        # Extract total
+        if [[ "$details" =~ Total:[0-9]+ ]]; then
+            total_val=$(echo "$details" | sed -n 's/.*Total:\([0-9]*\).*/\1/p')
+        fi
+
+        # Extract passed
+        if [[ "$details" =~ Passed:[0-9]+ ]]; then
+            passed_val=$(echo "$details" | sed -n 's/.*Passed:\([0-9]*\).*/\1/p')
+        fi
+
+        # Extract failed (before ". Failed:" to avoid matching the repeated part)
+        if [[ "$details" =~ Failed:[0-9]+ ]]; then
+            failed_val=$(echo "$details" | sed -n 's/.*Failed:\([0-9]*\).*/\1/p')
+        fi
+
+        # Calculate pass rate
+        if [[ -n "$total_val" ]] && [[ "$total_val" -gt 0 ]]; then
+            pass_rate=$(awk "BEGIN {printf \"%.1f\", ($passed_val/$total_val)*100}")
+            pass_rate="${pass_rate}%"
+        fi
+
+        # Extract failed test names (after ". Failed: ")
+        if [[ "$details" =~ \.Failed:\  ]]; then
+            failed_tests_list=$(echo "$details" | sed -n 's/.*\.Failed: \(.*\)/\1/p')
+            # Replace comma separators with <br> for better readability in HTML
+            failed_tests_list=$(echo "$failed_tests_list" | sed 's/, */<br>/g')
+        fi
+
+        # Build proper HTML table for test results
         html_content="${html_content}
-<p><b>详情:</b> $details</p>"
+<h3>测试结果详情</h3>
+<table border='1' cellpadding='5' cellspacing='0'>
+<tr><td><b>用例总数 (Total)</b></td><td>${total_val:-0}</td></tr>
+<tr><td><b>通过用例数 (Passed)</b></td><td>${passed_val:-0}</td></tr>
+<tr><td><b>失败用例数 (Failed)</b></td><td>${failed_val:-0}</td></tr>
+<tr><td><b>通过率 (Pass Rate)</b></td><td>${pass_rate:-N/A}</td></tr>"
+
+        # Add failed test details as last row if there are failures
+        if [[ -n "$failed_tests_list" ]] && [[ "$failed_tests_list" != "0" ]]; then
+            html_content="${html_content}
+<tr><td><b>失败用例详情 (Failed Tests)</b></td><td><small>${failed_tests_list}</small></td></tr>"
+        fi
+
+        html_content="${html_content}
+</table>"
     fi
 
     html_content="${html_content}
