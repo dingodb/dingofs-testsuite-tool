@@ -4,7 +4,7 @@ milestone: v1.2
 milestone_name: 集成测试命令
 status: executing
 last_updated: "2026-04-22T01:27:34.961Z"
-last_activity: 2026-04-22 -- Phase 12 execution started
+last_activity: 2026-04-28 -- Completed quick task 260428-fay: Add container runtime config option (docker/podman) to dtt
 progress:
   total_phases: 14
   completed_phases: 7
@@ -79,6 +79,7 @@ Last activity: 2026-04-22 -- Phase 12 execution started
 | 260421-dvj | Organize output into tool-specific subdirectories | 2026-04-21 | 769ad97 | [260421-dvj-organize-output-into-tool-specific-subdi](./quick/260421-dvj-organize-output-into-tool-specific-subdi/) |
 | 260424-b84 | Fix BS_SIZE=small path and filesize (400M) | 2026-04-24 | - | [260424-b84-fix-bs-size-small-path-and-size](./quick/260424-b84-fix-bs-size-small-path-and-size/) |
 | 260424-kv8 | Reorganize fio scenarios into /scenarios/fio/bs_normal and bs_small | 2026-04-24 | 505ca27 | [260424-kv8-reorganize-fio-scenarios-into-scenarios-](./quick/260424-kv8-reorganize-fio-scenarios-into-scenarios-/) |
+| 260428-fay | Add container runtime config option (docker/podman) to dtt | 2026-04-28 | cea0db6 | [260428-fay-add-container-runtime-config-option-dock](./quick/260428-fay-add-container-runtime-config-option-dock/) |
 
 ### Key Files
 
