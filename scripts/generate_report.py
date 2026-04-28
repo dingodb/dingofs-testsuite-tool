@@ -54,6 +54,12 @@ def parse_args():
         default=16,
         help="Number of MPI processes for mdtest (default: 16)"
     )
+    parser.add_argument(
+        "--bs-size",
+        default="normal",
+        choices=["normal", "small"],
+        help="Block size category: normal (128K/1M/4M) or small (128B-8K) (default: normal)"
+    )
     return parser.parse_args()
 
 
@@ -67,8 +73,9 @@ def parse_fio_scenario_name(scenario_name):
     Naming convention: {rw}_{direct}d_{bs}_{numjobs}j
     Example: seq_read_1d_4m_32j -> rw=seq_read, direct=1, bs=4m, numjobs=32
     """
-    # Pattern: rw_directd_bs_numjsj (e.g., seq_read_1d_4m_32j, seq_read_1d_128k_1j)
-    pattern = r'^(.+?)_(\d)d_(\d+[km])_(\d+)j$'
+    # Pattern: rw_directd_bs_numjsj (e.g., seq_read_1d_4m_32j, seq_read_1d_128k_1j, seq_read_1d_128_1j)
+    # bs can be: 128k, 1m, 4m (normal) OR 128, 256, 512, 1k, 2k, 4k, 8k (small)
+    pattern = r'^(.+?)_(\d)d_(\d+[km]|\d+)_(\d+)j$'
     match = re.match(pattern, scenario_name)
     if match:
         return {
@@ -1161,7 +1168,7 @@ def generate_mdtest_markdown_metrics(summary, data):
 # FIO Combined Summary Generator
 # ==============================================================================
 
-def generate_fio_summary_tables_html(direct_0, direct_1, rw_type):
+def generate_fio_summary_tables_html(direct_0, direct_1, rw_type, bs_size="normal"):
     """Generate HTML summary tables for combined fio results."""
     html = ""
 
@@ -1171,8 +1178,12 @@ def generate_fio_summary_tables_html(direct_0, direct_1, rw_type):
     else:
         bw_label = "WRITE_BANDWIDTH"
 
-    # Define row order: bs (128k, 1m, 4m) x numjobs (1, 8, 16, 32)
-    bs_order = ["128k", "1m", "4m"]
+    # Define row order based on bs_size
+    # Note: stored keys use format '128', '256', '512', '1k', '2k', '4k', '8k' (no 'B' suffix, lowercase k)
+    if bs_size == "small":
+        bs_order = ["128", "256", "512", "1k", "2k", "4k", "8k"]
+    else:
+        bs_order = ["128k", "1m", "4m"]
     numjobs_order = [1, 8, 16, 32]
 
     # direct=0 table
@@ -1212,7 +1223,7 @@ def generate_fio_summary_tables_html(direct_0, direct_1, rw_type):
     return html
 
 
-def generate_fio_summary_tables_text(direct_0, direct_1, rw_type):
+def generate_fio_summary_tables_text(direct_0, direct_1, rw_type, bs_size="normal"):
     """Generate markdown summary tables for combined fio results."""
     lines = []
 
@@ -1222,8 +1233,12 @@ def generate_fio_summary_tables_text(direct_0, direct_1, rw_type):
     else:
         bw_label = "写带宽 (MiB/s)"
 
-    # Define row order
-    bs_order = ["128k", "1m", "4m"]
+    # Define row order based on bs_size
+    # Note: stored keys use format '128', '256', '512', '1k', '2k', '4k', '8k' (no 'B' suffix, lowercase k)
+    if bs_size == "small":
+        bs_order = ["128", "256", "512", "1k", "2k", "4k", "8k"]
+    else:
+        bs_order = ["128k", "1m", "4m"]
     numjobs_order = [1, 8, 16, 32]
 
     # direct=0 table
@@ -1265,7 +1280,7 @@ def generate_fio_summary_tables_text(direct_0, direct_1, rw_type):
     return "\n".join(lines)
 
 
-def generate_fio_summary_tables_all_text(results_by_rw):
+def generate_fio_summary_tables_all_text(results_by_rw, bs_size="normal"):
     """Generate markdown summary tables for all rw_types combined."""
     lines = []
     rw_type_names = {
@@ -1275,7 +1290,12 @@ def generate_fio_summary_tables_all_text(results_by_rw):
         'rand_write': '随机写 (Random Write)'
     }
 
-    bs_order = ["128k", "1m", "4m"]
+    # Define row order based on bs_size
+    # Note: stored keys use format '128', '256', '512', '1k', '2k', '4k', '8k' (no 'B' suffix, lowercase k)
+    if bs_size == "small":
+        bs_order = ["128", "256", "512", "1k", "2k", "4k", "8k"]
+    else:
+        bs_order = ["128k", "1m", "4m"]
     numjobs_order = [1, 8, 16, 32]
 
     for rw_type, rw_name in rw_type_names.items():
@@ -1380,10 +1400,13 @@ def main():
 
     # Generate combined summary tables if requested
     if is_combined and tool == "fio":
+        # Get bs_size from args
+        bs_size = args.bs_size
+
         # When scenario is "all", generate tables for all rw_types
         if scenario == "all":
             results_by_rw = aggregate_fio_results_by_rw(output_dir)
-            summary_text = generate_fio_summary_tables_all_text(results_by_rw)
+            summary_text = generate_fio_summary_tables_all_text(results_by_rw, bs_size)
             # For HTML, we still use seq_read as default since we don't have full HTML tables for all
             summary_html = "<p>See text report for full combined summary</p>"
         else:
@@ -1400,8 +1423,8 @@ def main():
                     if params:
                         rw_type = params["rw"]
 
-            summary_text = generate_fio_summary_tables_text(direct_0, direct_1, rw_type)
-            summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type)
+            summary_text = generate_fio_summary_tables_text(direct_0, direct_1, rw_type, bs_size)
+            summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type, bs_size)
 
         # Generate and append summary tables to HTML report
         with open(html_path, "r") as f:

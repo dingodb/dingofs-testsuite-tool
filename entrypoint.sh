@@ -879,7 +879,7 @@ echo ""
 
         # Generate report for this scenario
         echo "Generating report for $scenario_name..."
-        python3 /scripts/generate_report.py --tool fio --output-dir "$scenario_output" --scenario "$scenario_name" --mount "$MOUNT"
+        python3 /scripts/generate_report.py --tool fio --output-dir "$scenario_output" --scenario "$scenario_name" --mount "$MOUNT" --bs-size "$BS_SIZE"
 
         # Log result
         log_result "fio" "$scenario_name" "$fio_exit" "$scenario_start_time" "$scenario_output"
@@ -921,9 +921,9 @@ echo ""
         # For "all" scenario, aggregate from all scenario type subdirectories
         # For specific scenario, use that scenario's subdirectory
         if [[ "$SCENARIO" == "all" ]]; then
-            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}" --scenario "$SCENARIO" --mount "$MOUNT" --combined --bs-size "$BS_SIZE"
         else
-            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --combined
+            python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --combined --bs-size "$BS_SIZE"
         fi
     fi
 
@@ -1396,30 +1396,64 @@ EOF
     # Run the integration test framework
     # Default module is quota if not specified
     local module="${SCENARIO:-quota}"
+    local pytest_file="tests/test_${module}_pytest.py"
+    local allure_dir="$int_output/allure-results"
 
     cd "$INTEGRATION_DIR"
 
-    # Run tests with dynamic environment and proper report directory
+    # Run tests with pytest
     # Use subshell to allow Ctrl+C to interrupt
     (
         trap 'kill -INT $$' INT TERM
-        python3 run_tests.py "$module" --env env_dynamic --skip-setup \
-            --report-dir "$int_output/allure-results" 2>&1 | tee "$log_file"
+        pytest "$pytest_file" --env=env_126_docker_base \
+            --alluredir="$allure_dir" -v -s --mdsaddr="$mdsaddr" --reruns 5 2>&1 | tee "$log_file"
     )
     local exit_code=${PIPESTATUS[0]}
 
     # Parse test results from the log output
+    # Format: "============= 4 failed, 90 passed, 23 rerun in 1412.22s (0:23:32) =============="
     local int_passed=0
     local int_failed=0
     local int_total=0
-    local int_skipped=0
+    local int_rerun=0
+    local failed_tests=""
 
-    # Extract test statistics from log (format: "Passed: X", "Failed: Y", "Total Cases: Z")
-    if grep -q "Passed:" "$log_file"; then
-        int_total=$(grep "Total Cases:" "$log_file" | sed 's/.*Total Cases: //' | sed 's/ .*//' || echo "0")
-        int_passed=$(grep "Passed:" "$log_file" | sed 's/.*Passed: //' | sed 's/ .*//' || echo "0")
-        int_failed=$(grep "Failed:" "$log_file" | sed 's/.*Failed: //' | sed 's/ .*//' || echo "0")
-        int_skipped=$(grep "Skipped:" "$log_file" | sed 's/.*Skipped: //' | sed 's/ .*//' || echo "0")
+    # Extract test statistics from pytest summary line
+    if grep -q "failed.*passed" "$log_file"; then
+        local summary_line=$(grep "failed.*passed.*rerun" "$log_file" | tail -1)
+        int_failed=$(echo "$summary_line" | sed -n 's/.*\([0-9]\+\) failed.*/\1/p' | head -1)
+        int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
+        int_rerun=$(echo "$summary_line" | sed -n 's/.*rerun in.*/\1/p' | sed 's/.*\([0-9]\+\) rerun.*/\1/' | head -1)
+        # Handle case where there might be no rerun
+        if [[ -z "$int_rerun" ]] || [[ "$int_rerun" =~ "rerun" ]]; then
+            int_rerun=0
+        fi
+        # Calculate total (failed + passed)
+        int_total=$((int_passed + int_failed))
+    fi
+
+    # Extract failed test names from "short test summary info" section
+    if grep -q "short test summary info" "$log_file"; then
+        local in_short_summary=false
+        while IFS= read -r line; do
+            if [[ "$in_short_summary" == true ]]; then
+                # Skip the separator line (====...====)
+                if [[ "$line" =~ ^=+ ]]; then
+                    continue
+                fi
+                # Skip empty lines
+                [[ -z "$line" ]] && continue
+                # This is a failed test name
+                if [[ -n "$failed_tests" ]]; then
+                    failed_tests="${failed_tests}, ${line}"
+                else
+                    failed_tests="${line}"
+                fi
+            fi
+            if [[ "$line" =~ "short test summary info" ]]; then
+                in_short_summary=true
+            fi
+        done < "$log_file"
     fi
 
     echo ""
@@ -1428,9 +1462,13 @@ EOF
     echo "  Total: $int_total"
     echo "  Passed: $int_passed"
     echo "  Failed: $int_failed"
-    echo "  Skipped: $int_skipped"
     echo "=========================================="
     echo ""
+    if [[ -n "$failed_tests" ]]; then
+        echo "Failed Tests:"
+        echo "  $failed_tests"
+        echo ""
+    fi
 
     # Determine success based on parsed results
     local status="FAIL"
@@ -1440,6 +1478,9 @@ EOF
 
     # Set details string for log_result
     local details="Total: $int_total, Passed: $int_passed, Failed: $int_failed"
+    if [[ -n "$failed_tests" ]]; then
+        details="${details}. Failed: ${failed_tests}"
+    fi
 
     echo "Integration tests completed with exit code: $exit_code"
     echo "Status: $status"
