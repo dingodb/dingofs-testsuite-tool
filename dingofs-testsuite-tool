@@ -19,6 +19,7 @@ IMAGE_FILE="$CONFIG_DIR/image"
 MDSADDR_FILE="$CONFIG_DIR/mdsaddr"
 WEBHOOK_URL_FILE="$CONFIG_DIR/webhook_url"
 EMAIL_FILE="$CONFIG_DIR/email"
+RUNTIME_FILE="$CONFIG_DIR/runtime"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
@@ -57,6 +58,9 @@ load_config() {
         email)
             [[ -f "$EMAIL_FILE" ]] && cat "$EMAIL_FILE" || echo "$DEFAULT_EMAIL"
             ;;
+        runtime)
+            [[ -f "$RUNTIME_FILE" ]] && cat "$RUNTIME_FILE" || echo "docker"
+            ;;
     esac
 }
 
@@ -82,15 +86,19 @@ save_config() {
         email)
             echo "$value" > "$EMAIL_FILE"
             ;;
+        runtime)
+            echo "$value" > "$RUNTIME_FILE"
+            ;;
     esac
 }
 
 list_docker_images() {
+    local runtime=$(load_config runtime)
     echo "Available dingofs-testsuite-tools images:"
-    docker images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null | grep -E "dingofs-testsuite-tools|testsuite-tools" || echo "  (no matching images found)"
+    $runtime images --format "{{.Repository}}:{{.Tag}}" 2>/dev/null | grep -E "dingofs-testsuite-tools|testsuite-tools" || echo "  (no matching images found)"
     echo ""
     echo "All Docker images:"
-    docker images --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null
+    $runtime images --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null
 }
 
 show_help() {
@@ -124,6 +132,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt config set mdsaddr <地址>   设置MDS地址 (例如: 172.30.14.126:6900)
   dtt config set webhook_url <url> 设置企业微信webhook地址
   dtt config set email <地址>      设置邮件通知地址 (默认: daigy@zetyun.com)
+  dtt config set runtime <运行时>  设置容器运行时 (docker 或 podman, 默认: docker)
   dtt config show                 显示当前配置
 
 测试命令:
@@ -215,13 +224,13 @@ cmd_config() {
             fi
 
             case "$key" in
-                testdir|output|image|mdsaddr|webhook_url|email)
+                testdir|output|image|mdsaddr|webhook_url|email|runtime)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email"
+                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email, runtime"
                     return 1
                     ;;
             esac
@@ -234,12 +243,14 @@ cmd_config() {
             local mds=$(load_config mdsaddr)
             local webhook=$(load_config webhook_url)
             local email=$(load_config email)
+            local runtime=$(load_config runtime)
             echo "  testdir: ${td:-not set}"
             echo "  output:  ${out:-not set}"
             echo "  image:   ${img:-not set}"
             echo "  mdsaddr: ${mds:-not set}"
             echo "  webhook_url: ${webhook:-not set}"
             echo "  email: ${email:-not set}"
+            echo "  runtime: ${runtime:-docker}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then
@@ -259,6 +270,7 @@ cmd_debug() {
     local testdir=$(load_config testdir)
     local output=$(load_config output)
     local mdsaddr=$(load_config mdsaddr)
+    local runtime=$(load_config runtime)
 
     if [[ -z "$image" ]]; then
         echo "Error: No Docker image configured."
@@ -274,7 +286,7 @@ cmd_debug() {
     echo "Type 'exit' to leave the container"
     echo ""
 
-    local docker_cmd=("docker" "run" "-it" "--rm" "--privileged" "--entrypoint" "/bin/bash")
+    local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--entrypoint" "/bin/bash")
 
     if [[ -n "$testdir" ]]; then
         docker_cmd+=("-v" "${testdir}:/data")
@@ -316,6 +328,7 @@ cmd_debug() {
 run_docker_help() {
     local tool="$1"
     local image=$(load_config image)
+    local runtime=$(load_config runtime)
 
     if [[ -z "$image" ]]; then
         echo "Error: No Docker image configured."
@@ -323,7 +336,7 @@ run_docker_help() {
         return 1
     fi
 
-    docker run --rm "$image" -t "$tool" --help
+    $runtime run --rm "$image" -t "$tool" --help
 }
 
 run_testsuite() {
@@ -331,6 +344,7 @@ run_testsuite() {
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
     local config_mdsaddr=$(load_config mdsaddr)
+    local runtime=$(load_config runtime)
 
     if [[ -z "$image" ]]; then
         echo "Error: No Docker image configured."
@@ -429,7 +443,7 @@ run_testsuite() {
 
     # Build docker command
     local docker_cmd=(
-        docker run --rm --privileged
+        $runtime run --rm --privileged
         -v "${mount}:/data"
         -v "${output}:/output"
     )
