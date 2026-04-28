@@ -491,8 +491,9 @@ run_testsuite() {
 
     # Add scenario for all tools (mdtest is optional, others required)
     if [[ "$tool" == "mdtest" ]]; then
-        # mdtest scenario is optional
-        [[ -n "$scenario" ]] && entrypoint_cmd+=(-s "$scenario")
+        # mdtest scenario is optional, default to "all" if not specified
+        local mdtest_scenario="${scenario:-all}"
+        entrypoint_cmd+=(-s "$mdtest_scenario")
     else
         # fio, vdbench, pjdtest, ltp, int all require scenario
         if [[ -z "$scenario" ]]; then
