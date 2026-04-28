@@ -12,6 +12,17 @@ TESTSUITE_TOOL_URL="https://raw.githubusercontent.com/dingodb/dingofs-testsuite-
 IMAGE_NAME="${IMAGE_NAME:-harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest}"
 SKIP_BUILD=false
 
+# Detect available container runtime (docker or podman)
+detect_runtime() {
+    if command -v docker &> /dev/null; then
+        echo "docker"
+    elif command -v podman &> /dev/null; then
+        echo "podman"
+    else
+        echo ""
+    fi
+}
+
 # Parse arguments
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -34,6 +45,16 @@ done
 echo "=============================================="
 echo "dingofs-Testsuite-tools Installer"
 echo "=============================================="
+echo ""
+
+# Detect container runtime
+RUNTIME=$(detect_runtime)
+if [[ -z "$RUNTIME" ]]; then
+    echo "Error: Neither docker nor podman is installed."
+    echo "Please install docker or podman before running this installer."
+    exit 1
+fi
+echo "Detected container runtime: $RUNTIME"
 echo ""
 
 # Step 1: Download dingofs-testsuite-tool from GitHub
@@ -88,22 +109,22 @@ elif sudo ln -sf "$DEST_FILE" "$INSTALL_DIR/dtt" 2>/dev/null; then
     echo "      Created symlink: $INSTALL_DIR/dtt (sudo)"
 fi
 
-# Step 2: Pull Docker image
+# Step 2: Pull container image
 if [[ "$SKIP_BUILD" == "false" ]]; then
     echo ""
-    echo "[2/4] Pulling Docker image..."
+    echo "[2/4] Pulling container image using $RUNTIME..."
     echo "      Image: $IMAGE_NAME"
     echo ""
 
     # Try pull without proxy first, then with proxy if it fails
-    if docker pull "$IMAGE_NAME" 2>/dev/null; then
+    if $RUNTIME pull "$IMAGE_NAME" 2>/dev/null; then
         PULL_SUCCESS=true
     else
         echo ""
         echo "      Pull failed, retrying with proxy settings..."
         if http_proxy=http://hproxy.it.zetyun.cn:1080 \
            https_proxy=http://hproxy.it.zetyun.cn:1080 \
-           docker pull "$IMAGE_NAME" 2>/dev/null; then
+           $RUNTIME pull "$IMAGE_NAME" 2>/dev/null; then
             PULL_SUCCESS=true
         else
             PULL_SUCCESS=false
@@ -112,15 +133,15 @@ if [[ "$SKIP_BUILD" == "false" ]]; then
 
     if [[ "$PULL_SUCCESS" == "true" ]]; then
         echo ""
-        echo "      Docker image pulled successfully."
+        echo "      Image pulled successfully."
     else
         echo ""
-        echo "Error: Docker image pull failed."
+        echo "Error: Image pull failed."
         exit 1
     fi
 else
     echo ""
-    echo "[2/4] Skipping Docker image pull (--no-pull specified)"
+    echo "[2/4] Skipping image pull (--no-pull specified)"
 fi
 
 # Step 3: Add to PATH via shell profile
@@ -162,7 +183,7 @@ fi
 
 # Step 4: Set image in dingofs-testsuite-tool config
 echo ""
-echo "[4/4] Setting Docker image in dingofs-testsuite-tool config..."
+echo "[4/4] Setting container image in dingofs-testsuite-tool config..."
 
 dingofs-testsuite-tool config set image "$IMAGE_NAME"
 
