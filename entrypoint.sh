@@ -1574,6 +1574,161 @@ EOF
     exit $exit_code
 }
 
+mlperf_run() {
+    local mlperf_start_time=$(date +"%Y-%m-%d %H:%M:%S")
+    local RUN_TS=$(date +%Y%m%d_%H%M%S)
+
+    echo "Running MLPerf Storage Benchmark"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+    echo ""
+
+    # Create output directories (results go to /output, datasets to /data)
+    local OUTPUT_BASE="$OUTPUT/mlperf_${RUN_TS}"
+    mkdir -p "$OUTPUT_BASE/results" "$OUTPUT_BASE/logs"
+
+    # Set up dataset directories on the test filesystem
+    mkdir -p /data/datasets
+
+    # Export OUTPUT_BASE so run_model.sh writes results there
+    export OUTPUT_BASE
+
+    # Set defaults for mlperf env vars (dtt wrapper may override via -e)
+    export MODELS="${MODELS:-all}"
+    export SCALE="${SCALE:-small}"
+    export NUM_ACCELERATORS="${NUM_ACCELERATORS:-1}"
+    export ACCELERATOR_TYPE="${ACCELERATOR_TYPE:-h100}"
+    export LOOPS="${LOOPS:-1}"
+    export SUBMISSION_MODE="${SUBMISSION_MODE:-closed}"
+    export SKIP_DATAGEN="${SKIP_DATAGEN:-auto}"
+    export NUM_CLIENT_HOSTS="${NUM_CLIENT_HOSTS:-1}"
+    export HOSTS="${HOSTS:-127.0.0.1}"
+    export CHECKPOINTING_MODEL="${CHECKPOINTING_MODEL:-llama3_8b}"
+
+    # Auto-detect memory
+    if [[ -z "${CLIENT_HOST_MEMORY_GB}" ]]; then
+        if [[ -f /proc/meminfo ]]; then
+            local MEM_KB=$(grep MemTotal /proc/meminfo | awk '{print $2}')
+            CLIENT_HOST_MEMORY_GB=$(( MEM_KB / 1024 / 1024 ))
+            [[ "${CLIENT_HOST_MEMORY_GB}" -lt 1 ]] && CLIENT_HOST_MEMORY_GB=1
+        else
+            CLIENT_HOST_MEMORY_GB=16
+        fi
+        export CLIENT_HOST_MEMORY_GB
+    fi
+
+    # Auto-detect CPU count
+    if [[ -z "${NUM_PROCESSES}" ]]; then
+        NUM_PROCESSES=$(nproc 2>/dev/null || echo "4")
+        export NUM_PROCESSES
+    fi
+
+    # Expand "all" shorthand
+    if [[ "${MODELS}" == "all" ]]; then
+        MODELS="unet3d,resnet50,cosmoflow,checkpointing"
+        export MODELS
+    fi
+
+    # Validate MODELS
+    IFS=',' read -ra MODEL_LIST <<< "${MODELS}"
+    for MODEL in "${MODEL_LIST[@]}"; do
+        MODEL="$(echo "${MODEL}" | xargs)"
+        if [[ "${MODEL}" != "unet3d" && "${MODEL}" != "resnet50" && \
+              "${MODEL}" != "cosmoflow" && "${MODEL}" != "checkpointing" ]]; then
+            echo "Error: Unknown mlperf model: '${MODEL}'"
+            echo "Valid options: unet3d, resnet50, cosmoflow, checkpointing, all"
+            return 1
+        fi
+    done
+
+    # Print configuration banner
+    echo ""
+    echo "=============================================="
+    echo "  MLPerf Storage Benchmark v2.0"
+    echo "=============================================="
+    echo "  Models:            ${MODELS}"
+    echo "  Scale:             ${SCALE}"
+    echo "  Num Accelerators:  ${NUM_ACCELERATORS}"
+    echo "  Accelerator Type:  ${ACCELERATOR_TYPE}"
+    echo "  Loops:             ${LOOPS}"
+    echo "  Submission Mode:   ${SUBMISSION_MODE}"
+    echo "  Client Memory:     ${CLIENT_HOST_MEMORY_GB} GB"
+    echo "  Num Processes:     ${NUM_PROCESSES}"
+    echo "  Data Root:         /data/datasets"
+    echo "  Results Root:      ${OUTPUT_BASE}/results"
+    echo "=============================================="
+    echo ""
+
+    # Run each model sequentially
+    local overall_exit=0
+    local -a model_status=()
+    local -a model_names=()
+
+    for MODEL in "${MODEL_LIST[@]}"; do
+        MODEL="$(echo "${MODEL}" | xargs)"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo "  Running: ${MODEL}"
+        echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+        echo ""
+
+        if /usr/local/bin/run_model.sh \
+                "${MODEL}" \
+                "${CLIENT_HOST_MEMORY_GB}" \
+                "${NUM_PROCESSES}" \
+                "${RUN_TS}"; then
+            model_status+=("PASSED")
+            model_names+=("${MODEL}")
+            echo "[OK] Model ${MODEL} completed successfully"
+        else
+            model_status+=("FAILED")
+            model_names+=("${MODEL}")
+            echo "[ERROR] Model ${MODEL} failed"
+            overall_exit=1
+        fi
+        echo ""
+    done
+
+    # Print summary
+    echo ""
+    echo "=============================================="
+    echo "  MLPerf Results Summary"
+    echo "=============================================="
+    for i in "${!model_names[@]}"; do
+        printf "  %-20s  %s\n" "${model_names[$i]}" "${model_status[$i]}"
+    done
+    echo ""
+    echo "  Results directory: ${OUTPUT_BASE}/results"
+    echo "  Full log:          ${OUTPUT_BASE}/logs"
+    echo "=============================================="
+
+    # Log result using the standard log_result function
+    log_result "mlperf" "$SCENARIO" "$overall_exit" "$mlperf_start_time" "$OUTPUT_BASE"
+
+    # Send notifications if enabled
+    local mlperf_end_time=$(date +%s)
+    local mlperf_start_epoch=$(date -d "$mlperf_start_time" +%s 2>/dev/null || echo "$mlperf_end_time")
+    local mlperf_duration=$((mlperf_end_time - mlperf_start_epoch))
+    local mlperf_duration_str="${mlperf_duration}s"
+    if [[ $mlperf_duration -ge 60 ]]; then
+        mlperf_duration_str="${mlperf_duration}s ($((${mlperf_duration} / 60))m $((${mlperf_duration} % 60))s)"
+    fi
+
+    local mlperf_status="FAIL"
+    if [[ $overall_exit -eq 0 ]]; then
+        mlperf_status="SUCCESS"
+    fi
+
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        send_wechat_notification "mlperf" "$SCENARIO" "$mlperf_status" "$mlperf_duration_str"
+    fi
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        send_email_notification "mlperf" "$SCENARIO" "$mlperf_status" "$mlperf_duration_str"
+    fi
+
+    echo ""
+    return $overall_exit
+}
+
 # ==============================================================================
 # Mode Handling
 # ==============================================================================
