@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: 集成测试命令
-status: completed
-last_updated: "2026-04-29T04:36:22.272Z"
+status: executing
+last_updated: "2026-04-29T06:13:24.549Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 10
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Phase 15 — CLI 参数与帮助集成
+**Current Focus:** Phase 16 — MLPerf 容器执行与数据集成
 
 **Project Root:** `/mnt/disk0/daigy/github/dingofs-testsuite-tool`
 
@@ -31,9 +31,9 @@ progress:
 
 ## Current Position
 
-Phase: 15
-Plan: Not started
-Status: Phase complete — ready for verification
+Phase: 16 (MLPerf 容器执行与数据集成) — EXECUTING
+Plan: 2 of 3
+Status: Ready to execute
 Last activity: 2026-04-29
 
 ```
@@ -53,6 +53,7 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 
 ---
 | Phase 15-cli P01 | 16 | 2 tasks | 1 files |
+| Phase 16-mlperf-exec P03 | 289 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -72,6 +73,8 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 
 - [Phase 15-cli]: mlperf --help displayed locally via show_mlperf_help(), not via docker run (different container)
 - [Phase 15-cli]: CLI-06: --file_count takes precedence over --scale when both specified, evidenced by (overrides --scale default) output
+- [Phase 16-mlperf-exec]: SCALE=$file_count takes precedence over SCALE=$scale when --file_count set (CLI-06)
+- [Phase 16-mlperf-exec]: exec used for container launch so Ctrl+C signals pass through to container
 
 ### Active TODOs
 
@@ -104,7 +107,7 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 
 ## Session Continuity
 
-**Last Session:** 2026-04-29T04:36:22.267Z
+**Last Session:** 2026-04-29T06:13:24.544Z
 
 **Next Actions:**
 
@@ -164,7 +167,7 @@ v1.4 roadmap created with 2 phases covering 13 requirements. CLI phase (Phase 15
 ## v1.3 Milestone: 测试结果通知
 
 **Started:** 2026-04-21
-**Status:** Milestone complete
+**Status:** Ready to execute
 
 **Target features:**
 

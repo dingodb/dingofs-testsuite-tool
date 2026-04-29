@@ -328,12 +328,12 @@ Plans:
   4. The testdir configured via `dtt config testdir` is mounted to /data inside the mlperf container
   5. Test results and benchmark reports are saved to the directory configured via `dtt config output` under an mlperf subdirectory
 
-**Plans:** 3 plans
+**Plans:** 1/3 plans executed
 
 Plans:
 - [ ] 16-01-PLAN.md — Add mlperf-storage multi-stage build to Dockerfile and create adapted run_model.sh
 - [ ] 16-02-PLAN.md — Add mlperf_run() function, validation, dispatch, and help to entrypoint.sh
-- [ ] 16-03-PLAN.md — Replace mlperf placeholder in dtt wrapper with docker run command construction
+- [x] 16-03-PLAN.md — Replace mlperf placeholder in dtt wrapper with docker run command construction
 
 ---
 
@@ -356,7 +356,7 @@ Plans:
 | 13. Email 通知实现 | 0/1 | Pending | — |
 | 14. 工具通知集成 | 0/1 | Pending | — |
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
-| 16. MLPerf 容器执行与数据集成 | 0/1 | Not started | — |
+| 16. MLPerf 容器执行与数据集成 | 1/3 | In Progress|  |
 
 ## Coverage
 

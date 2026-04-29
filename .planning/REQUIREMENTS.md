@@ -168,14 +168,14 @@
 
 ### MLPerf 执行集成
 
-- [ ] **EXEC-01**: dtt -t mlperf 启动 mlperf-storage 容器执行测试
-- [ ] **EXEC-02**: 传递 -s/--scale/--file_count/--gpu_count 参数到 mlperf 容器
-- [ ] **EXEC-03**: 设置 --shm-size=8g 支持 PyTorch DataLoader
+- [x] **EXEC-01**: dtt -t mlperf 启动 mlperf-storage 容器执行测试
+- [x] **EXEC-02**: 传递 -s/--scale/--file_count/--gpu_count 参数到 mlperf 容器
+- [x] **EXEC-03**: 设置 --shm-size=8g 支持 PyTorch DataLoader
 
 ### 数据与输出
 
-- [ ] **DATA-01**: 测试挂载点使用 dtt config testdir 映射到 /data
-- [ ] **DATA-02**: 测试结果输出到 dtt config output
+- [x] **DATA-01**: 测试挂载点使用 dtt config testdir 映射到 /data
+- [x] **DATA-02**: 测试结果输出到 dtt config output
 - [ ] **DATA-03**: mlperf 测试报告保存到输出目录
 
 ## Traceability
@@ -259,11 +259,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 | CLI-05 | Phase 15 | Complete |
 | CLI-06 | Phase 15 | Complete |
 | CLI-07 | Phase 15 | Complete |
-| EXEC-01 | Phase 16 | Pending |
-| EXEC-02 | Phase 16 | Pending |
-| EXEC-03 | Phase 16 | Pending |
-| DATA-01 | Phase 16 | Pending |
-| DATA-02 | Phase 16 | Pending |
+| EXEC-01 | Phase 16 | Complete |
+| EXEC-02 | Phase 16 | Complete |
+| EXEC-03 | Phase 16 | Complete |
+| DATA-01 | Phase 16 | Complete |
+| DATA-02 | Phase 16 | Complete |
 | DATA-03 | Phase 16 | Pending |
 
 **Coverage:**
