@@ -8,16 +8,33 @@
 
 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试，无需关注工具安装和配置细节。
 
-## Current Milestone: v1.3 测试结果通知
+## Current Milestone: v1.4 MLPerf 工具集成
+
+**Goal:** 将已有 mlperf-storage 镜像集成到 dtt 工具中，用户通过 dtt -t mlperf 执行 MLPerf 存储基准测试
+
+**Target features:**
+- dtt --help 中添加 mlperf 工具说明
+- dtt -t mlperf --help 显示详细用法
+- -s 支持 resnet50/unet3d/cosmoflow/checkpointing/all
+- --scale small/medium/large，默认 small
+- --file_count 自定义生成测试文件数量（优先级高于 --scale）
+- --gpu_count 并发 GPU 数量，默认 1
+- 测试挂载点使用 dtt config 中配置的 testdir
+- 测试结果输出到 dtt config 中配置的 output
+
+## Previous Milestone: v1.3 测试结果通知
 
 **Goal:** 测试完成后自动发送结果到企业微信和邮箱
 
-**Target features:**
-- 添加 `--wechat` 命令行参数启用微信通知
-- 添加 `--email` 命令行参数启用邮件通知
+**Status:** Partially complete — WeChat notification implemented, Email pending
+
+**Shipped:**
+- 添加 --wechat 命令行参数启用微信通知
+- 添加 --email 命令行参数启用邮件通知
 - 在 dtt config 中设置 webhook_url 和 email 地址
-- 解析测试结果并构建 markdown 格式消息
-- 首先支持 pjdtest，再推广到其他工具
+- 实现 WeChat webhook 发送功能（scripts/notify.sh, markdown_v2 格式）
+- 所有工具(fio, vdbench, mdtest, pjdtest, ltp, int)已集成 WeChat 通知调用
+- Email 通知脚本框架已在 notify.sh 中
 
 ## Previous Milestone: v1.2 集成测试命令
 
@@ -48,16 +65,28 @@
 - [x] 解析自动化框架测试结果
 - [x] 集成 dingofs-integration-test 到镜像
 
-### Active (v1.3)
+### Active (v1.4)
 
-- [ ] 添加 --wechat 命令行参数
-- [ ] 添加 --email 命令行参数
-- [ ] 在 dtt config 中设置 webhook_url
-- [ ] 在 dtt config 中设置 email 地址
-- [ ] 实现 WeChat webhook 发送功能
+- [ ] dtt --help 中添加 mlperf 工具说明
+- [ ] dtt -t mlperf --help 显示详细用法
+- [ ] 添加 dtt -t mlperf 命令支持
+- [ ] -s 支持 resnet50/unet3d/cosmoflow/checkpointing/all
+- [ ] --scale small/medium/large 参数支持
+- [ ] --file_count 自定义生成测试文件数量
+- [ ] --gpu_count 并发 GPU 数量参数
+- [ ] 测试挂载点使用 dtt config testdir
+- [ ] 测试结果输出到 dtt config output
+
+### Validated (v1.3)
+
+- [x] 添加 --wechat 命令行参数
+- [x] 添加 --email 命令行参数
+- [x] 在 dtt config 中设置 webhook_url
+- [x] 在 dtt config 中设置 email 地址
+- [x] 实现 WeChat webhook 发送功能
 - [ ] 实现 Email 发送功能
-- [ ] pjdtest 测试结果通知
-- [ ] 扩展到其他工具 (fio, vdbench, mdtest, ltp, int)
+- [x] pjdtest 测试结果通知
+- [x] 扩展到其他工具 (fio, vdbench, mdtest, ltp, int)
 
 ### Validated (v1.1)
 
@@ -77,12 +106,6 @@
 - [x] 输出多种格式报告：原始输出、结构化JSON、HTML报告、文本摘要
 - [x] 支持一次性运行模式（测试完成后退出）
 - [x] 支持长期运行模式（通过docker exec触发测试）
-
-### Active (v1.1)
-
-- [ ] 内置LTP (Linux Test Project) 测试工具
-- [ ] 支持ltp工具运行模式
-- [ ] 支持LTP测试结果输出
 
 ### Out of Scope
 
@@ -135,4 +158,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-04-21 — v1.3 started*
+*Last updated: 2026-04-29 — v1.4 started*

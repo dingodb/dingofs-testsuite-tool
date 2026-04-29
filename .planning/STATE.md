@@ -1,21 +1,21 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: 集成测试命令
-status: executing
-last_updated: "2026-04-22T01:27:34.961Z"
-last_activity: 2026-04-28 -- Completed quick task 260428-fay: Add container runtime config option (docker/podman) to dtt
+milestone: v1.4
+milestone_name: MLPerf 工具集成
+status: defining_requirements
+last_updated: "2026-04-29T00:00:00.000Z"
+last_activity: 2026-04-29 -- Milestone v1.4 started
 progress:
-  total_phases: 14
-  completed_phases: 7
-  total_plans: 11
-  completed_plans: 11
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
 
-**Last Updated:** 2026-04-21
-**Session:** v1.3 - 测试结果通知
+**Last Updated:** 2026-04-29
+**Session:** v1.4 - MLPerf 工具集成
 
 ---
 
@@ -23,18 +23,18 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Phase 12 — WeChat 通知实现
+**Current Focus:** Defining requirements for MLPerf 工具集成
 
-**Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
+**Project Root:** `/mnt/disk0/daigy/github/dingofs-testsuite-tool`
 
 ---
 
 ## Current Position
 
-Phase: 12 (WeChat 通知实现) — EXECUTING
-Plan: 1 of 1
-Status: Executing Phase 12
-Last activity: 2026-04-22 -- Phase 12 execution started
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-04-29 -- Milestone v1.4 started
 
 ---
 
@@ -92,37 +92,26 @@ Last activity: 2026-04-22 -- Phase 12 execution started
 
 ## Session Continuity
 
-**Last Session:** 2026-04-24T15:00:00.000Z
+**Last Session:** 2026-04-29T00:00:00.000Z
 
 **Next Actions:**
 
-1. Complete Phase 12 WeChat notification implementation
-2. Rebuild Docker image and test fio scenario paths
+1. Define requirements for v1.4 MLPerf milestone
+2. Create roadmap for v1.4
 
 **Context for Next Session:**
-v1.3 milestone on notification features. Phase 11 completed (basic flags), Phase 12 in progress (WeChat webhook). Quick task 260424-kv8 reorganized fio scenarios into bs_normal/bs_small subdirectories.
+v1.4 milestone started. Integrating existing mlperf-storage:latest Docker image into dtt tool. 4 workloads + checkpointing, scale/file_count/gpu_count parameters.
 
 ---
 
 ## Phase History
 
-| Phase | Status | Completed | Notes |
-|-------|--------|-----------|-------|
-| 1. Docker Image Construction | Complete | 2026-04-03 | Base image with fio, vdbench, mdtest |
-| 2. Core Functionality | Complete | 2026-04-03 | Parameters, scenarios, run modes |
-| 3. Output Formats | Complete | 2026-04-07 | Reports in multiple formats |
-| 4. Fio Scenario Enhancements | Complete | 2026-04-07 | 96 fio scenarios |
-| 5. pjdtest POSIX Tests | Complete | 2026-04-07 | Added pjdtest tool |
-| 5. LTP Build Setup | Complete | 2026-04-15 | Multi-stage Dockerfile for LTP |
-| 6. LTP Integration | Complete | 2026-04-15 | entrypoint.sh and ltp_run function |
-| 7. LTP Runtime Safety | Complete | 2026-04-15 | timeout, output, capability docs |
-| 8. 集成测试基础 | Complete | 2026-04-21 | Add -t int command |
-| 9. 参数传递与执行 | Complete | 2026-04-21 | Pass MDSADDR to framework |
-| 10. 结果解析与保存 | Complete | 2026-04-21 | Parse and save results |
-| 11. 通知功能基础 | Complete | 2026-04-21 | Add --wechat/--email flags and config |
-| 12. WeChat 通知实现 | Not started | - | Webhook curl POST with markdown_v2 |
-| 13. Email 通知实现 | Not started | - | SMTP Outlook sending |
-| 14. 工具通知集成 | Not started | - | Extend to all tools |
+| Phase | Milestone | Status | Completed | Notes |
+|-------|-----------|--------|-----------|-------|
+| 1-4 | v1.0 | Complete | 2026-04-07 | Base image + core + output + scenarios |
+| 5-7 | v1.1 | Complete | 2026-04-15 | LTP build, integration, safety |
+| 8-10 | v1.2 | Complete | 2026-04-21 | Integration test command |
+| 11-14 | v1.3 | Partial | - | WeChat done, Email pending |
 
 ---
 
@@ -146,7 +135,7 @@ v1.3 milestone on notification features. Phase 11 completed (basic flags), Phase
 ## v1.2 Milestone: 集成测试命令
 
 **Started:** 2026-04-21
-**Status:** Executing Phase 12
+**Completed:** 2026-04-21
 
 **Target features:**
 
@@ -162,19 +151,36 @@ v1.3 milestone on notification features. Phase 11 completed (basic flags), Phase
 ## v1.3 Milestone: 测试结果通知
 
 **Started:** 2026-04-21
-**Status:** In progress (Planning)
+**Status:** Partially complete — WeChat done, Email pending
 
 **Target features:**
 
-- Add --wechat and --email CLI flags (Phase 11)
-- WeChat webhook notification with markdown_v2 (Phase 12)
-- Email notification via SMTP Outlook (Phase 13)
-- Extend to all tools: pjdtest, fio, vdbench, mdtest, ltp, int (Phase 14)
+- Add --wechat and --email CLI flags (Phase 11) ✓
+- WeChat webhook notification with markdown_v2 (Phase 12) ✓
+- Email notification via SMTP Outlook (Phase 13) — Pending
+- Extend to all tools (Phase 14) ✓
 
 **Roadmap created:** 2026-04-21
 **Coverage:** 17/17 requirements mapped to 4 phases
 
 ---
 
+## v1.4 Milestone: MLPerf 工具集成
+
+**Started:** 2026-04-29
+**Status:** Defining requirements
+
+**Target features:**
+
+- 添加 dtt -t mlperf 命令支持
+- -s 支持 resnet50/unet3d/cosmoflow/checkpointing/all
+- --scale small/medium/large，默认 small
+- --file_count 自定义生成测试文件数量（优先级高于 --scale）
+- --gpu_count 并发 GPU 数量，默认 1
+- 测试挂载点使用 dtt config testdir
+- 测试结果输出到 dtt config output
+
+---
+
 *State initialized: 2026-04-08*
-*Last updated: 2026-04-21 for v1.3*
+*Last updated: 2026-04-29 — v1.4 started*
