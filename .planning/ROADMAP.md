@@ -356,7 +356,7 @@ Plans:
 | 13. Email 通知实现 | 0/1 | Pending | — |
 | 14. 工具通知集成 | 0/1 | Pending | — |
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
-| 16. MLPerf 容器执行与数据集成 | 3/3 | Complete   | 2026-04-29 |
+| 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
 
 ## Coverage
 
