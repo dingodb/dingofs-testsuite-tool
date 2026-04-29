@@ -176,7 +176,7 @@
 
 - [x] **DATA-01**: 测试挂载点使用 dtt config testdir 映射到 /data
 - [x] **DATA-02**: 测试结果输出到 dtt config output
-- [ ] **DATA-03**: mlperf 测试报告保存到输出目录
+- [x] **DATA-03**: mlperf 测试报告保存到输出目录
 
 ## Traceability
 
@@ -264,7 +264,7 @@ Which phases cover which requirements. Updated during roadmap creation.
 | EXEC-03 | Phase 16 | Complete |
 | DATA-01 | Phase 16 | Complete |
 | DATA-02 | Phase 16 | Complete |
-| DATA-03 | Phase 16 | Pending |
+| DATA-03 | Phase 16 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total

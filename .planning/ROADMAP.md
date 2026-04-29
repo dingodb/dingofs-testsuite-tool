@@ -26,7 +26,7 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [ ] **Phase 13: Email 通知实现** - Email notification via SMTP
 - [ ] **Phase 14: 工具通知集成** - Extend notification to all test tools
 - [x] **Phase 15: CLI 参数与帮助集成** - Add mlperf CLI parameters and help text to dtt wrapper (completed 2026-04-29)
-- [ ] **Phase 16: MLPerf 容器执行与数据集成** - Launch mlperf-storage container with proper parameters, mounts, and output
+- [x] **Phase 16: MLPerf 容器执行与数据集成** - Launch mlperf-storage container with proper parameters, mounts, and output (completed 2026-04-29)
 
 ## Phase Details
 
@@ -328,11 +328,11 @@ Plans:
   4. The testdir configured via `dtt config testdir` is mounted to /data inside the mlperf container
   5. Test results and benchmark reports are saved to the directory configured via `dtt config output` under an mlperf subdirectory
 
-**Plans:** 1/3 plans executed
+**Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 16-01-PLAN.md — Add mlperf-storage multi-stage build to Dockerfile and create adapted run_model.sh
-- [ ] 16-02-PLAN.md — Add mlperf_run() function, validation, dispatch, and help to entrypoint.sh
+- [x] 16-01-PLAN.md — Add mlperf-storage multi-stage build to Dockerfile and create adapted run_model.sh
+- [x] 16-02-PLAN.md — Add mlperf_run() function, validation, dispatch, and help to entrypoint.sh
 - [x] 16-03-PLAN.md — Replace mlperf placeholder in dtt wrapper with docker run command construction
 
 ---
@@ -356,7 +356,7 @@ Plans:
 | 13. Email 通知实现 | 0/1 | Pending | — |
 | 14. 工具通知集成 | 0/1 | Pending | — |
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
-| 16. MLPerf 容器执行与数据集成 | 1/3 | In Progress|  |
+| 16. MLPerf 容器执行与数据集成 | 3/3 | Complete   | 2026-04-29 |
 
 ## Coverage
 
