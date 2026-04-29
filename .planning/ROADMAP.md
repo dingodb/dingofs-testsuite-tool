@@ -18,6 +18,15 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [ ] **Phase 5: LTP Build Setup** - Multi-stage Docker build for LTP toolset
 - [ ] **Phase 6: LTP Integration** - Integrate LTP into entrypoint.sh with ltp_run function
 - [ ] **Phase 7: LTP Runtime Safety** - Timeout wrappers, output logging, and capability documentation
+- [ ] **Phase 8: 集成测试基础** - Add -t int command and integration framework to image
+- [ ] **Phase 9: 参数传递与执行** - Pass MDS address and execute integration tests
+- [ ] **Phase 10: 结果解析与保存** - Parse and save integration test results
+- [ ] **Phase 11: 通知功能基础** - Add --wechat/--email flags and config support
+- [ ] **Phase 12: WeChat 通知实现** - WeChat webhook notification with markdown_v2
+- [ ] **Phase 13: Email 通知实现** - Email notification via SMTP
+- [ ] **Phase 14: 工具通知集成** - Extend notification to all test tools
+- [ ] **Phase 15: CLI 参数与帮助集成** - Add mlperf CLI parameters and help text to dtt wrapper
+- [ ] **Phase 16: MLPerf 容器执行与数据集成** - Launch mlperf-storage container with proper parameters, mounts, and output
 
 ## Phase Details
 
@@ -275,6 +284,46 @@ Plans:
 
 ---
 
+## v1.4: MLPerf 工具集成
+
+### Phase 15: CLI 参数与帮助集成
+**Goal:** Users can discover mlperf testing and configure all parameters through the dtt CLI.
+
+**Depends on:** Phase 1
+
+**Requirements:** CLI-01, CLI-02, CLI-03, CLI-04, CLI-05, CLI-06, CLI-07
+
+**Success Criteria** (what must be TRUE):
+  1. User runs `dtt --help` and sees mlperf listed as an available tool
+  2. User runs `dtt -t mlperf --help` and sees detailed usage including parameter descriptions, valid values, defaults, and usage examples
+  3. User specifies `-s resnet50` (or unet3d, cosmoflow, checkpointing, all) and dtt accepts the parameter without error
+  4. User specifies `--scale small` (or medium, large) and small is selected as the default when the flag is omitted
+  5. User specifies `--file_count 1000` and dtt accepts the custom file count value
+  6. User specifies both `--scale medium --file_count 500` together and --file_count takes precedence over --scale
+  7. User specifies `--gpu_count 4` and dtt accepts the value, defaulting to 1 when the flag is omitted
+
+**Plans:** TBD
+
+---
+
+### Phase 16: MLPerf 容器执行与数据集成
+**Goal:** Users can execute MLPerf storage benchmarks via `dtt -t mlperf` with proper parameter passing, volume mounts, and output collection.
+
+**Depends on:** Phase 15
+
+**Requirements:** EXEC-01, EXEC-02, EXEC-03, DATA-01, DATA-02, DATA-03
+
+**Success Criteria** (what must be TRUE):
+  1. User runs `dtt -t mlperf` and the mlperf-storage container starts and executes the benchmark
+  2. All user-specified parameters (-s, --scale, --file_count, --gpu_count) are correctly passed as environment variables or arguments to the mlperf container
+  3. The mlperf container launches with --shm-size=8g to support PyTorch DataLoader multi-worker data loading
+  4. The testdir configured via `dtt config testdir` is mounted to /data inside the mlperf container
+  5. Test results and benchmark reports are saved to the directory configured via `dtt config output` under an mlperf subdirectory
+
+**Plans:** TBD
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -293,9 +342,12 @@ Plans:
 | 12. WeChat 通知实现 | 0/1 | Pending | — |
 | 13. Email 通知实现 | 0/1 | Pending | — |
 | 14. 工具通知集成 | 0/1 | Pending | — |
+| 15. CLI 参数与帮助集成 | 0/1 | Not started | — |
+| 16. MLPerf 容器执行与数据集成 | 0/1 | Not started | — |
 
 ## Coverage
 
+- v1.4 Requirements: 13 total (CLI-01~07, EXEC-01~03, DATA-01~03)
 - v1.3 Requirements: 17 total (NOTIFY-01~06, WECHAT-01~03, EMAIL-01~04, MSG-01~03, TOOLS-01~06)
 - v1.2 Requirements: 8 total (INTG-01~05, AUTO-01~03)
 - v1.1 Requirements: 9 total (LTP-01~09)
@@ -376,11 +428,21 @@ Plans:
 | TOOLS-04 | Phase 14 | Pending |
 | TOOLS-05 | Phase 14 | Pending |
 | TOOLS-06 | Phase 14 | Pending |
+| CLI-01 | Phase 15 | Pending |
+| CLI-02 | Phase 15 | Pending |
+| CLI-03 | Phase 15 | Pending |
+| CLI-04 | Phase 15 | Pending |
+| CLI-05 | Phase 15 | Pending |
+| CLI-06 | Phase 15 | Pending |
+| CLI-07 | Phase 15 | Pending |
+| EXEC-01 | Phase 16 | Pending |
+| EXEC-02 | Phase 16 | Pending |
+| EXEC-03 | Phase 16 | Pending |
+| DATA-01 | Phase 16 | Pending |
+| DATA-02 | Phase 16 | Pending |
+| DATA-03 | Phase 16 | Pending |
 
 ---
 
 *Roadmap created: 2026-04-03*
-*Last updated: 2026-04-21 for v1.3*
-
-*Roadmap created: 2026-04-03*
-*Last updated: 2026-04-21 for v1.2*
+*Last updated: 2026-04-29 for v1.4*

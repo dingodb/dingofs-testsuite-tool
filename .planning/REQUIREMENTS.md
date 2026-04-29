@@ -184,11 +184,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| DOCK-01 | Phase 1 | Pending |
-| DOCK-02 | Phase 1 | Pending |
-| DOCK-03 | Phase 1 | Pending |
-| DOCK-04 | Phase 1 | Pending |
-| DOCK-05 | Phase 1 | Pending |
+| DOCK-01 | Phase 1 | Complete |
+| DOCK-02 | Phase 1 | Complete |
+| DOCK-03 | Phase 1 | Complete |
+| DOCK-04 | Phase 1 | Complete |
+| DOCK-05 | Phase 1 | Complete |
 | PARM-01 | Phase 2 | Pending |
 | PARM-02 | Phase 2 | Pending |
 | PARM-03 | Phase 2 | Pending |
@@ -213,21 +213,69 @@ Which phases cover which requirements. Updated during roadmap creation.
 | ENTRY-02 | Phase 2 | Pending |
 | ENTRY-03 | Phase 3 | Complete |
 | ENTRY-04 | Phase 2 | Pending |
-| LTP-01 | Phase 5 | Pending |
-| LTP-02 | Phase 5 | Pending |
-| LTP-03 | Phase 5 | Pending |
-| LTP-04 | Phase 6 | Pending |
-| LTP-05 | Phase 6 | Pending |
-| LTP-06 | Phase 6 | Pending |
-| LTP-07 | Phase 7 | Pending |
-| LTP-08 | Phase 7 | Pending |
-| LTP-09 | Phase 7 | Pending |
+| LTP-01 | Phase 5 | Complete |
+| LTP-02 | Phase 5 | Complete |
+| LTP-03 | Phase 5 | Complete |
+| LTP-04 | Phase 6 | Complete |
+| LTP-05 | Phase 6 | Complete |
+| LTP-06 | Phase 6 | Complete |
+| LTP-07 | Phase 7 | Complete |
+| LTP-08 | Phase 7 | Complete |
+| LTP-09 | Phase 7 | Complete |
+| INTG-01 | Phase 8 | Complete |
+| INTG-02 | Phase 9 | Complete |
+| INTG-03 | Phase 9 | Complete |
+| INTG-04 | Phase 10 | Complete |
+| INTG-05 | Phase 10 | Complete |
+| AUTO-01 | Phase 8 | Complete |
+| AUTO-02 | Phase 9 | Complete |
+| AUTO-03 | Phase 10 | Complete |
+| NOTIFY-01 | Phase 11 | Pending |
+| NOTIFY-02 | Phase 11 | Pending |
+| NOTIFY-03 | Phase 11 | Pending |
+| NOTIFY-04 | Phase 11 | Pending |
+| NOTIFY-05 | Phase 11 | Pending |
+| NOTIFY-06 | Phase 11 | Pending |
+| WECHAT-01 | Phase 12 | Pending |
+| WECHAT-02 | Phase 12 | Pending |
+| WECHAT-03 | Phase 12 | Pending |
+| MSG-01 | Phase 12 | Pending |
+| MSG-02 | Phase 12 | Pending |
+| MSG-03 | Phase 12 | Pending |
+| EMAIL-01 | Phase 13 | Pending |
+| EMAIL-02 | Phase 13 | Pending |
+| EMAIL-03 | Phase 13 | Pending |
+| EMAIL-04 | Phase 13 | Pending |
+| TOOLS-01 | Phase 14 | Pending |
+| TOOLS-02 | Phase 14 | Pending |
+| TOOLS-03 | Phase 14 | Pending |
+| TOOLS-04 | Phase 14 | Pending |
+| TOOLS-05 | Phase 14 | Pending |
+| TOOLS-06 | Phase 14 | Pending |
+| CLI-01 | Phase 15 | Pending |
+| CLI-02 | Phase 15 | Pending |
+| CLI-03 | Phase 15 | Pending |
+| CLI-04 | Phase 15 | Pending |
+| CLI-05 | Phase 15 | Pending |
+| CLI-06 | Phase 15 | Pending |
+| CLI-07 | Phase 15 | Pending |
+| EXEC-01 | Phase 16 | Pending |
+| EXEC-02 | Phase 16 | Pending |
+| EXEC-03 | Phase 16 | Pending |
+| DATA-01 | Phase 16 | Pending |
+| DATA-02 | Phase 16 | Pending |
+| DATA-03 | Phase 16 | Pending |
 
 **Coverage:**
-- v1 requirements: 43 total (34 from v1.0 + 9 from v1.1)
-- Mapped to phases: 43
+- v1 requirements: 34 total
+- v1.1 requirements: 9 total
+- v1.2 requirements: 8 total
+- v1.3 requirements: 17 total
+- v1.4 requirements: 13 total
+- All requirements: 81 total
+- Mapped to phases: 81
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-29 — v1.4 requirements added*
+*Last updated: 2026-04-29 — v1.4 roadmap created, traceability updated*

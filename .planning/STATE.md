@@ -2,13 +2,13 @@
 gsd_state_version: 1.0
 milestone: v1.4
 milestone_name: MLPerf 工具集成
-status: defining_requirements
+status: roadmap_created
 last_updated: "2026-04-29T00:00:00.000Z"
-last_activity: 2026-04-29 -- Milestone v1.4 started
+last_activity: 2026-04-29 -- Roadmap created for v1.4
 progress:
-  total_phases: 0
+  total_phases: 2
   completed_phases: 0
-  total_plans: 0
+  total_plans: 2
   completed_plans: 0
 ---
 
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Defining requirements for MLPerf 工具集成
+**Current Focus:** Roadmap defined for MLPerf 工具集成, ready for phase planning
 
 **Project Root:** `/mnt/disk0/daigy/github/dingofs-testsuite-tool`
 
@@ -31,10 +31,14 @@ progress:
 
 ## Current Position
 
-Phase: Not started (defining requirements)
+Phase: Not started (roadmap created)
 Plan: —
-Status: Defining requirements
-Last activity: 2026-04-29 -- Milestone v1.4 started
+Status: Roadmap created
+Last activity: 2026-04-29 -- v1.4 roadmap created
+
+```
+Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phases complete
+```
 
 ---
 
@@ -42,9 +46,9 @@ Last activity: 2026-04-29 -- Milestone v1.4 started
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed | 7/7 |
-| Requirements Delivered | 9/9 (v1.1) |
-| Days in Progress | 7 |
+| Phases Completed (v1.4) | 0/2 |
+| Requirements Delivered (v1.4) | 0/13 |
+| Days in Progress | 0 |
 | Blockers | 0 |
 
 ---
@@ -61,10 +65,14 @@ Last activity: 2026-04-29 -- Milestone v1.4 started
 | Phase 5: LTP Build Setup | Dockerfile multi-stage build for LTP | 2026-04-08 |
 | Phase 6: LTP Integration | entrypoint.sh changes, ltp_run function | 2026-04-08 |
 | Phase 7: LTP Runtime Safety | timeout, output logging, capability docs | 2026-04-08 |
+| 2-phase structure for v1.4 MLPerf | CLI (parameter parsing/help) → EXEC (container run/mounts/output); DATA reqs tightly coupled with EXEC | 2026-04-29 |
+| Phase 15: CLI first | Need CLI parameters parsed before they can be passed to mlperf container | 2026-04-29 |
+| DATA-01~03 merged into Phase 16 | Volume mounts and output handling are part of docker run command construction, not a separate concern | 2026-04-29 |
 
 ### Active TODOs
 
-- [ ] Plan Phase 5: LTP Build Setup
+- [ ] Plan Phase 15: CLI 参数与帮助集成
+- [ ] Plan Phase 16: MLPerf 容器执行与数据集成
 
 ### Blockers
 
@@ -96,11 +104,11 @@ Last activity: 2026-04-29 -- Milestone v1.4 started
 
 **Next Actions:**
 
-1. Define requirements for v1.4 MLPerf milestone
-2. Create roadmap for v1.4
+1. Plan Phase 15: CLI 参数与帮助集成
+2. Plan Phase 16: MLPerf 容器执行与数据集成
 
 **Context for Next Session:**
-v1.4 milestone started. Integrating existing mlperf-storage:latest Docker image into dtt tool. 4 workloads + checkpointing, scale/file_count/gpu_count parameters.
+v1.4 roadmap created with 2 phases covering 13 requirements. CLI phase (Phase 15) covers help text and parameter parsing in dtt wrapper. EXEC phase (Phase 16) covers mlperf-storage container launch with parameter passing, --shm-size=8g, volume mounts (testdir→/data, output→output dir), and report saving.
 
 ---
 
@@ -112,6 +120,7 @@ v1.4 milestone started. Integrating existing mlperf-storage:latest Docker image 
 | 5-7 | v1.1 | Complete | 2026-04-15 | LTP build, integration, safety |
 | 8-10 | v1.2 | Complete | 2026-04-21 | Integration test command |
 | 11-14 | v1.3 | Partial | - | WeChat done, Email pending |
+| 15-16 | v1.4 | Not started | - | MLPerf CLI + execution |
 
 ---
 
@@ -168,19 +177,32 @@ v1.4 milestone started. Integrating existing mlperf-storage:latest Docker image 
 ## v1.4 Milestone: MLPerf 工具集成
 
 **Started:** 2026-04-29
-**Status:** Defining requirements
+**Status:** Roadmap created
+
+**Phases:** 2 (Phase 15-16)
+
+| Phase | Goal | Requirements |
+|-------|------|-------------|
+| 15. CLI 参数与帮助集成 | Users can discover and configure mlperf through CLI | CLI-01~07 (7) |
+| 16. MLPerf 容器执行与数据集成 | Users can run mlperf benchmarks with proper mounts/output | EXEC-01~03, DATA-01~03 (6) |
 
 **Target features:**
 
-- 添加 dtt -t mlperf 命令支持
+- dtt --help 中添加 mlperf 工具说明
+- dtt -t mlperf --help 显示详细用法
 - -s 支持 resnet50/unet3d/cosmoflow/checkpointing/all
 - --scale small/medium/large，默认 small
 - --file_count 自定义生成测试文件数量（优先级高于 --scale）
 - --gpu_count 并发 GPU 数量，默认 1
-- 测试挂载点使用 dtt config testdir
+- dtt -t mlperf 启动 mlperf-storage 容器
+- --shm-size=8g 支持 PyTorch DataLoader
+- 测试挂载点使用 dtt config testdir 映射到 /data
 - 测试结果输出到 dtt config output
+
+**Roadmap created:** 2026-04-29
+**Coverage:** 13/13 requirements mapped to 2 phases
 
 ---
 
 *State initialized: 2026-04-08*
-*Last updated: 2026-04-29 — v1.4 started*
+*Last updated: 2026-04-29 — v1.4 roadmap created*
