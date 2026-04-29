@@ -561,17 +561,72 @@ run_testsuite() {
             return 1
         fi
 
-        # PRINT configured parameters and exit (Phase 16 replaces this with docker run)
-        echo "MLPerf parameters configured:"
-        echo "  Scenario:   $scenario"
-        echo "  Scale:      $scale"
-        if [[ -n "$file_count" ]]; then
-            echo "  File Count: $file_count (overrides --scale default)"
+        # Build mlperf docker run command (replaces Phase 15 placeholder)
+        # Per D-06/D-07/D-08/D-09: map CLI params to mlperf env vars
+        # Per D-02/D-03/D-04: -it --rm --privileged --shm-size=8g
+        # Per D-10/D-11: mount testdir→/data, output→/output
+
+        # Verify required config is set
+        if [[ -z "$mount" ]]; then
+            echo "Error: Test directory not set."
+            echo "Please run 'dingofs-testsuite-tool config set testdir <directory>' first."
+            return 1
         fi
-        echo "  GPU Count:  $gpu_count"
+        if [[ -z "$output" ]]; then
+            echo "Error: Output directory not set."
+            echo "Please run 'dingofs-testsuite-tool config set output <directory>' first."
+            return 1
+        fi
+
+        # Validate mount directory exists
+        if [[ ! -d "$mount" ]]; then
+            echo "Error: Mount directory '$mount' does not exist"
+            return 1
+        fi
+
+        # Create output directory if it doesn't exist
+        mkdir -p "$output"
+
+        # Build docker command with mlperf-specific flags
+        local docker_cmd=(
+            $runtime run -it --rm --privileged
+            --shm-size=8g
+            -v "${mount}:/data"
+            -v "${output}:/output"
+            -e "MODELS=${scenario}"
+            -e "NUM_ACCELERATORS=${gpu_count}"
+            -e "ACCELERATOR_TYPE=h100"
+            -e "LOOPS=1"
+            -e "SUBMISSION_MODE=closed"
+        )
+
+        # Set SCALE: --file_count takes precedence over --scale (CLI-06)
+        if [[ -n "$file_count" ]]; then
+            docker_cmd+=("-e" "SCALE=${file_count}")
+        else
+            docker_cmd+=("-e" "SCALE=${scale}")
+        fi
+
+        # Add container entrypoint args
+        docker_cmd+=("$image" "-t" "mlperf" "-s" "${scenario}" "-m" "/data" "-o" "/output")
+
+        # Print what we're about to do
+        echo "Starting MLPerf Storage benchmark..."
+        echo "  Image:       $image"
+        echo "  Models:      $scenario"
+        if [[ -n "$file_count" ]]; then
+            echo "  Scale:       $file_count files (custom, overrides --scale)"
+        else
+            echo "  Scale:       $scale"
+        fi
+        echo "  GPU Count:   $gpu_count"
+        echo "  Test dir:    $mount -> /data"
+        echo "  Output dir:  $output -> /output"
         echo ""
-        echo "MLPerf execution will be available in Phase 16."
-        exit 0
+
+        # Execute
+        exec "${docker_cmd[@]}"
+        # exec replaces the shell process, so we never reach here
     fi
 
     # Validate required parameters
