@@ -77,6 +77,7 @@ Tools:
   pjdtest   - POSIX filesystem test suite
   ltp       - Linux Test Project (内核测试套件)
   int       - DingoFS integration test (自动化框架)
+  mlperf    - MLPerf Storage 存储基准测试
 
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
@@ -161,6 +162,12 @@ Examples:
   # int 测试 (需要配置MDS地址)
   docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t int -s quota -m /data -o /data
 
+  # mlperf 测试 (运行所有MLPerf存储基准测试场景)
+  docker run --rm --privileged --shm-size=8g -v /tmp/test:/data -v /tmp/results:/output dingofs-testsuite-tools -t mlperf -s all
+
+  # mlperf 单个场景测试
+  docker run --rm --privileged --shm-size=8g -v /tmp/test:/data -v /tmp/results:/output dingofs-testsuite-tools -t mlperf -s resnet50
+
   # 长期运行模式 (容器保持运行，可执行多个测试)
   docker run --detach -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data --mode long-running
   docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
@@ -180,6 +187,7 @@ Output:
     - ltp_YYYYMMDD_HHMMSS.log (LTP 测试日志)
     - report.html           (HTML可视化报告)
     - summary.md           (Markdown格式摘要)
+    - mlperf_YYYYMMDD_HHMMSS/ (MLPerf 测试结果和报告)
 
 EOF
 }
@@ -332,6 +340,43 @@ INT 集成测试 (DingoFS Automation Framework)
 EOF
 }
 
+show_mlperf_help() {
+    cat << EOF
+MLPerf Storage 基准测试
+=======================
+
+用法: entrypoint.sh -t mlperf [-s <场景>]
+
+MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件。
+
+场景:
+  resnet50       - ResNet-50 图像分类模型
+  unet3d         - 3D U-Net 医学图像分割模型
+  cosmoflow      - CosmoFlow 宇宙学模拟模型
+  checkpointing  - 检查点读写测试
+  all            - 运行所有场景 (默认)
+
+环境变量 (通过 docker run -e 设置):
+  MODELS              测试模型列表，逗号分隔 (默认: all)
+  SCALE               数据集规模: small/medium/large 或整数 (默认: small)
+  NUM_ACCELERATORS    并发GPU/加速器数量 (默认: 1)
+  ACCELERATOR_TYPE    加速器类型: h100/a100 (默认: h100)
+  LOOPS               基准测试循环次数 (默认: 1)
+  SUBMISSION_MODE     提交模式: closed/open (默认: closed)
+
+示例:
+  docker run --rm --privileged --shm-size=8g \\
+    -v /mnt/test:/data -v /tmp/results:/output \\
+    -e MODELS=resnet50 -e SCALE=small -e NUM_ACCELERATORS=1 \\
+    dingofs-testsuite-tools -t mlperf -s all
+
+注意:
+  - 需要 --shm-size=8g 支持 PyTorch DataLoader
+  - 测试数据写入 /data/datasets/ (存储性能测试目标)
+  - 测试结果保存到 /output/mlperf_<timestamp>/
+EOF
+}
+
 # ==============================================================================
 # Validation Functions
 # ==============================================================================
@@ -343,13 +388,13 @@ validate_params() {
     if [[ -z "$TOOL" ]]; then
         echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int)$ ]]; then
-        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int"
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf)$ ]]; then
+        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf"
         error=1
     fi
 
-    # Validate SCENARIO (PARM-06) - mdtest doesn't require a scenario
-    if [[ "$TOOL" != "mdtest" ]]; then
+    # Validate SCENARIO (PARM-06) - mdtest and mlperf don't require a scenario
+    if [[ "$TOOL" != "mdtest" && "$TOOL" != "mlperf" ]]; then
         if [[ -z "$SCENARIO" ]]; then
             echo "Error: Scenario is required. Use -s or --scenario to specify."
             error=1
@@ -439,6 +484,10 @@ scenario_exists() {
         int|integration)
             # int scenarios: quota, client, cache_node, chaos, all
             [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|chaos)$ ]]
+            ;;
+        mlperf)
+            # mlperf scenarios: resnet50, unet3d, cosmoflow, checkpointing, all
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(resnet50|unet3d|cosmoflow|checkpointing)$ ]]
             ;;
         *)
             return 1
@@ -554,6 +603,7 @@ parse_args() {
                         pjdtest) show_pjdtest_help; exit 0 ;;
                         ltp) show_ltp_help; exit 0 ;;
                         int|integration) show_int_help; exit 0 ;;
+                        mlperf) show_mlperf_help; exit 0 ;;
                         *) echo "Unknown tool: $TOOL"; exit 1 ;;
                     esac
                 fi
@@ -710,6 +760,13 @@ log_result() {
                 fi
             fi
             ;;
+        mlperf)
+            # mlperf success based on exit code
+            if [[ $exit_code -eq 0 ]]; then
+                status="SUCCESS"
+                details="mlperf benchmark completed successfully"
+            fi
+            ;;
     esac
 
     # Append to result.log in the scenario directory
@@ -772,6 +829,9 @@ dispatch_tool() {
             ;;
         int|integration)
             integration_run
+            ;;
+        mlperf)
+            mlperf_run
             ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
