@@ -124,6 +124,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   pjdtest   - POSIX文件系统测试套件
   ltp       - Linux测试项目 (内核测试套件)
   int       - DingoFS集成测试 (自动化框架)
+  mlperf    - MLPerf Storage 存储基准测试
 
 配置子命令:
   dtt config set testdir <目录>    设置测试目录 (挂载点)
@@ -141,7 +142,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                           (如未指定则使用配置中的testdir/output)
 
 选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf
   -s, --scenario <名称>   测试场景名称
   -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录 (从配置读取)
@@ -150,6 +151,11 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                           默认: normal
   --wechat                 启用企业微信通知
   --email                  启用邮件通知
+  --scale <规模>          mlperf测试规模: small (32 files/5 epochs), medium (256 files/10 epochs), large (1024 files/20 epochs)
+                          默认: small
+  --file_count <数量>     mlperf自定义生成测试文件数量
+                          优先级高于 --scale（同时指定时以 --file_count 为准）
+  --gpu_count <数量>      mlperf并发GPU数量 (默认: 1)
 
 示例:
   # 首次设置: 配置参数
@@ -185,6 +191,25 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt -t fio --help
   dtt -t mdtest --help
   dtt -t ltp --help
+  dtt -t mlperf --help
+
+  # 运行所有 mlperf storage 基准测试
+  dtt -t mlperf -s all
+
+  # 运行指定 mlperf 场景
+  dtt -t mlperf -s resnet50
+
+  # 使用 medium 测试规模
+  dtt -t mlperf -s unet3d --scale medium
+
+  # 自定义生成 500 个测试文件
+  dtt -t mlperf -s cosmoflow --file_count 500
+
+  # 使用 4 个 GPU 并行测试
+  dtt -t mlperf -s resnet50 --gpu_count 4
+
+  # 显示 mlperf 详细帮助
+  dtt -t mlperf --help
 
 通知示例:
   # 启用微信通知
@@ -201,6 +226,70 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   - 如果未提供 -m/-o，则使用 'config set' 的值
   - 如果配置值未设置，系统会提示设置
 
+EOF
+}
+
+show_mlperf_help() {
+    cat << 'EOF'
+MLPerf Storage 基准测试
+======================
+
+MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于评估存储系统在机器学习工作负载下的性能表现。
+
+用法:
+  dtt -t mlperf [-s <场景>] [--scale <规模>] [--file_count <数量>] [--gpu_count <数量>]
+
+参数:
+  -s, --scenario <名称>
+      测试场景，可选值:
+        resnet50       - ResNet-50 图像分类模型
+        unet3d         - 3D U-Net 医学图像分割模型
+        cosmoflow      - CosmoFlow 宇宙学模拟模型
+        checkpointing  - 检查点读写测试
+        all            - 运行所有场景 (默认值)
+
+  --scale <规模>
+      测试数据集规模，控制生成的文件数量、文件大小和训练轮数:
+        small  - 小型数据集: 32 files, 5 epochs (默认值)
+        medium - 中型数据集: 256 files, 10 epochs
+        large  - 大型数据集: 1024 files, 20 epochs
+
+  --file_count <数量>
+      自定义生成测试文件数量 (正整数)
+      注意: 同时指定 --scale 和 --file_count 时，--file_count 优先级更高
+      不同 scale 对应的默认 file_count:
+        small=32, medium=256, large=1024
+
+  --gpu_count <数量>
+      并发 GPU 数量，用于模拟多 GPU 训练场景
+      默认值: 1
+
+  --help, -h
+      显示此帮助信息
+
+示例:
+  # 运行所有场景 (默认 small 规模, 1 GPU)
+  dtt -t mlperf -s all
+
+  # 运行单个场景
+  dtt -t mlperf -s resnet50
+
+  # 中型规模测试, 4 GPU
+  dtt -t mlperf -s unet3d --scale medium --gpu_count 4
+
+  # 自定义 500 个文件 (覆盖 --scale 的默认值)
+  dtt -t mlperf -s all --file_count 500
+
+  # 小规模快速验证
+  dtt -t mlperf -s checkpointing --scale small
+
+注意:
+  - mlperf 使用独立的 mlperf-storage 容器，不依赖 dtt 主镜像
+  - 测试数据写入 dtt config testdir 配置的目录
+  - 测试结果保存到 dtt config output 配置的目录
+
+更多信息:
+  - MLPerf Storage: https://github.com/mlcommons/storage
 EOF
 }
 
