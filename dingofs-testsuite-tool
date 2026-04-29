@@ -447,6 +447,7 @@ run_testsuite() {
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local wechat="" email_to=""
+    local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -482,11 +483,27 @@ run_testsuite() {
                 bs_size="$2"
                 shift 2
                 ;;
+            --scale)
+                scale="$2"
+                shift 2
+                ;;
+            --file_count)
+                file_count="$2"
+                shift 2
+                ;;
+            --gpu_count)
+                gpu_count="$2"
+                shift 2
+                ;;
             --help|-h)
-                # Check if tool is already set, show tool-specific help
                 if [[ -n "$tool" ]]; then
-                    run_docker_help "$tool"
-                    exit $?
+                    if [[ "$tool" == "mlperf" ]]; then
+                        show_mlperf_help
+                        exit 0
+                    else
+                        run_docker_help "$tool"
+                        exit $?
+                    fi
                 else
                     show_help
                     exit 0
@@ -503,6 +520,60 @@ run_testsuite() {
     mount="${mount:-$config_testdir}"
     output="${output:-$config_output}"
 
+    # mlperf-specific parameter handling
+    if [[ "$tool" == "mlperf" ]]; then
+        # Default scenario to "all" if not specified
+        scenario="${scenario:-all}"
+
+        # Validate scenario
+        case "$scenario" in
+            resnet50|unet3d|cosmoflow|checkpointing|all)
+                ;;
+            *)
+                echo "Error: Invalid mlperf scenario '$scenario'"
+                echo "Valid scenarios: resnet50, unet3d, cosmoflow, checkpointing, all"
+                return 1
+                ;;
+        esac
+
+        # Validate scale
+        case "$scale" in
+            small|medium|large)
+                ;;
+            *)
+                echo "Error: Invalid --scale value '$scale'"
+                echo "Valid values: small, medium, large"
+                return 1
+                ;;
+        esac
+
+        # Validate file_count if provided
+        if [[ -n "$file_count" ]]; then
+            if [[ ! "$file_count" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: --file_count must be a positive integer, got '$file_count'"
+                return 1
+            fi
+        fi
+
+        # Validate gpu_count (positive integer)
+        if [[ ! "$gpu_count" =~ ^[1-9][0-9]*$ ]]; then
+            echo "Error: --gpu_count must be a positive integer, got '$gpu_count'"
+            return 1
+        fi
+
+        # PRINT configured parameters and exit (Phase 16 replaces this with docker run)
+        echo "MLPerf parameters configured:"
+        echo "  Scenario:   $scenario"
+        echo "  Scale:      $scale"
+        if [[ -n "$file_count" ]]; then
+            echo "  File Count: $file_count (overrides --scale default)"
+        fi
+        echo "  GPU Count:  $gpu_count"
+        echo ""
+        echo "MLPerf execution will be available in Phase 16."
+        exit 0
+    fi
+
     # Validate required parameters
     if [[ -z "$mount" ]]; then
         echo "Error: Test directory not set."
@@ -517,7 +588,7 @@ run_testsuite() {
     fi
 
     if [[ -z "$tool" ]]; then
-        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int)"
+        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf)"
         return 1
     fi
 
@@ -645,7 +716,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--scale|--file_count|--gpu_count)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;
