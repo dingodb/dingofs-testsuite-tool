@@ -140,6 +140,7 @@ Plans:
 
 **Plans:** TBD
 
+
 ---
 
 ### Phase 6: LTP Integration
@@ -158,6 +159,8 @@ Plans:
 
 **Plans:** TBD
 
+Plans:
+
 ---
 
 ### Phase 7: LTP Runtime Safety
@@ -175,6 +178,8 @@ Plans:
   4. User understands that privileged container or specific capabilities are needed for LTP tests
 
 **Plans:** TBD
+
+Plans:
 
 ---
 
@@ -302,7 +307,10 @@ Plans:
   6. User specifies both `--scale medium --file_count 500` together and --file_count takes precedence over --scale
   7. User specifies `--gpu_count 4` and dtt accepts the value, defaulting to 1 when the flag is omitted
 
-**Plans:** TBD
+**Plans:** 1 plan
+
+Plans:
+- [ ] 15-01-PLAN.md — Update show_help(), create show_mlperf_help(), add mlperf parameter parsing and routing
 
 ---
 
@@ -321,6 +329,8 @@ Plans:
   5. Test results and benchmark reports are saved to the directory configured via `dtt config output` under an mlperf subdirectory
 
 **Plans:** TBD
+
+Plans:
 
 ---
 
