@@ -448,12 +448,12 @@ Plans:
 | CLI-05 | Phase 15 | Pending |
 | CLI-06 | Phase 15 | Pending |
 | CLI-07 | Phase 15 | Pending |
-| EXEC-01 | Phase 16 | Pending |
-| EXEC-02 | Phase 16 | Pending |
-| EXEC-03 | Phase 16 | Pending |
-| DATA-01 | Phase 16 | Pending |
-| DATA-02 | Phase 16 | Pending |
-| DATA-03 | Phase 16 | Pending |
+| EXEC-01 | Phase 16 | Complete |
+| EXEC-02 | Phase 16 | Complete |
+| EXEC-03 | Phase 16 | Complete |
+| DATA-01 | Phase 16 | Complete |
+| DATA-02 | Phase 16 | Complete |
+| DATA-03 | Phase 16 | Complete |
 
 ---
 
