@@ -158,13 +158,13 @@
 
 ### CLI 命令行集成
 
-- [ ] **CLI-01**: dtt --help 中添加 mlperf 工具说明
-- [ ] **CLI-02**: dtt -t mlperf --help 显示详细用法（含 -s/--scale/--file_count/--gpu_count 参数说明和使用示例）
-- [ ] **CLI-03**: -s 参数支持 resnet50/unet3d/cosmoflow/checkpointing/all
-- [ ] **CLI-04**: --scale 参数支持 small/medium/large，默认 small
-- [ ] **CLI-05**: --file_count 参数自定义生成测试文件数量
-- [ ] **CLI-06**: --file_count 优先级高于 --scale（同时指定时以 --file_count 为准）
-- [ ] **CLI-07**: --gpu_count 参数设置并发 GPU 数量，默认 1
+- [x] **CLI-01**: dtt --help 中添加 mlperf 工具说明
+- [x] **CLI-02**: dtt -t mlperf --help 显示详细用法（含 -s/--scale/--file_count/--gpu_count 参数说明和使用示例）
+- [x] **CLI-03**: -s 参数支持 resnet50/unet3d/cosmoflow/checkpointing/all
+- [x] **CLI-04**: --scale 参数支持 small/medium/large，默认 small
+- [x] **CLI-05**: --file_count 参数自定义生成测试文件数量
+- [x] **CLI-06**: --file_count 优先级高于 --scale（同时指定时以 --file_count 为准）
+- [x] **CLI-07**: --gpu_count 参数设置并发 GPU 数量，默认 1
 
 ### MLPerf 执行集成
 
@@ -252,13 +252,13 @@ Which phases cover which requirements. Updated during roadmap creation.
 | TOOLS-04 | Phase 14 | Pending |
 | TOOLS-05 | Phase 14 | Pending |
 | TOOLS-06 | Phase 14 | Pending |
-| CLI-01 | Phase 15 | Pending |
-| CLI-02 | Phase 15 | Pending |
-| CLI-03 | Phase 15 | Pending |
-| CLI-04 | Phase 15 | Pending |
-| CLI-05 | Phase 15 | Pending |
-| CLI-06 | Phase 15 | Pending |
-| CLI-07 | Phase 15 | Pending |
+| CLI-01 | Phase 15 | Complete |
+| CLI-02 | Phase 15 | Complete |
+| CLI-03 | Phase 15 | Complete |
+| CLI-04 | Phase 15 | Complete |
+| CLI-05 | Phase 15 | Complete |
+| CLI-06 | Phase 15 | Complete |
+| CLI-07 | Phase 15 | Complete |
 | EXEC-01 | Phase 16 | Pending |
 | EXEC-02 | Phase 16 | Pending |
 | EXEC-03 | Phase 16 | Pending |

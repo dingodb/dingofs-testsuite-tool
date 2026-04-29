@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.4
-milestone_name: MLPerf 工具集成
-status: roadmap_created
-last_updated: "2026-04-29T00:00:00.000Z"
-last_activity: 2026-04-29 -- Roadmap created for v1.4
+milestone: v1.2
+milestone_name: 集成测试命令
+status: verifying
+last_updated: "2026-04-29T03:52:39.664Z"
+last_activity: 2026-04-29
 progress:
-  total_phases: 2
-  completed_phases: 0
-  total_plans: 2
-  completed_plans: 0
+  total_phases: 10
+  completed_phases: 6
+  total_plans: 9
+  completed_plans: 10
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Roadmap defined for MLPerf 工具集成, ready for phase planning
+**Current Focus:** Phase 15 — CLI 参数与帮助集成
 
 **Project Root:** `/mnt/disk0/daigy/github/dingofs-testsuite-tool`
 
@@ -31,10 +31,10 @@ progress:
 
 ## Current Position
 
-Phase: Not started (roadmap created)
-Plan: —
-Status: Roadmap created
-Last activity: 2026-04-29 -- v1.4 roadmap created
+Phase: 15 (CLI 参数与帮助集成) — EXECUTING
+Plan: 1 of 1
+Status: Phase complete — ready for verification
+Last activity: 2026-04-29
 
 ```
 Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phases complete
@@ -52,6 +52,7 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 | Blockers | 0 |
 
 ---
+| Phase 15-cli P01 | 16 | 2 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -68,6 +69,9 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 | 2-phase structure for v1.4 MLPerf | CLI (parameter parsing/help) → EXEC (container run/mounts/output); DATA reqs tightly coupled with EXEC | 2026-04-29 |
 | Phase 15: CLI first | Need CLI parameters parsed before they can be passed to mlperf container | 2026-04-29 |
 | DATA-01~03 merged into Phase 16 | Volume mounts and output handling are part of docker run command construction, not a separate concern | 2026-04-29 |
+
+- [Phase 15-cli]: mlperf --help displayed locally via show_mlperf_help(), not via docker run (different container)
+- [Phase 15-cli]: CLI-06: --file_count takes precedence over --scale when both specified, evidenced by (overrides --scale default) output
 
 ### Active TODOs
 
@@ -100,7 +104,7 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 
 ## Session Continuity
 
-**Last Session:** 2026-04-29T00:00:00.000Z
+**Last Session:** 2026-04-29T03:52:04.764Z
 
 **Next Actions:**
 
@@ -160,7 +164,7 @@ v1.4 roadmap created with 2 phases covering 13 requirements. CLI phase (Phase 15
 ## v1.3 Milestone: 测试结果通知
 
 **Started:** 2026-04-21
-**Status:** Partially complete — WeChat done, Email pending
+**Status:** Phase complete — ready for verification
 
 **Target features:**
 

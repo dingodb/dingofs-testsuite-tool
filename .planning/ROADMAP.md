@@ -25,7 +25,7 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [ ] **Phase 12: WeChat 通知实现** - WeChat webhook notification with markdown_v2
 - [ ] **Phase 13: Email 通知实现** - Email notification via SMTP
 - [ ] **Phase 14: 工具通知集成** - Extend notification to all test tools
-- [ ] **Phase 15: CLI 参数与帮助集成** - Add mlperf CLI parameters and help text to dtt wrapper
+- [x] **Phase 15: CLI 参数与帮助集成** - Add mlperf CLI parameters and help text to dtt wrapper (completed 2026-04-29)
 - [ ] **Phase 16: MLPerf 容器执行与数据集成** - Launch mlperf-storage container with proper parameters, mounts, and output
 
 ## Phase Details
@@ -307,10 +307,10 @@ Plans:
   6. User specifies both `--scale medium --file_count 500` together and --file_count takes precedence over --scale
   7. User specifies `--gpu_count 4` and dtt accepts the value, defaulting to 1 when the flag is omitted
 
-**Plans:** 1 plan
+**Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 15-01-PLAN.md — Update show_help(), create show_mlperf_help(), add mlperf parameter parsing and routing
+- [x] 15-01-PLAN.md — Update show_help(), create show_mlperf_help(), add mlperf parameter parsing and routing
 
 ---
 
@@ -352,7 +352,7 @@ Plans:
 | 12. WeChat 通知实现 | 0/1 | Pending | — |
 | 13. Email 通知实现 | 0/1 | Pending | — |
 | 14. 工具通知集成 | 0/1 | Pending | — |
-| 15. CLI 参数与帮助集成 | 0/1 | Not started | — |
+| 15. CLI 参数与帮助集成 | 1/1 | Complete   | 2026-04-29 |
 | 16. MLPerf 容器执行与数据集成 | 0/1 | Not started | — |
 
 ## Coverage
