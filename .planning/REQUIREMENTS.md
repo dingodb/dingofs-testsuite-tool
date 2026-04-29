@@ -154,6 +154,30 @@
 - [ ] **TOOLS-05**: 扩展到 ltp
 - [ ] **TOOLS-06**: 扩展到 int
 
+## v1.4 Requirements
+
+### CLI 命令行集成
+
+- [ ] **CLI-01**: dtt --help 中添加 mlperf 工具说明
+- [ ] **CLI-02**: dtt -t mlperf --help 显示详细用法（含 -s/--scale/--file_count/--gpu_count 参数说明和使用示例）
+- [ ] **CLI-03**: -s 参数支持 resnet50/unet3d/cosmoflow/checkpointing/all
+- [ ] **CLI-04**: --scale 参数支持 small/medium/large，默认 small
+- [ ] **CLI-05**: --file_count 参数自定义生成测试文件数量
+- [ ] **CLI-06**: --file_count 优先级高于 --scale（同时指定时以 --file_count 为准）
+- [ ] **CLI-07**: --gpu_count 参数设置并发 GPU 数量，默认 1
+
+### MLPerf 执行集成
+
+- [ ] **EXEC-01**: dtt -t mlperf 启动 mlperf-storage 容器执行测试
+- [ ] **EXEC-02**: 传递 -s/--scale/--file_count/--gpu_count 参数到 mlperf 容器
+- [ ] **EXEC-03**: 设置 --shm-size=8g 支持 PyTorch DataLoader
+
+### 数据与输出
+
+- [ ] **DATA-01**: 测试挂载点使用 dtt config testdir 映射到 /data
+- [ ] **DATA-02**: 测试结果输出到 dtt config output
+- [ ] **DATA-03**: mlperf 测试报告保存到输出目录
+
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
@@ -206,4 +230,4 @@ Which phases cover which requirements. Updated during roadmap creation.
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-08 after roadmap creation for v1.1*
+*Last updated: 2026-04-29 — v1.4 requirements added*
