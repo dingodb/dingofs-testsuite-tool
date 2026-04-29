@@ -193,7 +193,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt -t ltp --help
   dtt -t mlperf --help
 
-  # 运行所有 mlperf storage 基准测试
+  # 运行所有 mlperf storage 基准测试 (自动设置 --shm-size=8g 和 -it)
   dtt -t mlperf -s all
 
   # 运行指定 mlperf 场景
@@ -250,9 +250,9 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于
 
   --scale <规模>
       测试数据集规模，控制生成的文件数量、文件大小和训练轮数:
-        small  - 小型数据集: 32 files, 5 epochs (默认值)
-        medium - 中型数据集: 256 files, 10 epochs
-        large  - 大型数据集: 1024 files, 20 epochs
+        small  - 小规模数据集 (500 files, 快速功能验证, 非MLPerf合规)
+        medium - 中规模数据集 (5000 files, 非MLPerf合规)
+        large  - 大规模数据集 (根据5x内存规则自动计算, MLPerf合规)
 
   --file_count <数量>
       自定义生成测试文件数量 (正整数)
@@ -284,9 +284,10 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于
   dtt -t mlperf -s checkpointing --scale small
 
 注意:
-  - mlperf 使用独立的 mlperf-storage 容器，不依赖 dtt 主镜像
-  - 测试数据写入 dtt config testdir 配置的目录
-  - 测试结果保存到 dtt config output 配置的目录
+  - mlperf-storage 已集成到 dtt 主镜像中，与其他工具共用同一个容器 (D-01)
+  - 需要 --shm-size=8g 共享内存 (自动设置) 支持 PyTorch DataLoader 多进程数据加载
+  - 测试数据写入 dtt config testdir 配置的目录 (挂载到容器内 /data)
+  - 测试结果保存到 dtt config output 配置的目录 (挂载到容器内 /output, 子目录: mlperf_<timestamp>/)
 
 更多信息:
   - MLPerf Storage: https://github.com/mlcommons/storage
