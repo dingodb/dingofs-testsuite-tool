@@ -2,8 +2,8 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: 集成测试命令
-status: verifying
-last_updated: "2026-04-29T03:52:39.664Z"
+status: completed
+last_updated: "2026-04-29T03:54:19.132Z"
 last_activity: 2026-04-29
 progress:
   total_phases: 10
@@ -31,8 +31,8 @@ progress:
 
 ## Current Position
 
-Phase: 15 (CLI 参数与帮助集成) — EXECUTING
-Plan: 1 of 1
+Phase: 15
+Plan: Not started
 Status: Phase complete — ready for verification
 Last activity: 2026-04-29
 
@@ -164,7 +164,7 @@ v1.4 roadmap created with 2 phases covering 13 requirements. CLI phase (Phase 15
 ## v1.3 Milestone: 测试结果通知
 
 **Started:** 2026-04-21
-**Status:** Phase complete — ready for verification
+**Status:** Milestone complete
 
 **Target features:**
 
