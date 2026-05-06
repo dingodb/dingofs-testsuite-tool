@@ -156,6 +156,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   --file_count <数量>     mlperf自定义生成测试文件数量
                           优先级高于 --scale（同时指定时以 --file_count 为准）
   --gpu_count <数量>      mlperf并发GPU数量 (默认: 1)
+  --debug                 调试模式，容器执行完毕后保留不删除
 
 示例:
   # 首次设置: 配置参数
@@ -448,7 +449,7 @@ run_testsuite() {
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local wechat="" email_to=""
-    local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}"
+    local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -495,6 +496,10 @@ run_testsuite() {
             --gpu_count)
                 gpu_count="$2"
                 shift 2
+                ;;
+            --debug)
+                debug="yes"
+                shift
                 ;;
             --help|-h)
                 if [[ -n "$tool" ]]; then
@@ -588,9 +593,13 @@ run_testsuite() {
         # Create output directory if it doesn't exist
         mkdir -p "$output"
 
-        # Build docker command with mlperf-specific flags
+        # Build docker command with mlperf-specific flags (omit --rm in debug mode)
+        local mlperf_rm_flag="--rm"
+        if [[ -n "$debug" ]]; then
+            mlperf_rm_flag=""
+        fi
         local docker_cmd=(
-            $runtime run -it --rm --privileged
+            $runtime run -it $mlperf_rm_flag --privileged
             --shm-size=8g
             -v "${mount}:/data"
             -v "${output}:/output"
@@ -657,9 +666,13 @@ run_testsuite() {
     # Create output directory if it doesn't exist
     mkdir -p "$output"
 
-    # Build docker command
+    # Build docker command (omit --rm in debug mode to preserve container)
+    local rm_flag="--rm"
+    if [[ -n "$debug" ]]; then
+        rm_flag=""
+    fi
     local docker_cmd=(
-        $runtime run --rm --privileged
+        $runtime run $rm_flag --privileged
         -v "${mount}:/data"
         -v "${output}:/output"
     )
@@ -772,7 +785,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--scale|--file_count|--gpu_count)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--scale|--file_count|--gpu_count|--debug)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;

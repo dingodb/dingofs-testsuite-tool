@@ -96,6 +96,7 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 | 260424-b84 | Fix BS_SIZE=small path and filesize (400M) | 2026-04-24 | - | [260424-b84-fix-bs-size-small-path-and-size](./quick/260424-b84-fix-bs-size-small-path-and-size/) |
 | 260424-kv8 | Reorganize fio scenarios into /scenarios/fio/bs_normal and bs_small | 2026-04-24 | 505ca27 | [260424-kv8-reorganize-fio-scenarios-into-scenarios-](./quick/260424-kv8-reorganize-fio-scenarios-into-scenarios-/) |
 | 260428-fay | Add container runtime config option (docker/podman) to dtt | 2026-04-28 | cea0db6 | [260428-fay-add-container-runtime-config-option-dock](./quick/260428-fay-add-container-runtime-config-option-dock/) |
+| 260506-p8j | add --debug flag to preserve container after test | 2026-05-06 | - | [260506-p8j-add-debug-flag-to-preserve-container-aft](./quick/260506-p8j-add-debug-flag-to-preserve-container-aft/) |
 
 ### Key Files
 
