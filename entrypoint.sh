@@ -1479,15 +1479,34 @@ EOF
     local failed_tests=""
 
     # Extract test statistics from pytest summary line
-    if grep -q "failed.*passed" "$log_file"; then
-        local summary_line=$(grep "failed.*passed.*rerun" "$log_file" | tail -1)
-        int_failed=$(echo "$summary_line" | sed -n 's/.*\([0-9]\+\) failed.*/\1/p' | head -1)
+    # Format examples:
+    #   "======= 4 failed, 90 passed, 23 rerun in 1412.22s =======" (with reruns)
+    #   "======= 4 failed, 90 passed in 100.00s =======" (no reruns)
+    #   "======= 90 passed in 100.00s =======" (all pass, no failures)
+    #   "======= 90 passed, 4 failed in 100.00s =======" (passed before failed)
+    local summary_line=""
+    if grep -qE "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file"; then
+        summary_line=$(grep -E "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file" | tail -1)
+    fi
+
+    if [[ -n "$summary_line" ]]; then
+        # Extract failed count: use [^0-9] prefix to ensure word boundary
+        # (prevents greedy .* from splitting multi-digit numbers like 10 -> 0)
+        int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
+        [[ -z "$int_failed" ]] && int_failed=0
+
+        # Extract passed count: handle both "failed, X passed" and "X passed, Y failed" orderings
         int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
-        int_rerun=$(echo "$summary_line" | sed -n 's/.*rerun in.*/\1/p' | sed 's/.*\([0-9]\+\) rerun.*/\1/' | head -1)
-        # Handle case where there might be no rerun
-        if [[ -z "$int_rerun" ]] || [[ "$int_rerun" =~ "rerun" ]]; then
-            int_rerun=0
+        if [[ -z "$int_passed" ]]; then
+            # Try alternative ordering: "X passed" before "Y failed"
+            int_passed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p' | head -1)
         fi
+        [[ -z "$int_passed" ]] && int_passed=0
+
+        # Extract rerun count (if present)
+        int_rerun=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) rerun.*/\1/p' | head -1)
+        [[ -z "$int_rerun" ]] && int_rerun=0
+
         # Calculate total (failed + passed)
         int_total=$((int_passed + int_failed))
     fi

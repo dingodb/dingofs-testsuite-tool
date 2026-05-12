@@ -67,19 +67,19 @@ send_email_notification() {
         local pass_rate=""
         local failed_tests_list=""
 
-        # Extract total
-        if [[ "$details" =~ Total:[0-9]+ ]]; then
-            total_val=$(echo "$details" | sed -n 's/.*Total:\([0-9]*\).*/\1/p')
+        # Extract total (handle optional space after colon: "Total: 94" or "Total:94")
+        if [[ "$details" =~ Total:[[:space:]]*[0-9]+ ]]; then
+            total_val=$(echo "$details" | sed -n 's/.*Total:[[:space:]]*\([0-9]\+\).*/\1/p')
         fi
 
-        # Extract passed
-        if [[ "$details" =~ Passed:[0-9]+ ]]; then
-            passed_val=$(echo "$details" | sed -n 's/.*Passed:\([0-9]*\).*/\1/p')
+        # Extract passed (handle optional space after colon)
+        if [[ "$details" =~ Passed:[[:space:]]*[0-9]+ ]]; then
+            passed_val=$(echo "$details" | sed -n 's/.*Passed:[[:space:]]*\([0-9]\+\).*/\1/p')
         fi
 
-        # Extract failed (before ". Failed:" to avoid matching the repeated part)
-        if [[ "$details" =~ Failed:[0-9]+ ]]; then
-            failed_val=$(echo "$details" | sed -n 's/.*Failed:\([0-9]*\).*/\1/p')
+        # Extract failed (handle optional space after colon; first occurrence before ". Failed:")
+        if [[ "$details" =~ Failed:[[:space:]]*[0-9]+ ]]; then
+            failed_val=$(echo "$details" | sed -n 's/.*Failed:[[:space:]]*\([0-9]\+\).*/\1/p')
         fi
 
         # Calculate pass rate
