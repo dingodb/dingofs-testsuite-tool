@@ -1,21 +1,21 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: 集成测试命令
-status: completed
-last_updated: "2026-04-29T06:21:56.171Z"
-last_activity: 2026-04-29
+milestone: v1.5
+milestone_name: 冒烟测试命令
+status: defining_requirements
+last_updated: "2026-05-19T00:00:00Z"
+last_activity: 2026-05-19
 progress:
-  total_phases: 10
-  completed_phases: 6
-  total_plans: 9
-  completed_plans: 10
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
 
-**Last Updated:** 2026-04-29
-**Session:** v1.4 - MLPerf 工具集成
+**Last Updated:** 2026-05-19
+**Session:** v1.5 — 冒烟测试命令
 
 ---
 
@@ -23,21 +23,21 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
 
-**Current Focus:** Phase 16 — MLPerf 容器执行与数据集成
+**Current Focus:** 定义需求 — v1.5 冒烟测试命令
 
-**Project Root:** `/mnt/disk0/daigy/github/dingofs-testsuite-tool`
+**Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
 ---
 
 ## Current Position
 
-Phase: 16
-Plan: Not started
-Status: Ready to execute
-Last activity: 2026-04-29
+Phase: —
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-19 — Milestone v1.5 started
 
 ```
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phases complete
+Progress: ░░░░░░░░░░░░░░░░░░░░ 0/0 phases defined
 ```
 
 ---
@@ -46,8 +46,8 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/2 phase
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed (v1.4) | 0/2 |
-| Requirements Delivered (v1.4) | 0/13 |
+| Phases Completed (v1.5) | 0/0 |
+| Requirements Delivered (v1.5) | 0/0 |
 | Days in Progress | 0 |
 | Blockers | 0 |
 

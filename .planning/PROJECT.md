@@ -8,19 +8,22 @@
 
 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试，无需关注工具安装和配置细节。
 
-## Current Milestone: v1.4 MLPerf 工具集成
+## Current Milestone: v1.5 冒烟测试命令
 
-**Goal:** 将已有 mlperf-storage 镜像集成到 dtt 工具中，用户通过 dtt -t mlperf 执行 MLPerf 存储基准测试
+**Goal:** 一条 dtt smoke 命令自动串行执行三个测试场景，快速验证存储系统基本健康状态
 
 **Target features:**
-- dtt --help 中添加 mlperf 工具说明
-- dtt -t mlperf --help 显示详细用法
-- -s 支持 resnet50/unet3d/cosmoflow/checkpointing/all
-- --scale small/medium/large，默认 small
-- --file_count 自定义生成测试文件数量（优先级高于 --scale）
-- --gpu_count 并发 GPU 数量，默认 1
-- 测试挂载点使用 dtt config 中配置的 testdir
-- 测试结果输出到 dtt config 中配置的 output
+- dtt smoke 命令支持
+- 自动串行执行 pjdtest -s all, mdtest -s all -n 8, ltp -s smoke
+- 统计每个工具的通过/失败/跳过/总用例数
+- 测试结果统一输出到 smoke_ 前缀目录
+- 完成后发送微信/邮件通知
+
+## Previous Milestone: v1.4 MLPerf 工具集成
+
+**Goal:** 将已有 mlperf-storage 镜像集成到 dtt 工具中
+
+**Status:** Complete
 
 ## Previous Milestone: v1.3 测试结果通知
 
