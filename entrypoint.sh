@@ -290,6 +290,7 @@ LTP Linux 测试项目
 
 测试套件:
   all       - 运行所有测试 (fs, fsx, io, dir, lock, syscalls) (默认)
+  smoke     - 冒烟测试 (smoketest)
   fs        - 文件系统测试
   fsx       - 文件系统扩展属性测试
   io        - Direct I/O测试
@@ -310,6 +311,7 @@ LTP Linux 测试项目
   dtt -t ltp -s dir
   dtt -t ltp -s lock
   dtt -t ltp -s syscalls
+  dtt -t ltp -s smoke
 EOF
 }
 
@@ -479,7 +481,7 @@ scenario_exists() {
             ;;
         ltp)
             # ltp scenarios: all, fs, fsx, io, dir, lock, syscalls
-            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(fs|fsx|io|dir|lock|syscalls)$ ]]
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(fs|fsx|io|dir|lock|syscalls|smoke)$ ]]
             ;;
         int|integration)
             # int scenarios: quota, client, cache_node, chaos, all
@@ -1327,6 +1329,9 @@ ltp_run() {
             ;;
         syscalls)
             scenarios="syscalls"
+            ;;
+        smoke)
+            scenarios="smoketest"
             ;;
         *)
             scenarios="${SCENARIO:-fs}"
