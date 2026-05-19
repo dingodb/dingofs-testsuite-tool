@@ -671,8 +671,20 @@ run_testsuite() {
     if [[ -n "$debug" ]]; then
         rm_flag=""
     fi
+
+    # LTP requires rootful podman with runc and /dev/kmsg for kernel test access
+    local ltp_extra_flags=()
+    if [[ "$tool" == "ltp" ]]; then
+        ltp_extra_flags+=("--device" "/dev/kmsg")
+        if [[ "$runtime" == "podman" ]]; then
+            ltp_extra_flags+=("--runtime=runc")
+            runtime="sudo podman"
+        fi
+    fi
+
     local docker_cmd=(
         $runtime run $rm_flag --privileged
+        "${ltp_extra_flags[@]}"
         -v "${mount}:/data"
         -v "${output}:/output"
     )
