@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 -- 一条命令即可完成测试
 
-**Current Focus:** Phase 18 — Result Statistics & Summary
+**Current Focus:** Phase 19 — CLI & Notification
 
 **Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
@@ -31,13 +31,13 @@ progress:
 
 ## Current Position
 
-Phase: 18
-Plan: Not started
-Status: Phase complete — ready for verification
-Last activity: 2026-05-20
+Phase: 19 (CLI & Notification)
+Plan: 19-01
+Status: Phase 19 planned — ready to execute
+Last activity: 2026-05-20 — Phase 19 planned
 
 ```
-Progress: ███████░░░░░░░░░░░░░░░ 1/3 phases complete (v1.5)
+Progress: ██████████████░░░░░░░░ 2/3 phases complete (v1.5)
 ```
 
 ---
@@ -46,8 +46,8 @@ Progress: ███████░░░░░░░░░░░░░░░ 1/3
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed (v1.5) | 1/3 |
-| Requirements Delivered (v1.5) | 3/9 |
+| Phases Completed (v1.5) | 2/3 |
+| Requirements Delivered (v1.5) | 7/9 |
 | Days in Progress | 1 |
 | Blockers | 0 |
 
@@ -75,7 +75,7 @@ Progress: ███████░░░░░░░░░░░░░░░ 1/3
 
 - [x] Plan Phase 17: Smoke Orchestration Core
 - [x] Plan Phase 18: Result Statistics & Summary
-- [ ] Plan Phase 19: CLI & Notification
+- [x] Plan Phase 19: CLI & Notification
 
 ### Blockers
 
@@ -99,10 +99,10 @@ Progress: ███████░░░░░░░░░░░░░░░ 1/3
 
 **Next Actions:**
 
-1. `/gsd:plan-phase 18` -- Plan Result Statistics & Summary (parse TAP, LTP output, mdtest status; generate smoke_summary)
+1. `/gsd:execute-phase 19` -- Execute CLI & Notification (cmd_smoke() + combined WeChat/Email notification)
 
 **Context for Next Session:**
-Phase 17 complete. SMOKE_MODE guards exist in pjdtest_run(), mdtest_run(), ltp_run(). smoke_run() orchestrates 3 tools with fail-continue. dispatch/validation/help wired for -t smoke. Phase 18 needs to parse per-tool outputs (pjdtest TAP, LTP TPASS/TFAIL/TCONF, mdtest SUMMARY rate) to produce pass/fail/skip/total statistics and a combined smoke_summary report. Outputs are at smoke_<ts>/{pjdtest,mdtest,ltp}/ which the stats functions will scan.
+Phases 17-18 complete. entrypoint.sh has smoke_run() with parse/summary functions (parse_pjdtest_tap, parse_ltp_output, validate_mdtest_smoke, generate_smoke_summary). Phase 19 adds cmd_smoke() to dtt wrapper (builds docker command with -t smoke + WECHAT/EMAIL env vars), show_smoke_help(), smoke dispatch case, and send_smoke_notification() in entrypoint.sh for single combined notification at end of smoke_run(). Two files: dingofs-testsuite-tool and entrypoint.sh.
 
 ---
 
