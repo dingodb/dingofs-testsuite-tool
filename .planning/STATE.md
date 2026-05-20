@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.2
 milestone_name: 集成测试命令
-status: executing
-last_updated: "2026-05-20T06:58:23.285Z"
-last_activity: 2026-05-20 -- Phase 18 execution started
+status: verifying
+last_updated: "2026-05-20T07:17:03.228Z"
+last_activity: 2026-05-20
 progress:
-  total_phases: 19
-  completed_phases: 10
-  total_plans: 17
-  completed_plans: 16
+  total_phases: 10
+  completed_phases: 6
+  total_plans: 9
+  completed_plans: 10
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
@@ -33,8 +33,8 @@ progress:
 
 Phase: 18 (Result Statistics & Summary) — EXECUTING
 Plan: 1 of 1
-Status: Executing Phase 18
-Last activity: 2026-05-20 -- Phase 18 execution started
+Status: Phase complete — ready for verification
+Last activity: 2026-05-20
 
 ```
 Progress: ███████░░░░░░░░░░░░░░░ 1/3 phases complete (v1.5)
@@ -52,6 +52,7 @@ Progress: ███████░░░░░░░░░░░░░░░ 1/3
 | Blockers | 0 |
 
 ---
+| Phase 18 P01 | 595 | 3 tasks | 1 files |
 
 ## Accumulated Context
 
@@ -65,6 +66,10 @@ Progress: ███████░░░░░░░░░░░░░░░ 1/3
 | Phase 19: CLI last | Wrapper cmd_smoke() + combined notification depends on container fully supporting -t smoke | 2026-05-20 |
 | Single-container hybrid architecture | Avoids 3-container overhead, enables in-memory stats aggregation, prevents per-tool notification spam | 2026-05-20 |
 | SMOKE_MODE guard pattern | Wrap notification blocks in `if [[ "$SMOKE_MODE" != "1" ]]` in 3 existing _run() functions (2 lines each, 6 total) | 2026-05-20 |
+
+- [Phase 18]: TAP skip counting: TODO directives counted as skip, fail = not_ok - skip
+- [Phase 18]: LTP space-anchored patterns: [[:space:]]TPASS: prevents matching inside test names
+- [Phase 18]: mdtest validation uses three conditions (exit=0, SUMMARY rate present, non-zero ops) to prevent false PASS for broken filesystems
 
 ### Active TODOs
 
@@ -90,7 +95,7 @@ Progress: ███████░░░░░░░░░░░░░░░ 1/3
 
 ## Session Continuity
 
-**Last Session:** 2026-05-20 -- Roadmap creation
+**Last Session:** 2026-05-20T07:17:03.219Z
 
 **Next Actions:**
 
@@ -118,7 +123,7 @@ Phase 17 complete. SMOKE_MODE guards exist in pjdtest_run(), mdtest_run(), ltp_r
 ## v1.5 Milestone: 冒烟测试命令
 
 **Started:** 2026-05-20
-**Status:** Executing Phase 18
+**Status:** Phase complete — ready for verification
 
 **Phases:** 3 (Phase 17-19)
 

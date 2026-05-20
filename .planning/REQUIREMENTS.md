@@ -188,10 +188,10 @@
 
 ### 结果统计
 
-- [ ] **STAT-01**: 解析 pjdtest TAP 输出，统计该工具的通过(pass)/失败(fail)/跳过(skip)/总(total)用例数
-- [ ] **STAT-02**: 解析 LTP 输出（TPASS/TFAIL/TCONF 标记），统计该工具的通过/失败/跳过/总用例数
-- [ ] **STAT-03**: mdtest 以退出码 + SUMMARY rate 存在判定通过/失败
-- [ ] **STAT-04**: 生成 smoke 汇总报告（smoke_summary），包含三个工具的统计结果
+- [x] **STAT-01**: 解析 pjdtest TAP 输出，统计该工具的通过(pass)/失败(fail)/跳过(skip)/总(total)用例数
+- [x] **STAT-02**: 解析 LTP 输出（TPASS/TFAIL/TCONF 标记），统计该工具的通过/失败/跳过/总用例数
+- [x] **STAT-03**: mdtest 以退出码 + SUMMARY rate 存在判定通过/失败
+- [x] **STAT-04**: 生成 smoke 汇总报告（smoke_summary），包含三个工具的统计结果
 
 ### 输出与通知
 
@@ -288,10 +288,10 @@ Which phases cover which requirements. Updated during roadmap creation.
 | SMOKE-01 | Phase 17 | Pending |
 | SMOKE-02 | Phase 17 | Pending |
 | SMOKE-03 | Phase 19 | Pending |
-| STAT-01 | Phase 18 | Pending |
-| STAT-02 | Phase 18 | Pending |
-| STAT-03 | Phase 18 | Pending |
-| STAT-04 | Phase 18 | Pending |
+| STAT-01 | Phase 18 | Complete |
+| STAT-02 | Phase 18 | Complete |
+| STAT-03 | Phase 18 | Complete |
+| STAT-04 | Phase 18 | Complete |
 | OUT-01 | Phase 17 | Pending |
 | OUT-02 | Phase 19 | Pending |
 
