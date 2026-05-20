@@ -178,6 +178,26 @@
 - [x] **DATA-02**: 测试结果输出到 dtt config output
 - [x] **DATA-03**: mlperf 测试报告保存到输出目录
 
+## v1.5 Requirements
+
+### Smoke 命令
+
+- [ ] **SMOKE-01**: 用户执行 `dtt smoke` 自动串行运行三个测试场景：pjdtest -s all, mdtest -s all -n 8, ltp -s smoke
+- [ ] **SMOKE-02**: 三个工具全部执行完成，单个工具失败不中止后续工具运行
+- [ ] **SMOKE-03**: `dtt --help` 列出 smoke 子命令，`dtt smoke --help` 显示 smoke 详细用法
+
+### 结果统计
+
+- [ ] **STAT-01**: 解析 pjdtest TAP 输出，统计该工具的通过(pass)/失败(fail)/跳过(skip)/总(total)用例数
+- [ ] **STAT-02**: 解析 LTP 输出（TPASS/TFAIL/TCONF 标记），统计该工具的通过/失败/跳过/总用例数
+- [ ] **STAT-03**: mdtest 以退出码 + SUMMARY rate 存在判定通过/失败
+- [ ] **STAT-04**: 生成 smoke 汇总报告（smoke_summary），包含三个工具的统计结果
+
+### 输出与通知
+
+- [ ] **OUT-01**: 测试结果统一输出到 `smoke_<timestamp>/` 目录，每个工具各自子目录
+- [ ] **OUT-02**: smoke 测试完成后发送单条聚合通知（微信/邮件），汇总三个工具结果
+
 ## Traceability
 
 Which phases cover which requirements. Updated during roadmap creation.
@@ -272,10 +292,11 @@ Which phases cover which requirements. Updated during roadmap creation.
 - v1.2 requirements: 8 total
 - v1.3 requirements: 17 total
 - v1.4 requirements: 13 total
-- All requirements: 81 total
+- v1.5 requirements: 9 total
+- All requirements: 90 total
 - Mapped to phases: 81
-- Unmapped: 0 ✓
+- Unmapped: 9 (v1.5)
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-04-29 — v1.4 roadmap created, traceability updated*
+*Last updated: 2026-05-20 — v1.5 requirements added*
