@@ -2,11 +2,11 @@
 gsd_state_version: 1.0
 milestone: v1.5
 milestone_name: 冒烟测试命令
-status: defining_requirements
-last_updated: "2026-05-19T00:00:00Z"
-last_activity: 2026-05-19
+status: roadmap_created
+last_updated: "2026-05-20T00:00:00Z"
+last_activity: 2026-05-20
 progress:
-  total_phases: 0
+  total_phases: 3
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -14,16 +14,16 @@ progress:
 
 # STATE: DingoFS Storage Testsuite Tools
 
-**Last Updated:** 2026-05-19
-**Session:** v1.5 — 冒烟测试命令
+**Last Updated:** 2026-05-20
+**Session:** v1.5 -- 冒烟测试命令
 
 ---
 
 ## Project Reference
 
-**Core Value:** 让用户用最简单的方式执行存储性能测试 —— 一条命令即可完成测试
+**Core Value:** 让用户用最简单的方式执行存储性能测试 -- 一条命令即可完成测试
 
-**Current Focus:** 定义需求 — v1.5 冒烟测试命令
+**Current Focus:** Phase 17 -- Smoke Orchestration Core (ready to plan)
 
 **Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
@@ -31,13 +31,13 @@ progress:
 
 ## Current Position
 
-Phase: —
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-19 — Milestone v1.5 started
+Phase: 17 of 19 (Smoke Orchestration Core)
+Plan: --
+Status: Roadmap created -- ready to plan Phase 17
+Last activity: 2026-05-20 -- Roadmap created for v1.5 (Phases 17-19)
 
 ```
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0/0 phases defined
+Progress: ░░░░░░░░░░░░░░░░░░░░ 0/3 phases complete (v1.5)
 ```
 
 ---
@@ -46,15 +46,12 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/0 phase
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed (v1.5) | 0/0 |
-| Requirements Delivered (v1.5) | 0/0 |
+| Phases Completed (v1.5) | 0/3 |
+| Requirements Delivered (v1.5) | 0/9 |
 | Days in Progress | 0 |
 | Blockers | 0 |
 
 ---
-| Phase 15-cli P01 | 16 | 2 tasks | 1 files |
-| Phase 16-mlperf-exec P03 | 289 | 2 tasks | 1 files |
-| Phase 16-mlperf-exec P01 | 4m 10s | 2 tasks | 2 files |
 
 ## Accumulated Context
 
@@ -62,62 +59,45 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/0 phase
 
 | Decision | Rationale | Date |
 |----------|-----------|------|
-| 3-phase structure | Natural clustering: foundation → functionality → output | 2026-04-03 |
-| Phase 2 groups parameters, scenarios, run modes | All needed together to run tests | 2026-04-03 |
-| Phase 3 focuses on output formats | Enhances value after core functionality works | 2026-04-03 |
-| Phase 5: LTP Build Setup | Dockerfile multi-stage build for LTP | 2026-04-08 |
-| Phase 6: LTP Integration | entrypoint.sh changes, ltp_run function | 2026-04-08 |
-| Phase 7: LTP Runtime Safety | timeout, output logging, capability docs | 2026-04-08 |
-| 2-phase structure for v1.4 MLPerf | CLI (parameter parsing/help) → EXEC (container run/mounts/output); DATA reqs tightly coupled with EXEC | 2026-04-29 |
-| Phase 15: CLI first | Need CLI parameters parsed before they can be passed to mlperf container | 2026-04-29 |
-| DATA-01~03 merged into Phase 16 | Volume mounts and output handling are part of docker run command construction, not a separate concern | 2026-04-29 |
-
-- [Phase 15-cli]: mlperf --help displayed locally via show_mlperf_help(), not via docker run (different container)
-- [Phase 15-cli]: CLI-06: --file_count takes precedence over --scale when both specified, evidenced by (overrides --scale default) output
-- [Phase 16-mlperf-exec]: SCALE=$file_count takes precedence over SCALE=$scale when --file_count set (CLI-06)
-- [Phase 16-mlperf-exec]: exec used for container launch so Ctrl+C signals pass through to container
+| 3-phase structure for v1.5 | 3 natural clusters (orchestration -> statistics -> CLI/notification); Phase 4 (Polish) from research has zero v1.5 requirements | 2026-05-20 |
+| Phase 17: Container-first | SMOKE_MODE guards must exist before smoke_run() can call existing _run() functions without notification side effects | 2026-05-20 |
+| Phase 18: Statistics after orchestration | Cannot parse results until smoke_run() produces output; parsing functions need real output files | 2026-05-20 |
+| Phase 19: CLI last | Wrapper cmd_smoke() + combined notification depends on container fully supporting -t smoke | 2026-05-20 |
+| Single-container hybrid architecture | Avoids 3-container overhead, enables in-memory stats aggregation, prevents per-tool notification spam | 2026-05-20 |
+| SMOKE_MODE guard pattern | Wrap notification blocks in `if [[ "$SMOKE_MODE" != "1" ]]` in 3 existing _run() functions (2 lines each, 6 total) | 2026-05-20 |
 
 ### Active TODOs
 
-- [ ] Plan Phase 15: CLI 参数与帮助集成
-- [ ] Plan Phase 16: MLPerf 容器执行与数据集成
+- [ ] Plan Phase 17: Smoke Orchestration Core
+- [ ] Plan Phase 18: Result Statistics & Summary
+- [ ] Plan Phase 19: CLI & Notification
 
 ### Blockers
 
 (None)
 
-### Quick Tasks Completed
-
-| # | Description | Date | Commit | Directory |
-|---|-------------|------|--------|-----------|
-| 260413-m3k | Support multiple mdsaddr addresses (comma-separated) | 2026-04-13 | - | [260413-m3k-support-multiple-mdsaddr-addresses-comma](./quick/260413-m3k-support-multiple-mdsaddr-addresses-comma/) |
-| 260421-d32 | Add --help support for each tool and change -s mdtest/ltp defaults to -s all | 2026-04-21 | 9e85c7e | [260421-d32-add-help-support-for-each-tool-in-wrappe](./quick/260421-d32-add-help-support-for-each-tool-in-wrappe/) |
-| 260421-dvj | Organize output into tool-specific subdirectories | 2026-04-21 | 769ad97 | [260421-dvj-organize-output-into-tool-specific-subdi](./quick/260421-dvj-organize-output-into-tool-specific-subdi/) |
-| 260424-b84 | Fix BS_SIZE=small path and filesize (400M) | 2026-04-24 | - | [260424-b84-fix-bs-size-small-path-and-size](./quick/260424-b84-fix-bs-size-small-path-and-size/) |
-| 260424-kv8 | Reorganize fio scenarios into /scenarios/fio/bs_normal and bs_small | 2026-04-24 | 505ca27 | [260424-kv8-reorganize-fio-scenarios-into-scenarios-](./quick/260424-kv8-reorganize-fio-scenarios-into-scenarios-/) |
-| 260428-fay | Add container runtime config option (docker/podman) to dtt | 2026-04-28 | cea0db6 | [260428-fay-add-container-runtime-config-option-dock](./quick/260428-fay-add-container-runtime-config-option-dock/) |
-| 260506-p8j | add --debug flag to preserve container after test | 2026-05-06 | - | [260506-p8j-add-debug-flag-to-preserve-container-aft](./quick/260506-p8j-add-debug-flag-to-preserve-container-aft/) |
-
 ### Key Files
 
-- `.planning/PROJECT.md` - Project context
-- `.planning/REQUIREMENTS.md` - Requirements definition
-- `.planning/ROADMAP.md` - Phase roadmap
-- `.planning/config.json` - Configuration
+- `.planning/PROJECT.md` - Project context (v1.5 milestone definition)
+- `.planning/REQUIREMENTS.md` - Requirements (9 v1.5 requirements)
+- `.planning/ROADMAP.md` - Phase roadmap (Phases 17-19)
+- `.planning/research/SUMMARY.md` - Research synthesis (Option C: single-container hybrid)
+- `dingofs-testsuite-tool` - Host-side CLI wrapper (Phase 19 target)
+- `entrypoint.sh` - Container entrypoint (Phase 17-18 target)
+- `scripts/notify.sh` - WeChat/Email notification primitives (unchanged, reused by Phase 19)
 
 ---
 
 ## Session Continuity
 
-**Last Session:** 2026-04-29T06:15:50.210Z
+**Last Session:** 2026-05-20 -- Roadmap creation
 
 **Next Actions:**
 
-1. Plan Phase 15: CLI 参数与帮助集成
-2. Plan Phase 16: MLPerf 容器执行与数据集成
+1. `/gsd:plan-phase 17` -- Plan Smoke Orchestration Core (SMOKE_MODE guards + smoke_run + dispatch)
 
 **Context for Next Session:**
-v1.4 roadmap created with 2 phases covering 13 requirements. CLI phase (Phase 15) covers help text and parameter parsing in dtt wrapper. EXEC phase (Phase 16) covers mlperf-storage container launch with parameter passing, --shm-size=8g, volume mounts (testdir→/data, output→output dir), and report saving.
+v1.5 roadmap created with 3 phases covering 9 requirements. Phase 17 (Smoke Orchestration Core) is the first phase: SMOKE_MODE guards in 3 existing _run() functions, new smoke_run() function, dispatch wiring in entrypoint.sh, fail-continue with set +e/set -e, unified smoke_<timestamp>/ output directory with per-tool subdirectories. Research confidence is HIGH for this phase -- pure bash function composition inside existing framework.
 
 ---
 
@@ -129,89 +109,36 @@ v1.4 roadmap created with 2 phases covering 13 requirements. CLI phase (Phase 15
 | 5-7 | v1.1 | Complete | 2026-04-15 | LTP build, integration, safety |
 | 8-10 | v1.2 | Complete | 2026-04-21 | Integration test command |
 | 11-14 | v1.3 | Partial | - | WeChat done, Email pending |
-| 15-16 | v1.4 | Not started | - | MLPerf CLI + execution |
+| 15-16 | v1.4 | Complete | 2026-04-29 | MLPerf CLI + execution |
+| 17-19 | v1.5 | Not started | - | Smoke orchestration + stats + CLI/notification |
 
 ---
 
-## v1.1 Milestone: 新增 LTP 工具
+## v1.5 Milestone: 冒烟测试命令
 
-**Started:** 2026-04-08
-**Completed:** 2026-04-15
+**Started:** 2026-05-20
+**Status:** Roadmap created
+
+**Phases:** 3 (Phase 17-19)
+
+| Phase | Goal | Requirements |
+|-------|------|-------------|
+| 17. Smoke Orchestration Core | Container executes 3 smoke tools in sequence with unified output and fail-continue | SMOKE-01, SMOKE-02, OUT-01 (3) |
+| 18. Result Statistics & Summary | Per-tool pass/fail/skip/total parsed from outputs with combined summary | STAT-01~04 (4) |
+| 19. CLI & Notification | dtt smoke from host CLI with help + single combined WeChat/Email notification | SMOKE-03, OUT-02 (2) |
 
 **Target features:**
 
-- Install LTP toolset in Docker image (Phase 5) ✓
-- Add ltp run command with filesystem tests by default (Phase 6) ✓
-- Support LTP test results output to specified directory (Phase 7) ✓
-- Timeout protection and capability documentation (Phase 7) ✓
+- dtt smoke command -- single command runs pjdtest, mdtest, ltp in sequence
+- Fail-continue: one tool failing does not abort subsequent tools
+- Per-tool statistics: pass/fail/skip/total counts from TAP, LTP log, mdtest output
+- Unified output: smoke_<timestamp>/ with per-tool subdirectories
+- Combined notification: single WeChat/Email message with all three tools' results
 
-**Roadmap created:** 2026-04-08
+**Roadmap created:** 2026-05-20
 **Coverage:** 9/9 requirements mapped to 3 phases
 
 ---
 
-## v1.2 Milestone: 集成测试命令
-
-**Started:** 2026-04-21
-**Completed:** 2026-04-21
-
-**Target features:**
-
-- Add -t int command support (Phase 8) ✓
-- Pass MDSADDR from dtt config to framework (Phase 9) ✓
-- Parse and save integration test results (Phase 10) ✓
-
-**Roadmap created:** 2026-04-21
-**Coverage:** 8/8 requirements mapped to 3 phases
-
----
-
-## v1.3 Milestone: 测试结果通知
-
-**Started:** 2026-04-21
-**Status:** Milestone complete
-
-**Target features:**
-
-- Add --wechat and --email CLI flags (Phase 11) ✓
-- WeChat webhook notification with markdown_v2 (Phase 12) ✓
-- Email notification via SMTP Outlook (Phase 13) — Pending
-- Extend to all tools (Phase 14) ✓
-
-**Roadmap created:** 2026-04-21
-**Coverage:** 17/17 requirements mapped to 4 phases
-
----
-
-## v1.4 Milestone: MLPerf 工具集成
-
-**Started:** 2026-04-29
-**Status:** Roadmap created
-
-**Phases:** 2 (Phase 15-16)
-
-| Phase | Goal | Requirements |
-|-------|------|-------------|
-| 15. CLI 参数与帮助集成 | Users can discover and configure mlperf through CLI | CLI-01~07 (7) |
-| 16. MLPerf 容器执行与数据集成 | Users can run mlperf benchmarks with proper mounts/output | EXEC-01~03, DATA-01~03 (6) |
-
-**Target features:**
-
-- dtt --help 中添加 mlperf 工具说明
-- dtt -t mlperf --help 显示详细用法
-- -s 支持 resnet50/unet3d/cosmoflow/checkpointing/all
-- --scale small/medium/large，默认 small
-- --file_count 自定义生成测试文件数量（优先级高于 --scale）
-- --gpu_count 并发 GPU 数量，默认 1
-- dtt -t mlperf 启动 mlperf-storage 容器
-- --shm-size=8g 支持 PyTorch DataLoader
-- 测试挂载点使用 dtt config testdir 映射到 /data
-- 测试结果输出到 dtt config output
-
-**Roadmap created:** 2026-04-29
-**Coverage:** 13/13 requirements mapped to 2 phases
-
----
-
 *State initialized: 2026-04-08*
-*Last updated: 2026-04-29 — v1.4 roadmap created*
+*Last updated: 2026-05-20 -- v1.5 roadmap created*

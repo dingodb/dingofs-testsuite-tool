@@ -27,6 +27,9 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [ ] **Phase 14: 工具通知集成** - Extend notification to all test tools
 - [x] **Phase 15: CLI 参数与帮助集成** - Add mlperf CLI parameters and help text to dtt wrapper (completed 2026-04-29)
 - [x] **Phase 16: MLPerf 容器执行与数据集成** - Launch mlperf-storage container with proper parameters, mounts, and output (completed 2026-04-29)
+- [ ] **Phase 17: Smoke Orchestration Core** - SMOKE_MODE guards + smoke_run() in entrypoint.sh with fail-continue and unified output
+- [ ] **Phase 18: Result Statistics & Summary** - TAP/LTP/mdtest parsers + smoke_summary generation
+- [ ] **Phase 19: CLI & Notification** - cmd_smoke() in wrapper with help text + combined WeChat/Email notification
 
 ## Phase Details
 
@@ -138,8 +141,10 @@ Plans:
   4. User can build and run on x86_64 platform
   5. User can build and run on ARM64 platform
 
-**Plans:** TBD
+**Plans:** 1/1 plan complete
 
+Plans:
+- [x] 05-01-PLAN.md — Create Dockerfile multi-stage build for LTP
 
 ---
 
@@ -157,9 +162,10 @@ Plans:
   3. User can run LTP with default filesystem tests via `-f fs` flag
   4. User can see LTP test output displayed in container logs
 
-**Plans:** TBD
+**Plans:** 1/1 plan complete
 
 Plans:
+- [x] 06-01-PLAN.md — Create ltp_run() function and wire dispatch
 
 ---
 
@@ -177,26 +183,32 @@ Plans:
   3. User can find documentation explaining required container capabilities (CAP_SYS_ADMIN)
   4. User understands that privileged container or specific capabilities are needed for LTP tests
 
-**Plans:** TBD
+**Plans:** 1/1 plan complete
 
 Plans:
+- [x] 07-01-PLAN.md — Add timeout wrapper, output logging, and docs
 
 ---
 
 ## v1.2: 集成测试命令
 
 ### Phase 8: 集成测试基础
-**Goal:** Users can run integration tests via `-t integration` command.
+**Goal:** Users can run integration tests via `-t int` command and dingofs-integration-test is available in the image.
 
 **Depends on:** Phase 1
 
 **Requirements:** INTG-01, AUTO-01
 
 **Success Criteria** (what must be TRUE):
-1. User can specify `-t int` and container recognizes it as a valid tool
-2. `integration_run()` function exists and can be called
-3. dingofs-integration-test exists in the image at /dingofs-integration-test
-4. `dtt -t int --help` displays help information
+  1. User can specify `-t int` and container recognizes it as a valid tool
+  2. `integration_run()` function exists and can be called
+  3. dingofs-integration-test exists in the image at /dingofs-integration-test
+  4. `dtt -t int --help` displays help information
+
+**Plans:** 1/1 plan complete
+
+Plans:
+- [x] 08-01-PLAN.md — Add integration tool command and framework to image
 
 ---
 
@@ -208,9 +220,14 @@ Plans:
 **Requirements:** INTG-02, INTG-03, AUTO-02
 
 **Success Criteria** (what must be TRUE):
-1. MDSADDR is read from `dtt config mdsaddr` and passed to container
-2. Automation framework executes tests successfully
-3. Environment variables are correctly passed to the automation framework
+  1. MDSADDR is read from `dtt config mdsaddr` and passed to container
+  2. Automation framework executes tests successfully
+  3. Environment variables are correctly passed to the automation framework
+
+**Plans:** 1/1 plan complete
+
+Plans:
+- [x] 09-01-PLAN.md — Pass MDS address and execute integration framework
 
 ---
 
@@ -222,9 +239,14 @@ Plans:
 **Requirements:** INTG-04, INTG-05, AUTO-03
 
 **Success Criteria** (what must be TRUE):
-1. Automation framework output is parsed to identify success/failure
-2. Results are saved to `$OUTPUT/integration/` directory
-3. result.log correctly records integration test results
+  1. Automation framework output is parsed to identify success/failure
+  2. Results are saved to `$OUTPUT/integration/` directory
+  3. result.log correctly records integration test results
+
+**Plans:** 1/1 plan complete
+
+Plans:
+- [x] 10-01-PLAN.md — Parse and save integration test results
 
 ---
 
@@ -238,10 +260,15 @@ Plans:
 **Requirements:** NOTIFY-01, NOTIFY-02, NOTIFY-03, NOTIFY-04
 
 **Success Criteria** (what must be TRUE):
-1. User can specify --wechat to enable WeChat notification
-2. User can specify --email to enable Email notification
-3. dtt config supports webhook_url setting
-4. dtt config supports email setting
+  1. User can specify --wechat to enable WeChat notification
+  2. User can specify --email to enable Email notification
+  3. dtt config supports webhook_url setting
+  4. dtt config supports email setting
+
+**Plans:** 0/1 plan complete
+
+Plans:
+- [ ] 11-01-PLAN.md — Add notification flags and config support
 
 ---
 
@@ -253,11 +280,16 @@ Plans:
 **Requirements:** WECHAT-01, WECHAT-02, WECHAT-03, MSG-01, MSG-02, MSG-03
 
 **Success Criteria** (what must be TRUE):
-1. WeChat webhook curl POST sends correctly
-2. Message uses markdown_v2 format
-3. First line shows pass/fail with color
-4. Table shows test details
-5. Send failure is logged
+  1. WeChat webhook curl POST sends correctly
+  2. Message uses markdown_v2 format
+  3. First line shows pass/fail with color
+  4. Table shows test details
+  5. Send failure is logged
+
+**Plans:** 0/1 plan complete
+
+Plans:
+- [ ] 12-01-PLAN.md — Implement WeChat webhook and message formatting
 
 ---
 
@@ -269,23 +301,33 @@ Plans:
 **Requirements:** EMAIL-01, EMAIL-02, EMAIL-03, EMAIL-04
 
 **Success Criteria** (what must be TRUE):
-1. Email sends via Outlook SMTP
-2. Subject: "DingoFS Testsuite Tool 自动化测试结果"
-3. CC sent to daigy@zetyun.com
-4. Email content matches WeChat content
+  1. Email sends via Outlook SMTP
+  2. Subject: "DingoFS Testsuite Tool 自动化测试结果"
+  3. CC sent to daigy@zetyun.com
+  4. Email content matches WeChat content
+
+**Plans:** 0/1 plan complete
+
+Plans:
+- [ ] 13-01-PLAN.md — Implement Email notification via SMTP
 
 ---
 
-### Phase 14: pjdtest 通知集成
-**Goal:** Add pjdtest result notification support first, then extend to other tools.
+### Phase 14: 工具通知集成
+**Goal:** Add result notification support to all test tools.
 
 **Depends on:** Phase 12, Phase 13
 
 **Requirements:** TOOLS-01, TOOLS-02, TOOLS-03, TOOLS-04, TOOLS-05, TOOLS-06
 
 **Success Criteria** (what must be TRUE):
-1. pjdtest sends WeChat/Email notification after test
-2. All tools (fio, vdbench, mdtest, ltp, int) can send notifications
+  1. pjdtest sends WeChat/Email notification after test
+  2. All tools (fio, vdbench, mdtest, ltp, int) can send notifications
+
+**Plans:** 0/1 plan complete
+
+Plans:
+- [ ] 14-01-PLAN.md — Extend notification to all test tools
 
 ---
 
@@ -337,6 +379,67 @@ Plans:
 
 ---
 
+## v1.5: 冒烟测试命令
+
+### Phase 17: Smoke Orchestration Core
+**Goal:** Container can execute all three smoke test tools in sequence with unified output directory, without per-tool failure aborting the full run.
+
+**Depends on:** Phase 1 (Docker image with entrypoint.sh and all tools)
+
+**Requirements:** SMOKE-01, SMOKE-02, OUT-01
+
+**Success Criteria** (what must be TRUE):
+  1. Running the container with `-t smoke` executes pjdtest -s all, then mdtest -s all -n 8, then ltp -s smoke, in that order
+  2. When pjdtest has test failures (non-zero exit), mdtest and ltp still execute (fail-continue behavior)
+  3. When mdtest fails (non-zero exit), ltp still executes regardless
+  4. All three tool outputs appear under a single `smoke_<RUN_TIMESTAMP>/` directory with per-tool subdirectories (pjdtest/, mdtest/, ltp/)
+  5. Per-tool WeChat/Email notifications are suppressed during smoke mode (no per-tool notification fires)
+
+**Plans:** TBD
+
+Plans:
+
+---
+
+### Phase 18: Result Statistics & Summary
+**Goal:** After smoke tools execute, per-tool pass/fail/skip/total counts are parsed from their raw outputs, and a combined smoke summary is generated.
+
+**Depends on:** Phase 17
+
+**Requirements:** STAT-01, STAT-02, STAT-03, STAT-04
+
+**Success Criteria** (what must be TRUE):
+  1. pjdtest TAP output is parsed to produce pass count, fail count (excluding TODO directives counted as skip), skip count, and total count
+  2. LTP output is parsed from TPASS/TFAIL/TCONF markers to produce pass, fail, skip, and total counts
+  3. mdtest is marked as pass when exit code is 0 and SUMMARY rate output is present with non-zero operation counts; otherwise marked as fail
+  4. A smoke_summary (machine-readable JSON and human-readable text) containing all three tools' statistics is generated in the smoke_<timestamp>/ directory
+  5. Smoke aggregate exit code is 0 only when all three tools pass; non-zero if any tool has failures
+
+**Plans:** TBD
+
+Plans:
+
+---
+
+### Phase 19: CLI & Notification
+**Goal:** Users can invoke `dtt smoke` from the host CLI with help documentation, and receive a single combined WeChat/Email notification with all three tools' results.
+
+**Depends on:** Phase 18
+
+**Requirements:** SMOKE-03, OUT-02
+
+**Success Criteria** (what must be TRUE):
+  1. `dtt --help` lists smoke as an available subcommand
+  2. `dtt smoke --help` shows detailed smoke usage including the three test tools that run and available flags
+  3. `dtt smoke --wechat` sends exactly one WeChat notification (not three per-tool notifications) with a combined summary table of pjdtest, mdtest, and ltp results
+  4. `dtt smoke --email` sends exactly one Email notification with combined results for all three tools
+
+**Plans:** TBD
+
+Plans:
+
+---
+
 ## Progress
 
 | Phase | Plans Complete | Status | Completed |
@@ -357,9 +460,13 @@ Plans:
 | 14. 工具通知集成 | 0/1 | Pending | — |
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
 | 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
+| 17. Smoke Orchestration Core | 0/0 | Not started | — |
+| 18. Result Statistics & Summary | 0/0 | Not started | — |
+| 19. CLI & Notification | 0/0 | Not started | — |
 
 ## Coverage
 
+- v1.5 Requirements: 9 total (SMOKE-01~03, STAT-01~04, OUT-01~02)
 - v1.4 Requirements: 13 total (CLI-01~07, EXEC-01~03, DATA-01~03)
 - v1.3 Requirements: 17 total (NOTIFY-01~06, WECHAT-01~03, EMAIL-01~04, MSG-01~03, TOOLS-01~06)
 - v1.2 Requirements: 8 total (INTG-01~05, AUTO-01~03)
@@ -410,15 +517,15 @@ Plans:
 | FIO-02 | Phase 4 | Complete |
 | FIO-03 | Phase 4 | Complete |
 | FIO-04 | Phase 4 | Complete |
-| LTP-01 | Phase 5 | Pending |
-| LTP-02 | Phase 5 | Pending |
-| LTP-03 | Phase 5 | Pending |
-| LTP-04 | Phase 6 | Pending |
-| LTP-05 | Phase 6 | Pending |
-| LTP-06 | Phase 6 | Pending |
-| LTP-07 | Phase 7 | Pending |
-| LTP-08 | Phase 7 | Pending |
-| LTP-09 | Phase 7 | Pending |
+| LTP-01 | Phase 5 | Complete |
+| LTP-02 | Phase 5 | Complete |
+| LTP-03 | Phase 5 | Complete |
+| LTP-04 | Phase 6 | Complete |
+| LTP-05 | Phase 6 | Complete |
+| LTP-06 | Phase 6 | Complete |
+| LTP-07 | Phase 7 | Complete |
+| LTP-08 | Phase 7 | Complete |
+| LTP-09 | Phase 7 | Complete |
 | NOTIFY-01 | Phase 11 | Pending |
 | NOTIFY-02 | Phase 11 | Pending |
 | NOTIFY-03 | Phase 11 | Pending |
@@ -441,21 +548,30 @@ Plans:
 | TOOLS-04 | Phase 14 | Pending |
 | TOOLS-05 | Phase 14 | Pending |
 | TOOLS-06 | Phase 14 | Pending |
-| CLI-01 | Phase 15 | Pending |
-| CLI-02 | Phase 15 | Pending |
-| CLI-03 | Phase 15 | Pending |
-| CLI-04 | Phase 15 | Pending |
-| CLI-05 | Phase 15 | Pending |
-| CLI-06 | Phase 15 | Pending |
-| CLI-07 | Phase 15 | Pending |
+| CLI-01 | Phase 15 | Complete |
+| CLI-02 | Phase 15 | Complete |
+| CLI-03 | Phase 15 | Complete |
+| CLI-04 | Phase 15 | Complete |
+| CLI-05 | Phase 15 | Complete |
+| CLI-06 | Phase 15 | Complete |
+| CLI-07 | Phase 15 | Complete |
 | EXEC-01 | Phase 16 | Complete |
 | EXEC-02 | Phase 16 | Complete |
 | EXEC-03 | Phase 16 | Complete |
 | DATA-01 | Phase 16 | Complete |
 | DATA-02 | Phase 16 | Complete |
 | DATA-03 | Phase 16 | Complete |
+| SMOKE-01 | Phase 17 | Pending |
+| SMOKE-02 | Phase 17 | Pending |
+| SMOKE-03 | Phase 19 | Pending |
+| STAT-01 | Phase 18 | Pending |
+| STAT-02 | Phase 18 | Pending |
+| STAT-03 | Phase 18 | Pending |
+| STAT-04 | Phase 18 | Pending |
+| OUT-01 | Phase 17 | Pending |
+| OUT-02 | Phase 19 | Pending |
 
 ---
 
 *Roadmap created: 2026-04-03*
-*Last updated: 2026-04-29 for v1.4*
+*Last updated: 2026-05-20 for v1.5*

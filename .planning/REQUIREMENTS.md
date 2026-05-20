@@ -285,6 +285,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-01 | Phase 16 | Complete |
 | DATA-02 | Phase 16 | Complete |
 | DATA-03 | Phase 16 | Complete |
+| SMOKE-01 | Phase 17 | Pending |
+| SMOKE-02 | Phase 17 | Pending |
+| SMOKE-03 | Phase 19 | Pending |
+| STAT-01 | Phase 18 | Pending |
+| STAT-02 | Phase 18 | Pending |
+| STAT-03 | Phase 18 | Pending |
+| STAT-04 | Phase 18 | Pending |
+| OUT-01 | Phase 17 | Pending |
+| OUT-02 | Phase 19 | Pending |
 
 **Coverage:**
 - v1 requirements: 34 total
@@ -294,9 +303,9 @@ Which phases cover which requirements. Updated during roadmap creation.
 - v1.4 requirements: 13 total
 - v1.5 requirements: 9 total
 - All requirements: 90 total
-- Mapped to phases: 81
-- Unmapped: 9 (v1.5)
+- Mapped to phases: 90
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-03*
-*Last updated: 2026-05-20 — v1.5 requirements added*
+*Last updated: 2026-05-20 — v1.5 requirements added and mapped to phases*
