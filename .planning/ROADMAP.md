@@ -75,7 +75,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 02-01-PLAN.md — Create fio and vdbench preset scenario files
 - [x] 02-02-PLAN.md — Create entrypoint.sh with CLI parsing and mode handling
 - [x] 02-03-PLAN.md — Update Dockerfile with scenarios and entrypoint
@@ -99,7 +99,7 @@ Plans:
 **Plans:** 2/2 plans complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 03-01-PLAN.md — Create report generation script and update Dockerfile
 - [x] 03-02-PLAN.md — Integrate report generation into entrypoint.sh
 
@@ -125,7 +125,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 04-01-PLAN.md — Generate 96 fio scenario files (4 types × 2 direct × 3 bs × 4 numjobs)
 
 ---
@@ -148,7 +148,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 05-01-PLAN.md — Create Dockerfile multi-stage build for LTP
 
 ---
@@ -170,7 +170,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 06-01-PLAN.md — Create ltp_run() function and wire dispatch
 
 ---
@@ -192,7 +192,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 07-01-PLAN.md — Add timeout wrapper, output logging, and docs
 
 ---
@@ -215,7 +215,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 08-01-PLAN.md — Add integration tool command and framework to image
 
 ---
@@ -235,7 +235,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 09-01-PLAN.md — Pass MDS address and execute integration framework
 
 ---
@@ -255,7 +255,7 @@ Plans:
 **Plans:** 1/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 10-01-PLAN.md — Parse and save integration test results
 
 ---
@@ -278,7 +278,7 @@ Plans:
 **Plans:** 0/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [ ] 11-01-PLAN.md — Add notification flags and config support
 
 ---
@@ -300,7 +300,7 @@ Plans:
 **Plans:** 0/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [ ] 12-01-PLAN.md — Implement WeChat webhook and message formatting
 
 ---
@@ -321,7 +321,7 @@ Plans:
 **Plans:** 0/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [ ] 13-01-PLAN.md — Implement Email notification via SMTP
 
 ---
@@ -340,7 +340,7 @@ Plans:
 **Plans:** 0/1 plan complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [ ] 14-01-PLAN.md — Extend notification to all test tools
 
 ---
@@ -366,7 +366,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 15-01-PLAN.md — Update show_help(), create show_mlperf_help(), add mlperf parameter parsing and routing
 
 ---
@@ -388,7 +388,7 @@ Plans:
 **Plans:** 3/3 plans complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 16-01-PLAN.md — Add mlperf-storage multi-stage build to Dockerfile and create adapted run_model.sh
 - [x] 16-02-PLAN.md — Add mlperf_run() function, validation, dispatch, and help to entrypoint.sh
 - [x] 16-03-PLAN.md — Replace mlperf placeholder in dtt wrapper with docker run command construction
@@ -414,7 +414,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 - [x] 17-01-PLAN.md — SMOKE_MODE notification guards in 3 _run() functions, smoke_run() orchestrator with fail-continue, -t smoke dispatch/validation/help wiring
 
 ---
@@ -436,7 +436,7 @@ Plans:
 **Plans:** 1/1 plans complete
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 
 ---
 
@@ -456,7 +456,7 @@ Plans:
 **Plans:** 1 plan
 
 Plans:
-- [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
+- [x] 19-01-PLAN.md — Add cmd_smoke() and show_smoke_help() to dtt wrapper, add send_smoke_notification() to entrypoint.sh
 
 ---
 
@@ -482,7 +482,7 @@ Plans:
 | 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
 | 17. Smoke Orchestration Core | 1/1 | Complete | 2026-05-20 |
 | 18. Result Statistics & Summary | 1/1 | Complete    | 2026-05-20 |
-| 19. CLI & Notification | 0/0 | Not started | — |
+| 19. CLI & Notification | 0/1 | Planned | — |
 
 ## Coverage
 
