@@ -59,7 +59,7 @@ Usage:
   docker run dingofs-testsuite-tools -t <tool> -s <scenario> -m <mount> -o <output>
 
 Options:
-  -t, --tool      测试工具: fio, vdbench, mdtest
+  -t, --tool      测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke
   -s, --scenario  测试场景
   -m, --mount     被测存储的挂载点 (例如: /mnt/test)
   -o, --output    测试结果输出目录 (例如: /output)
@@ -78,6 +78,7 @@ Tools:
   ltp       - Linux Test Project (内核测试套件)
   int       - DingoFS integration test (自动化框架)
   mlperf    - MLPerf Storage 存储基准测试
+  smoke     - 冒烟测试 (串行运行 pjdtest + mdtest + ltp)
 
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
@@ -195,6 +196,36 @@ EOF
 # ==============================================================================
 # Per-Tool Help Functions
 # ==============================================================================
+
+show_smoke_help() {
+    cat << 'EOF'
+冒烟测试 (Smoke Test)
+=====================
+
+用法: dtt -t smoke [-m <挂载点>] [-o <输出目录>]
+
+自动串行运行以下三个测试:
+  1. pjdtest -s all    -- POSIX 文件系统兼容性测试
+  2. mdtest  -s all -n 8 -- 元数据性能测试 (8 MPI 进程)
+  3. ltp     -s smoke   -- LTP 冒烟测试 (smoketest 套件)
+
+特性:
+  - 单个工具的失败不会中止后续工具的运行 (fail-continue)
+  - 所有结果统一输出到 smoke_<timestamp>/ 目录
+  - 每个工具的结果保存在各自的子目录中
+
+示例:
+  # 运行冒烟测试 (使用默认挂载点和输出目录)
+  dtt -t smoke
+
+  # 指定挂载点和输出目录
+  dtt -t smoke -m /mnt/test -o /tmp/results
+
+注意:
+  - 建议使用 --privileged 运行以支持 LTP 内核测试
+  - 冒烟测试会按顺序运行所有三个工具，可能需要较长时间
+EOF
+}
 
 show_fio_help() {
     cat << EOF
@@ -390,13 +421,13 @@ validate_params() {
     if [[ -z "$TOOL" ]]; then
         echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf)$ ]]; then
-        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf"
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke)$ ]]; then
+        echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke"
         error=1
     fi
 
     # Validate SCENARIO (PARM-06) - mdtest and mlperf don't require a scenario
-    if [[ "$TOOL" != "mdtest" && "$TOOL" != "mlperf" ]]; then
+    if [[ "$TOOL" != "mdtest" && "$TOOL" != "mlperf" && "$TOOL" != "smoke" ]]; then
         if [[ -z "$SCENARIO" ]]; then
             echo "Error: Scenario is required. Use -s or --scenario to specify."
             error=1
@@ -442,6 +473,9 @@ scenario_exists() {
 
     # Check custom override first
     case "$tool" in
+        smoke)
+            return 0
+            ;;
         fio)
             # When BS_SIZE=small, files are in /scenarios/fio/bs_small
             # When BS_SIZE=normal, files are in /scenarios/fio/bs_normal
@@ -606,6 +640,7 @@ parse_args() {
                         ltp) show_ltp_help; exit 0 ;;
                         int|integration) show_int_help; exit 0 ;;
                         mlperf) show_mlperf_help; exit 0 ;;
+                        smoke) show_smoke_help; exit 0 ;;
                         *) echo "Unknown tool: $TOOL"; exit 1 ;;
                     esac
                 fi
@@ -814,6 +849,9 @@ log_result() {
 
 dispatch_tool() {
     case "$TOOL" in
+        smoke)
+            smoke_run
+            ;;
         fio)
             fio_run
             ;;
@@ -1181,22 +1219,24 @@ mdtest_run() {
             mdtest_duration_str="${mdtest_duration}s"
         fi
 
-        # Send WeChat notification if enabled
-        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-            local mdtest_status="FAIL"
-            if [[ ${scenario_exits[$i]} -eq 0 ]]; then
-                mdtest_status="SUCCESS"
+        if [[ "$SMOKE_MODE" != "1" ]]; then
+            # Send WeChat notification if enabled
+            if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+                local mdtest_status="FAIL"
+                if [[ ${scenario_exits[$i]} -eq 0 ]]; then
+                    mdtest_status="SUCCESS"
+                fi
+                send_wechat_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
             fi
-            send_wechat_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
-        fi
 
-        # Send Email notification if enabled
-        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-            local mdtest_status="FAIL"
-            if [[ ${scenario_exits[$i]} -eq 0 ]]; then
-                mdtest_status="SUCCESS"
+            # Send Email notification if enabled
+            if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+                local mdtest_status="FAIL"
+                if [[ ${scenario_exits[$i]} -eq 0 ]]; then
+                    mdtest_status="SUCCESS"
+                fi
+                send_email_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
             fi
-            send_email_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
         fi
     done
 
@@ -1255,22 +1295,24 @@ pjdtest_run() {
         pjdtest_duration_str="${pjdtest_duration}s"
     fi
 
-    # Send WeChat notification if enabled
-    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-        local pjdtest_status="FAIL"
-        if [[ $pjdtest_exit -eq 0 ]]; then
-            pjdtest_status="SUCCESS"
+    if [[ "$SMOKE_MODE" != "1" ]]; then
+        # Send WeChat notification if enabled
+        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+            local pjdtest_status="FAIL"
+            if [[ $pjdtest_exit -eq 0 ]]; then
+                pjdtest_status="SUCCESS"
+            fi
+            send_wechat_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
         fi
-        send_wechat_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
-    fi
 
-    # Send Email notification if enabled
-    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-        local pjdtest_status="FAIL"
-        if [[ $pjdtest_exit -eq 0 ]]; then
-            pjdtest_status="SUCCESS"
+        # Send Email notification if enabled
+        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+            local pjdtest_status="FAIL"
+            if [[ $pjdtest_exit -eq 0 ]]; then
+                pjdtest_status="SUCCESS"
+            fi
+            send_email_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
         fi
-        send_email_notification "pjdtest" "pjdtest" "$pjdtest_status" "$pjdtest_duration_str"
     fi
 
     echo ""
@@ -1381,22 +1423,24 @@ ltp_run() {
         ltp_duration_str="${ltp_duration}s"
     fi
 
-    # Send WeChat notification if enabled
-    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-        local ltp_status="FAIL"
-        if [[ $overall_exit -eq 0 ]]; then
-            ltp_status="SUCCESS"
+    if [[ "$SMOKE_MODE" != "1" ]]; then
+        # Send WeChat notification if enabled
+        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+            local ltp_status="FAIL"
+            if [[ $overall_exit -eq 0 ]]; then
+                ltp_status="SUCCESS"
+            fi
+            send_wechat_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
         fi
-        send_wechat_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
-    fi
 
-    # Send Email notification if enabled
-    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-        local ltp_status="FAIL"
-        if [[ $overall_exit -eq 0 ]]; then
-            ltp_status="SUCCESS"
+        # Send Email notification if enabled
+        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+            local ltp_status="FAIL"
+            if [[ $overall_exit -eq 0 ]]; then
+                ltp_status="SUCCESS"
+            fi
+            send_email_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
         fi
-        send_email_notification "ltp" "$SCENARIO" "$ltp_status" "$ltp_duration_str"
     fi
 
     echo ""
@@ -1751,6 +1795,153 @@ mlperf_run() {
 
     echo ""
     return $overall_exit
+}
+
+# ==============================================================================
+# Smoke Result Parsing Functions
+# ==============================================================================
+
+# Parse pjdtest TAP output to count pass/fail/skip/total test cases.
+# Arguments: $1 = directory path containing pjdtest output files.
+# Reads TAP output, sets global SMOKE_PJD_* variables.
+parse_pjdtest_tap() {
+    local tap_file
+    tap_file=$(find "$1" -type f -name 'pjdtest_*' 2>/dev/null | sort | tail -1)
+
+    if [[ -z "$tap_file" ]] || [[ ! -f "$tap_file" ]]; then
+        SMOKE_PJD_PASS=0
+        SMOKE_PJD_FAIL=0
+        SMOKE_PJD_SKIP=0
+        SMOKE_PJD_TOTAL=0
+        echo "pjdtest stats: pass=0 fail=0 skip=0 total=0 (no TAP file found)"
+        return 0
+    fi
+
+    local pass_count
+    local skip_count
+    local not_ok_count
+    local fail_count
+
+    pass_count=$(grep -cE '^ok[[:space:]]+[0-9]+' "$tap_file" 2>/dev/null || echo 0)
+    skip_count=$(grep -cE '^not[[:space:]]+ok[[:space:]]+[0-9]+.*#.*TODO' "$tap_file" 2>/dev/null || echo 0)
+    not_ok_count=$(grep -cE '^not[[:space:]]+ok[[:space:]]+[0-9]+' "$tap_file" 2>/dev/null || echo 0)
+    fail_count=$((not_ok_count - skip_count))
+
+    SMOKE_PJD_PASS=$pass_count
+    SMOKE_PJD_FAIL=$fail_count
+    SMOKE_PJD_SKIP=$skip_count
+    SMOKE_PJD_TOTAL=$((pass_count + fail_count + skip_count))
+
+    echo "pjdtest stats: pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL"
+}
+
+smoke_run() {
+    echo "=============================================="
+    echo "Smoke Test Suite"
+    echo "=============================================="
+    echo "Executing 3 tools in sequence:"
+    echo "  1. pjdtest -s all"
+    echo "  2. mdtest  -s all -n 8"
+    echo "  3. ltp     -s smoke"
+    echo "Output: $OUTPUT/smoke_${RUN_TIMESTAMP}/"
+    echo "Mode:   fail-continue (all tools run regardless)"
+    echo "=============================================="
+    echo ""
+
+    # Save original environment
+    local orig_output="$OUTPUT"
+    local orig_scenario="$SCENARIO"
+    local orig_np="$NP"
+
+    # Create unified smoke output directory
+    local smoke_base="$OUTPUT/smoke_${RUN_TIMESTAMP}"
+    mkdir -p "$smoke_base"
+
+    # Enable SMOKE_MODE to suppress per-tool notifications
+    export SMOKE_MODE=1
+
+    # Track per-tool exit codes
+    local pjdtest_exit=0
+    local mdtest_exit=0
+    local ltp_exit=0
+    local aggregate_exit=0
+
+    # ---- Tool 1: pjdtest -s all ----
+    echo "=============================================="
+    echo "[1/3] Running pjdtest -s all"
+    echo "=============================================="
+    SCENARIO="all"
+    OUTPUT="${smoke_base}/pjdtest"
+    mkdir -p "$OUTPUT"
+    set +e
+    pjdtest_run
+    pjdtest_exit=$?
+    set -e
+    if [[ $pjdtest_exit -ne 0 ]]; then
+        echo "pjdtest completed with failures (exit: $pjdtest_exit) -- continuing to next tool"
+        aggregate_exit=1
+    else
+        echo "pjdtest completed successfully (exit: 0)"
+    fi
+    echo ""
+
+    # ---- Tool 2: mdtest -s all -n 8 ----
+    echo "=============================================="
+    echo "[2/3] Running mdtest -s all -n 8"
+    echo "=============================================="
+    SCENARIO="all"
+    NP=8
+    OUTPUT="${smoke_base}/mdtest"
+    mkdir -p "$OUTPUT"
+    set +e
+    mdtest_run
+    mdtest_exit=$?
+    set -e
+    if [[ $mdtest_exit -ne 0 ]]; then
+        echo "mdtest completed with failures (exit: $mdtest_exit) -- continuing to next tool"
+        aggregate_exit=1
+    else
+        echo "mdtest completed successfully (exit: 0)"
+    fi
+    echo ""
+
+    # ---- Tool 3: ltp -s smoke ----
+    echo "=============================================="
+    echo "[3/3] Running ltp -s smoke"
+    echo "=============================================="
+    SCENARIO="smoke"
+    OUTPUT="${smoke_base}/ltp"
+    mkdir -p "$OUTPUT"
+    set +e
+    ltp_run
+    ltp_exit=$?
+    set -e
+    if [[ $ltp_exit -ne 0 ]]; then
+        echo "ltp completed with failures (exit: $ltp_exit)"
+        aggregate_exit=1
+    else
+        echo "ltp completed successfully (exit: 0)"
+    fi
+    echo ""
+
+    # Restore original environment
+    OUTPUT="$orig_output"
+    SCENARIO="$orig_scenario"
+    NP="$orig_np"
+    unset SMOKE_MODE
+
+    # Final summary
+    echo "=============================================="
+    echo "Smoke Test Suite Complete"
+    echo "=============================================="
+    echo "  pjdtest: exit=$pjdtest_exit"
+    echo "  mdtest:  exit=$mdtest_exit"
+    echo "  ltp:     exit=$ltp_exit"
+    echo "  aggregate exit: $aggregate_exit"
+    echo "  Output: $smoke_base"
+    echo "=============================================="
+
+    return $aggregate_exit
 }
 
 # ==============================================================================
