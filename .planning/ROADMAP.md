@@ -395,9 +395,10 @@ Plans:
   4. All three tool outputs appear under a single `smoke_<RUN_TIMESTAMP>/` directory with per-tool subdirectories (pjdtest/, mdtest/, ltp/)
   5. Per-tool WeChat/Email notifications are suppressed during smoke mode (no per-tool notification fires)
 
-**Plans:** TBD
+**Plans:** 1 plan
 
 Plans:
+- [ ] 17-01-PLAN.md — SMOKE_MODE notification guards in 3 _run() functions, smoke_run() orchestrator with fail-continue, -t smoke dispatch/validation/help wiring
 
 ---
 
@@ -460,7 +461,7 @@ Plans:
 | 14. 工具通知集成 | 0/1 | Pending | — |
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
 | 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
-| 17. Smoke Orchestration Core | 0/0 | Not started | — |
+| 17. Smoke Orchestration Core | 0/1 | Not started | — |
 | 18. Result Statistics & Summary | 0/0 | Not started | — |
 | 19. CLI & Notification | 0/0 | Not started | — |
 
