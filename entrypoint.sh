@@ -1835,6 +1835,111 @@ parse_pjdtest_tap() {
     echo "pjdtest stats: pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL"
 }
 
+# Parse LTP raw output to count pass/fail/skip/total test cases.
+# Arguments: $1 = directory path containing LTP output files; $2 = ltp_exit code.
+# Reads *_smoketest.raw files, sets global SMOKE_LTP_* variables.
+parse_ltp_output() {
+    local raw_file
+    raw_file=$(find "$1" -type f -name '*_smoketest.raw' 2>/dev/null | head -1)
+
+    if [[ -z "$raw_file" ]] || [[ ! -f "$raw_file" ]]; then
+        SMOKE_LTP_PASS=0
+        SMOKE_LTP_FAIL=0
+        SMOKE_LTP_SKIP=0
+        SMOKE_LTP_TOTAL=0
+        SMOKE_LTP_TIMEOUT=0
+        echo "ltp stats: pass=0 fail=0 skip=0 total=0 (no LTP raw file found)"
+        return 0
+    fi
+
+    local pass_count
+    local fail_tfail
+    local fail_tbrok
+    local skip_count
+    local fail_count
+
+    pass_count=$(grep -cE '[[:space:]]TPASS:' "$raw_file" 2>/dev/null || echo 0)
+    fail_tfail=$(grep -cE '[[:space:]]TFAIL:' "$raw_file" 2>/dev/null || echo 0)
+    fail_tbrok=$(grep -cE '[[:space:]]TBROK:' "$raw_file" 2>/dev/null || echo 0)
+    skip_count=$(grep -cE '[[:space:]]TCONF:' "$raw_file" 2>/dev/null || echo 0)
+    fail_count=$((fail_tfail + fail_tbrok))
+
+    SMOKE_LTP_PASS=$pass_count
+    SMOKE_LTP_FAIL=$fail_count
+    SMOKE_LTP_SKIP=$skip_count
+    SMOKE_LTP_TOTAL=$((pass_count + fail_count + skip_count))
+
+    if [[ "$2" == "124" ]]; then
+        SMOKE_LTP_TIMEOUT=1
+    else
+        SMOKE_LTP_TIMEOUT=0
+    fi
+
+    local timeout_str="no"
+    [[ $SMOKE_LTP_TIMEOUT -eq 1 ]] && timeout_str="yes"
+    echo "ltp stats: pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL [timeout=$timeout_str]"
+}
+
+# Validate mdtest smoke results using three conditions:
+# 1. Exit code is 0, 2. SUMMARY rate is present, 3. Operation counts are non-zero.
+# Arguments: $1 = directory path containing mdtest.raw files; $2 = mdtest exit code.
+# Sets global SMOKE_MDT_PASS (1=pass, 0=fail).
+validate_mdtest_smoke() {
+    local raw_files
+    raw_files=$(find "$1" -type f -name 'mdtest.raw' 2>/dev/null)
+
+    if [[ -z "$raw_files" ]]; then
+        SMOKE_MDT_PASS=0
+        echo "mdtest validation: FAIL (reason: no mdtest.raw files found)"
+        return 0
+    fi
+
+    # Condition 1: exit code must be 0
+    if [[ "$2" != "0" ]]; then
+        SMOKE_MDT_PASS=0
+        echo "mdtest validation: FAIL (reason: non-zero exit code $2)"
+        return 0
+    fi
+
+    # Condition 2: at least one file must contain SUMMARY rate
+    local has_summary=false
+    local summary_file=""
+    while IFS= read -r raw_file; do
+        if grep -q "SUMMARY rate" "$raw_file" 2>/dev/null; then
+            has_summary=true
+            summary_file="$raw_file"
+            break
+        fi
+    done <<< "$raw_files"
+
+    if [[ "$has_summary" != "true" ]]; then
+        SMOKE_MDT_PASS=0
+        echo "mdtest validation: FAIL (reason: no SUMMARY rate found)"
+        return 0
+    fi
+
+    # Condition 3: at least one file with SUMMARY rate must have non-zero operation counts
+    local has_nonzero_ops=false
+    while IFS= read -r raw_file; do
+        if grep -q "SUMMARY rate" "$raw_file" 2>/dev/null; then
+            # Extract the block after SUMMARY rate and check for non-zero operation rates
+            if grep -A 100 "SUMMARY rate" "$raw_file" 2>/dev/null | grep -qE '(File creation|File stat|File removal).*[1-9][0-9]*\.[0-9]+'; then
+                has_nonzero_ops=true
+                break
+            fi
+        fi
+    done <<< "$raw_files"
+
+    if [[ "$has_nonzero_ops" != "true" ]]; then
+        SMOKE_MDT_PASS=0
+        echo "mdtest validation: FAIL (reason: zero operation counts)"
+        return 0
+    fi
+
+    SMOKE_MDT_PASS=1
+    echo "mdtest validation: PASS"
+}
+
 smoke_run() {
     echo "=============================================="
     echo "Smoke Test Suite"
