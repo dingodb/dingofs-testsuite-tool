@@ -415,7 +415,7 @@ Plans:
 
 Plans:
 - [ ] 18-01-PLAN.md — Add TAP/LTP/mdtest parsers and smoke_summary generation to entrypoint.sh
-- [ ] 17-01-PLAN.md — SMOKE_MODE notification guards in 3 _run() functions, smoke_run() orchestrator with fail-continue, -t smoke dispatch/validation/help wiring
+- [x] 17-01-PLAN.md — SMOKE_MODE notification guards in 3 _run() functions, smoke_run() orchestrator with fail-continue, -t smoke dispatch/validation/help wiring
 
 ---
 
@@ -480,8 +480,8 @@ Plans:
 | 14. 工具通知集成 | 0/1 | Pending | — |
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
 | 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
-| 17. Smoke Orchestration Core | 0/1 | Not started | — |
-| 18. Result Statistics & Summary | 0/1 | Planned | — |
+| 17. Smoke Orchestration Core | 1/1 | Complete | 2026-05-20 |
+| 18. Result Statistics & Summary | 1/1 | Planned | — |
 | 19. CLI & Notification | 0/0 | Not started | — |
 
 ## Coverage

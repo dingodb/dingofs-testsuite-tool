@@ -1,15 +1,15 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.5
-milestone_name: 冒烟测试命令
-status: roadmap_created
-last_updated: "2026-05-20T00:00:00Z"
-last_activity: 2026-05-20
+milestone: v1.2
+milestone_name: 集成测试命令
+status: executing
+last_updated: "2026-05-20T06:58:23.285Z"
+last_activity: 2026-05-20 -- Phase 18 execution started
 progress:
-  total_phases: 3
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
+  total_phases: 19
+  completed_phases: 10
+  total_plans: 17
+  completed_plans: 16
 ---
 
 # STATE: DingoFS Storage Testsuite Tools
@@ -23,7 +23,7 @@ progress:
 
 **Core Value:** 让用户用最简单的方式执行存储性能测试 -- 一条命令即可完成测试
 
-**Current Focus:** Phase 17 -- Smoke Orchestration Core (ready to plan)
+**Current Focus:** Phase 18 — Result Statistics & Summary
 
 **Project Root:** `/mnt/disk5/daigy/dingofs-testsuite-tool`
 
@@ -31,13 +31,13 @@ progress:
 
 ## Current Position
 
-Phase: 17 of 19 (Smoke Orchestration Core)
-Plan: --
-Status: Roadmap created -- ready to plan Phase 17
-Last activity: 2026-05-20 -- Roadmap created for v1.5 (Phases 17-19)
+Phase: 18 (Result Statistics & Summary) — EXECUTING
+Plan: 1 of 1
+Status: Executing Phase 18
+Last activity: 2026-05-20 -- Phase 18 execution started
 
 ```
-Progress: ░░░░░░░░░░░░░░░░░░░░ 0/3 phases complete (v1.5)
+Progress: ███████░░░░░░░░░░░░░░░ 1/3 phases complete (v1.5)
 ```
 
 ---
@@ -46,9 +46,9 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/3 phase
 
 | Metric | Value |
 |--------|-------|
-| Phases Completed (v1.5) | 0/3 |
-| Requirements Delivered (v1.5) | 0/9 |
-| Days in Progress | 0 |
+| Phases Completed (v1.5) | 1/3 |
+| Requirements Delivered (v1.5) | 3/9 |
+| Days in Progress | 1 |
 | Blockers | 0 |
 
 ---
@@ -68,8 +68,8 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/3 phase
 
 ### Active TODOs
 
-- [ ] Plan Phase 17: Smoke Orchestration Core
-- [ ] Plan Phase 18: Result Statistics & Summary
+- [x] Plan Phase 17: Smoke Orchestration Core
+- [x] Plan Phase 18: Result Statistics & Summary
 - [ ] Plan Phase 19: CLI & Notification
 
 ### Blockers
@@ -94,10 +94,10 @@ Progress: ░░░░░░░░░░░░░░░░░░░░ 0/3 phase
 
 **Next Actions:**
 
-1. `/gsd:plan-phase 17` -- Plan Smoke Orchestration Core (SMOKE_MODE guards + smoke_run + dispatch)
+1. `/gsd:plan-phase 18` -- Plan Result Statistics & Summary (parse TAP, LTP output, mdtest status; generate smoke_summary)
 
 **Context for Next Session:**
-v1.5 roadmap created with 3 phases covering 9 requirements. Phase 17 (Smoke Orchestration Core) is the first phase: SMOKE_MODE guards in 3 existing _run() functions, new smoke_run() function, dispatch wiring in entrypoint.sh, fail-continue with set +e/set -e, unified smoke_<timestamp>/ output directory with per-tool subdirectories. Research confidence is HIGH for this phase -- pure bash function composition inside existing framework.
+Phase 17 complete. SMOKE_MODE guards exist in pjdtest_run(), mdtest_run(), ltp_run(). smoke_run() orchestrates 3 tools with fail-continue. dispatch/validation/help wired for -t smoke. Phase 18 needs to parse per-tool outputs (pjdtest TAP, LTP TPASS/TFAIL/TCONF, mdtest SUMMARY rate) to produce pass/fail/skip/total statistics and a combined smoke_summary report. Outputs are at smoke_<ts>/{pjdtest,mdtest,ltp}/ which the stats functions will scan.
 
 ---
 
@@ -110,14 +110,15 @@ v1.5 roadmap created with 3 phases covering 9 requirements. Phase 17 (Smoke Orch
 | 8-10 | v1.2 | Complete | 2026-04-21 | Integration test command |
 | 11-14 | v1.3 | Partial | - | WeChat done, Email pending |
 | 15-16 | v1.4 | Complete | 2026-04-29 | MLPerf CLI + execution |
-| 17-19 | v1.5 | Not started | - | Smoke orchestration + stats + CLI/notification |
+| 17-19 | v1.5 | In progress | - | Smoke orchestration + stats + CLI/notification |
+| 17 | v1.5 | Complete | 2026-05-20 | SMOKE_MODE guards + smoke_run + dispatch |
 
 ---
 
 ## v1.5 Milestone: 冒烟测试命令
 
 **Started:** 2026-05-20
-**Status:** Roadmap created
+**Status:** Executing Phase 18
 
 **Phases:** 3 (Phase 17-19)
 
