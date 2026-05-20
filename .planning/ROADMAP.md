@@ -481,7 +481,7 @@ Plans:
 | 15. CLI 参数与帮助集成 | 1/1 | Complete    | 2026-04-29 |
 | 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
 | 17. Smoke Orchestration Core | 1/1 | Complete | 2026-05-20 |
-| 18. Result Statistics & Summary | 1/1 | Complete   | 2026-05-20 |
+| 18. Result Statistics & Summary | 1/1 | Complete    | 2026-05-20 |
 | 19. CLI & Notification | 0/0 | Not started | — |
 
 ## Coverage
