@@ -1940,6 +1940,95 @@ validate_mdtest_smoke() {
     echo "mdtest validation: PASS"
 }
 
+# Generate combined smoke summary reports (JSON + text).
+# Arguments: $1 = smoke_base directory path; $2 = aggregate exit code.
+# Reads global SMOKE_PJD_*, SMOKE_LTP_*, SMOKE_MDT_PASS variables.
+generate_smoke_summary() {
+    local smoke_base="$1"
+    local aggregate_exit="$2"
+
+    # Determine per-tool status strings
+    local pjd_status="FAIL"
+    if [[ $SMOKE_PJD_FAIL -eq 0 ]] && [[ $SMOKE_PJD_TOTAL -gt 0 ]]; then
+        pjd_status="PASS"
+    fi
+
+    local mdt_status="FAIL"
+    [[ $SMOKE_MDT_PASS -eq 1 ]] && mdt_status="PASS"
+
+    local ltp_status="FAIL"
+    if [[ $SMOKE_LTP_TIMEOUT -eq 1 ]]; then
+        ltp_status="TIMEOUT"
+    elif [[ $SMOKE_LTP_FAIL -eq 0 ]] && [[ $SMOKE_LTP_TOTAL -gt 0 ]]; then
+        ltp_status="PASS"
+    fi
+
+    local agg_status="FAIL"
+    [[ $aggregate_exit -eq 0 ]] && agg_status="PASS"
+
+    # Generate smoke_summary.json
+    cat > "${smoke_base}/smoke_summary.json" << EOF
+{
+  "smoke_timestamp": "${RUN_TIMESTAMP}",
+  "tools": {
+    "pjdtest": {
+      "status": "${pjd_status}",
+      "pass": ${SMOKE_PJD_PASS:-0},
+      "fail": ${SMOKE_PJD_FAIL:-0},
+      "skip": ${SMOKE_PJD_SKIP:-0},
+      "total": ${SMOKE_PJD_TOTAL:-0}
+    },
+    "mdtest": {
+      "status": "${mdt_status}",
+      "pass": 0,
+      "fail": 0,
+      "skip": 0,
+      "total": 0,
+      "note": "Performance benchmark - pass/fail determined by exit code, SUMMARY rate presence, and non-zero operation counts"
+    },
+    "ltp": {
+      "status": "${ltp_status}",
+      "pass": ${SMOKE_LTP_PASS:-0},
+      "fail": ${SMOKE_LTP_FAIL:-0},
+      "skip": ${SMOKE_LTP_SKIP:-0},
+      "total": ${SMOKE_LTP_TOTAL:-0},
+      "timeout": ${SMOKE_LTP_TIMEOUT:-0}
+    }
+  },
+  "aggregate": {
+    "status": "${agg_status}",
+    "exit_code": ${aggregate_exit}
+  }
+}
+EOF
+
+    # Determine mdtest reason string for text output
+    local mdt_reason="SUMMARY rate verified, non-zero operations"
+    if [[ $SMOKE_MDT_PASS -eq 1 ]]; then
+        mdt_reason="SUMMARY rate verified, non-zero operations"
+    else
+        # Extract reason from validate_mdtest_smoke output (best effort fallback)
+        mdt_reason="FAIL - see smoke_summary.json for details"
+    fi
+
+    # Generate smoke_summary.txt
+    cat > "${smoke_base}/smoke_summary.txt" << EOF
+==============================================
+Smoke Test Summary
+Timestamp: ${RUN_TIMESTAMP}
+==============================================
+
+pjdtest  [${pjd_status}]  pass: ${SMOKE_PJD_PASS:-0}  fail: ${SMOKE_PJD_FAIL:-0}  skip: ${SMOKE_PJD_SKIP:-0}  total: ${SMOKE_PJD_TOTAL:-0}
+mdtest   [${mdt_status}]  ${mdt_reason}
+ltp      [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}
+
+Aggregate: ${agg_status}
+==============================================
+EOF
+
+    echo "Smoke summary reports generated: ${smoke_base}/smoke_summary.json, ${smoke_base}/smoke_summary.txt"
+}
+
 smoke_run() {
     echo "=============================================="
     echo "Smoke Test Suite"
@@ -1982,6 +2071,8 @@ smoke_run() {
     pjdtest_run
     pjdtest_exit=$?
     set -e
+    echo "--- Parsing pjdtest results ---"
+    parse_pjdtest_tap "${smoke_base}/pjdtest"
     if [[ $pjdtest_exit -ne 0 ]]; then
         echo "pjdtest completed with failures (exit: $pjdtest_exit) -- continuing to next tool"
         aggregate_exit=1
@@ -2002,6 +2093,8 @@ smoke_run() {
     mdtest_run
     mdtest_exit=$?
     set -e
+    echo "--- Validating mdtest results ---"
+    validate_mdtest_smoke "${smoke_base}/mdtest" $mdtest_exit
     if [[ $mdtest_exit -ne 0 ]]; then
         echo "mdtest completed with failures (exit: $mdtest_exit) -- continuing to next tool"
         aggregate_exit=1
@@ -2021,6 +2114,8 @@ smoke_run() {
     ltp_run
     ltp_exit=$?
     set -e
+    echo "--- Parsing ltp results ---"
+    parse_ltp_output "${smoke_base}/ltp" $ltp_exit
     if [[ $ltp_exit -ne 0 ]]; then
         echo "ltp completed with failures (exit: $ltp_exit)"
         aggregate_exit=1
@@ -2035,15 +2130,19 @@ smoke_run() {
     NP="$orig_np"
     unset SMOKE_MODE
 
-    # Final summary
+    # Generate smoke summary reports
+    generate_smoke_summary "$smoke_base" $aggregate_exit
+
+    # Final summary with statistics
     echo "=============================================="
     echo "Smoke Test Suite Complete"
     echo "=============================================="
-    echo "  pjdtest: exit=$pjdtest_exit"
-    echo "  mdtest:  exit=$mdtest_exit"
-    echo "  ltp:     exit=$ltp_exit"
+    echo "  pjdtest: pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL (exit=$pjdtest_exit)"
+    echo "  mdtest:  $( [[ $SMOKE_MDT_PASS -eq 1 ]] && echo 'PASS' || echo 'FAIL' ) (exit=$mdtest_exit)"
+    echo "  ltp:     pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL (exit=$ltp_exit)"
     echo "  aggregate exit: $aggregate_exit"
     echo "  Output: $smoke_base"
+    echo "  Reports: smoke_summary.json, smoke_summary.txt"
     echo "=============================================="
 
     return $aggregate_exit
