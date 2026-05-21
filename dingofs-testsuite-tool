@@ -133,7 +133,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   ltp       - Linux测试项目 (内核测试套件)
   int       - DingoFS集成测试 (自动化框架)
   mlperf    - MLPerf Storage 存储基准测试
-  smoke     - 冒烟测试 (串行运行 pjdtest + mdtest + ltp)
+  smoke     - 冒烟测试 (pjdtest + mdtest + ltp + int_client + int_cache_node + int_quota)
 
 配置子命令:
   dtt config set testdir <目录>    设置测试目录 (挂载点)
@@ -161,6 +161,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                           默认: normal
   --wechat                 启用企业微信通知
   --email                  启用邮件通知
+  --exclude <工具列表>     排除指定冒烟工具 (逗号分隔, 如: int / pjdtest,mdtest)
   --scale <规模>          mlperf测试规模: small (32 files/5 epochs), medium (256 files/10 epochs), large (1024 files/20 epochs)
                           默认: small
   --file_count <数量>     mlperf自定义生成测试文件数量
@@ -222,7 +223,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   # 显示 mlperf 详细帮助
   dtt -t mlperf --help
 
-  # 运行冒烟测试（串行执行 pjdtest + mdtest + ltp）
+  # 运行冒烟测试（串行执行全部6个工具）
   dtt smoke
 
   # 冒烟测试并发送微信通知
@@ -230,6 +231,12 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
   # 冒烟测试并发送邮件通知
   dtt smoke --email
+
+  # 排除集成测试（只跑 pjdtest, mdtest, ltp）
+  dtt smoke --exclude int
+
+  # 排除 pjdtest 和 mdtest（只跑 ltp 和 int）
+  dtt smoke --exclude pjdtest,mdtest
 
 通知示例:
   # 启用微信通知
