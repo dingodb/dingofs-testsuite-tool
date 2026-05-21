@@ -44,6 +44,9 @@ EMAIL_TO="${EMAIL_TO:-daigy@zetyun.com}"
 # Integration test environment
 INT_ENV="${INT_ENV:-env_126_smoke}"
 
+# Smoke exclude list (comma-separated tool names)
+SMOKE_EXCLUDE="${SMOKE_EXCLUDE:-}"
+
 # Source notification script
 if [[ -f "/scripts/notify.sh" ]]; then
     source /scripts/notify.sh
@@ -2180,17 +2183,55 @@ int_quota[${int_quota_status}] pass:${SMOKE_INT_QUOTA_PASS:-0} fail:${SMOKE_INT_
     echo "[notify] Combined smoke notification sent."
 }
 
+# Check if a tool is in the SMOKE_EXCLUDE list.
+# "int" in the exclude list matches all int_* tools.
+is_excluded() {
+    local tool="$1"
+    [[ -z "$SMOKE_EXCLUDE" ]] && return 1
+
+    local IFS=','
+    local -a items=($SMOKE_EXCLUDE)
+    for item in "${items[@]}"; do
+        item=$(echo "$item" | xargs)
+        [[ "$item" == "$tool" ]] && return 0
+        # "int" excludes all int_* tools
+        if [[ "$item" == "int" ]] && [[ "$tool" == int_* ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
 smoke_run() {
+    # Build list of tools to run for display
+    local tools_list=""
+    if ! is_excluded "pjdtest"; then
+        tools_list="${tools_list}  pjdtest\n"
+    fi
+    if ! is_excluded "mdtest"; then
+        tools_list="${tools_list}  mdtest\n"
+    fi
+    if ! is_excluded "ltp"; then
+        tools_list="${tools_list}  ltp\n"
+    fi
+    if ! is_excluded "int_client"; then
+        tools_list="${tools_list}  int_client\n"
+    fi
+    if ! is_excluded "int_cache_node"; then
+        tools_list="${tools_list}  int_cache_node\n"
+    fi
+    if ! is_excluded "int_quota"; then
+        tools_list="${tools_list}  int_quota\n"
+    fi
+
     echo "=============================================="
     echo "Smoke Test Suite"
     echo "=============================================="
-    echo "Executing 6 tools in sequence:"
-    echo "  1. pjdtest     -s all"
-    echo "  2. mdtest      -s all -n 8"
-    echo "  3. ltp         -s smoke"
-    echo "  4. int_client  --run-level smoke --env $INT_ENV"
-    echo "  5. int_cache_node --run-level smoke --env $INT_ENV"
-    echo "  6. int_quota   --run-level smoke --env env_126_quota"
+    if [[ -n "$SMOKE_EXCLUDE" ]]; then
+        echo "Excluding: $SMOKE_EXCLUDE"
+    fi
+    echo "Tools to run:"
+    echo -e "$tools_list"
     echo "Output: $OUTPUT/smoke_${RUN_TIMESTAMP}/"
     echo "Mode:   fail-continue (all tools run regardless)"
     echo "=============================================="
@@ -2218,8 +2259,9 @@ smoke_run() {
     local aggregate_exit=0
 
     # ---- Tool 1: pjdtest -s all ----
+    if ! is_excluded "pjdtest"; then
     echo "=============================================="
-    echo "[1/3] Running pjdtest -s all"
+    echo "[1/6] Running pjdtest -s all"
     echo "=============================================="
     SCENARIO="all"
     OUTPUT="${smoke_base}/pjdtest"
@@ -2236,11 +2278,16 @@ smoke_run() {
     else
         echo "pjdtest completed successfully (exit: 0)"
     fi
+    else
+        echo "--- Skipping pjdtest (excluded) ---"
+        SMOKE_PJD_PASS=0; SMOKE_PJD_FAIL=0; SMOKE_PJD_SKIP=0; SMOKE_PJD_TOTAL=0
+    fi
     echo ""
 
     # ---- Tool 2: mdtest -s all -n 8 ----
+    if ! is_excluded "mdtest"; then
     echo "=============================================="
-    echo "[2/3] Running mdtest -s all -n 8"
+    echo "[2/6] Running mdtest -s all -n 8"
     echo "=============================================="
     SCENARIO="all"
     NP=8
@@ -2258,11 +2305,16 @@ smoke_run() {
     else
         echo "mdtest completed successfully (exit: 0)"
     fi
+    else
+        echo "--- Skipping mdtest (excluded) ---"
+        SMOKE_MDT_PASS=0
+    fi
     echo ""
 
     # ---- Tool 3: ltp -s smoke ----
+    if ! is_excluded "ltp"; then
     echo "=============================================="
-    echo "[3/3] Running ltp -s smoke"
+    echo "[3/6] Running ltp -s smoke"
     echo "=============================================="
     SCENARIO="smoke"
     OUTPUT="${smoke_base}/ltp"
@@ -2279,9 +2331,14 @@ smoke_run() {
     else
         echo "ltp completed successfully (exit: 0)"
     fi
+    else
+        echo "--- Skipping ltp (excluded) ---"
+        SMOKE_LTP_PASS=0; SMOKE_LTP_FAIL=0; SMOKE_LTP_SKIP=0; SMOKE_LTP_TOTAL=0
+    fi
     echo ""
 
     # ---- Tool 4: int client ----
+    if ! is_excluded "int_client"; then
     echo "=============================================="
     echo "[4/6] Running integration test: client"
     echo "=============================================="
@@ -2303,9 +2360,14 @@ smoke_run() {
     else
         echo "int client completed successfully (exit: 0)"
     fi
+    else
+        echo "--- Skipping int_client (excluded) ---"
+        SMOKE_INT_CLIENT_PASS=0; SMOKE_INT_CLIENT_FAIL=0; SMOKE_INT_CLIENT_TOTAL=0
+    fi
     echo ""
 
     # ---- Tool 5: int cache_node ----
+    if ! is_excluded "int_cache_node"; then
     echo "=============================================="
     echo "[5/6] Running integration test: cache_node"
     echo "=============================================="
@@ -2327,9 +2389,14 @@ smoke_run() {
     else
         echo "int cache_node completed successfully (exit: 0)"
     fi
+    else
+        echo "--- Skipping int_cache_node (excluded) ---"
+        SMOKE_INT_CACHENODE_PASS=0; SMOKE_INT_CACHENODE_FAIL=0; SMOKE_INT_CACHENODE_TOTAL=0
+    fi
     echo ""
 
     # ---- Tool 6: int quota ----
+    if ! is_excluded "int_quota"; then
     echo "=============================================="
     echo "[6/6] Running integration test: quota"
     echo "=============================================="
@@ -2350,6 +2417,10 @@ smoke_run() {
         aggregate_exit=1
     else
         echo "int quota completed successfully (exit: 0)"
+    fi
+    else
+        echo "--- Skipping int_quota (excluded) ---"
+        SMOKE_INT_QUOTA_PASS=0; SMOKE_INT_QUOTA_FAIL=0; SMOKE_INT_QUOTA_TOTAL=0
     fi
     echo ""
 

@@ -325,17 +325,24 @@ Smoke Test Suite
   dtt smoke [选项]
 
 说明:
-  dtt smoke 会在容器中自动串行执行以下三个测试:
-    1. pjdtest -s all    (POSIX文件系统测试套件)
-    2. mdtest  -s all -n 8 (元数据性能测试, 8进程)
-    3. ltp     -s smoke   (LTP文件系统快速测试)
+  dtt smoke 会在容器中自动串行执行以下测试:
+    1. pjdtest     -s all    (POSIX文件系统测试套件)
+    2. mdtest      -s all -n 8 (元数据性能测试, 8进程)
+    3. ltp         -s smoke   (LTP文件系统快速测试)
+    4. int_client  (集成测试 client, 使用 int_env 配置)
+    5. int_cache_node (集成测试 cache_node, 使用 int_env 配置)
+    6. int_quota   (集成测试 quota, 使用 env_126_quota)
 
-  三个工具全部执行，单个工具失败不会中止后续工具运行。
+  所有工具全部执行，单个工具失败不会中止后续工具运行。
+  可通过 --exclude 排除指定工具。
   测试结果和汇总报告输出到 smoke_<timestamp>/ 目录。
 
 选项:
   --wechat      启用企业微信通知（发送单条聚合通知，包含三个工具的汇总结果）
   --email       启用邮件通知（发送单条聚合通知，包含三个工具的汇总结果）
+  --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,mdtest）
+                        可选值: pjdtest, mdtest, ltp, int
+                        int 代表 int_client, int_cache_node, int_quota 三个集成测试
   --debug       调试模式，容器执行完毕后保留不删除
   --help, -h    显示此帮助信息
 
@@ -351,6 +358,12 @@ Smoke Test Suite
 
   # 同时启用微信和邮件通知
   dtt smoke --wechat --email
+
+  # 排除集成测试（只跑 pjdtest, mdtest, ltp）
+  dtt smoke --exclude int
+
+  # 排除 pjdtest 和 mdtest（只跑 ltp 和 int）
+  dtt smoke --exclude pjdtest,mdtest
 
   # 调试模式（保留容器）
   dtt smoke --debug
@@ -387,10 +400,11 @@ cmd_smoke() {
         return 0
     fi
 
-    # Parse flags: only --wechat, --email, --debug, --help
+    # Parse flags: --wechat, --email, --debug, --exclude, --help
     local wechat=""
     local email_to=""
     local debug=""
+    local exclude=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --wechat)
@@ -404,6 +418,10 @@ cmd_smoke() {
             --debug)
                 debug="yes"
                 shift
+                ;;
+            --exclude)
+                exclude="$2"
+                shift 2
                 ;;
             --help|-h)
                 show_smoke_help
@@ -495,6 +513,11 @@ cmd_smoke() {
 
     # Integration test environment
     docker_cmd+=("-e" "INT_ENV=$int_env")
+
+    # Smoke exclude list
+    if [[ -n "$exclude" ]]; then
+        docker_cmd+=("-e" "SMOKE_EXCLUDE=$exclude")
+    fi
 
     # Print execution info
     echo "Starting smoke test suite..."
