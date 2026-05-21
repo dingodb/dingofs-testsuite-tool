@@ -131,6 +131,7 @@ RUN apt-get update && \
         python3.12-venv \
         default-jre-headless \
         wget \
+        curl \
         unzip \
         ca-certificates \
         git \

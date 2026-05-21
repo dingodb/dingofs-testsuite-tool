@@ -59,9 +59,54 @@ send_email_notification() {
 </table>
 <br>"
 
-    if [[ -n "$details" ]]; then
-        # Parse details string: "Total: X, Passed: Y, Failed: Z. Failed: test1, test2, ..."
-        local total_val=""
+    if [[ "$tool" == "smoke" ]]; then
+        # Smoke details format: "pjdtest[PASS] pass:587 fail:0 skip:1 total:588; mdtest[PASS]; ltp[PASS] pass:328 fail:0 skip:2 total:330"
+        # Build a multi-tool HTML table from the smoke-specific format
+        html_content="${html_content}
+<h3>冒烟测试结果详情</h3>
+<table border='1' cellpadding='5' cellspacing='0'>
+<tr><th>工具</th><th>状态</th><th>通过 (Pass)</th><th>失败 (Fail)</th><th>跳过 (Skip)</th><th>总计 (Total)</th></tr>"
+
+        # Parse each tool's section separated by newline
+        local tools_sections=()
+        while IFS= read -r line; do
+            line=$(echo "$line" | xargs)
+            [[ -n "$line" ]] && tools_sections+=("$line")
+        done <<< "$details"
+        for section in "${tools_sections[@]}"; do
+            # Trim leading/trailing whitespace
+            section=$(echo "$section" | xargs)
+            [[ -z "$section" ]] && continue
+
+            # Extract tool name: "pjdtest[PASS]" → tool=pjdtest, tool_status=PASS
+            local tool_name="${section%%\[*}"
+            local tool_status="${section#*\[}"
+            tool_status="${tool_status%%\]*}"
+
+            # Extract pass/fail/skip/total if present
+            local t_pass="-"
+            local t_fail="-"
+            local t_skip="-"
+            local t_total="-"
+            if [[ "$section" =~ pass:[0-9]+ ]]; then
+                t_pass=$(echo "$section" | sed -n 's/.*pass:\([0-9]\+\).*/\1/p')
+                t_fail=$(echo "$section" | sed -n 's/.*fail:\([0-9]\+\).*/\1/p')
+                t_skip=$(echo "$section" | sed -n 's/.*skip:\([0-9]\+\).*/\1/p')
+                t_total=$(echo "$section" | sed -n 's/.*total:\([0-9]\+\).*/\1/p')
+            fi
+
+            # Color status
+            local status_color="green"
+            [[ "$tool_status" == "FAIL" ]] && status_color="red"
+            [[ "$tool_status" == "TIMEOUT" ]] && status_color="orange"
+
+            html_content="${html_content}
+<tr><td>${tool_name}</td><td style='color:${status_color}'><b>${tool_status}</b></td><td>${t_pass}</td><td>${t_fail}</td><td>${t_skip}</td><td>${t_total}</td></tr>"
+        done
+
+        html_content="${html_content}
+</table>"
+    elif [[ -n "$details" ]]; then
         local passed_val=""
         local failed_val=""
         local pass_rate=""

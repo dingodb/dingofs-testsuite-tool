@@ -1822,9 +1822,9 @@ parse_pjdtest_tap() {
     local not_ok_count
     local fail_count
 
-    pass_count=$(grep -cE '^ok[[:space:]]+[0-9]+' "$tap_file" 2>/dev/null || echo 0)
-    skip_count=$(grep -cE '^not[[:space:]]+ok[[:space:]]+[0-9]+.*#.*TODO' "$tap_file" 2>/dev/null || echo 0)
-    not_ok_count=$(grep -cE '^not[[:space:]]+ok[[:space:]]+[0-9]+' "$tap_file" 2>/dev/null || echo 0)
+    pass_count=$(grep -cE '^ok[[:space:]]+[0-9]+' "$tap_file" 2>/dev/null || true)
+    skip_count=$(grep -cE '^not[[:space:]]+ok[[:space:]]+[0-9]+.*#.*TODO' "$tap_file" 2>/dev/null || true)
+    not_ok_count=$(grep -cE '^not[[:space:]]+ok[[:space:]]+[0-9]+' "$tap_file" 2>/dev/null || true)
     fail_count=$((not_ok_count - skip_count))
 
     SMOKE_PJD_PASS=$pass_count
@@ -1858,10 +1858,10 @@ parse_ltp_output() {
     local skip_count
     local fail_count
 
-    pass_count=$(grep -cE '[[:space:]]TPASS:' "$raw_file" 2>/dev/null || echo 0)
-    fail_tfail=$(grep -cE '[[:space:]]TFAIL:' "$raw_file" 2>/dev/null || echo 0)
-    fail_tbrok=$(grep -cE '[[:space:]]TBROK:' "$raw_file" 2>/dev/null || echo 0)
-    skip_count=$(grep -cE '[[:space:]]TCONF:' "$raw_file" 2>/dev/null || echo 0)
+    pass_count=$(grep -cE '[[:space:]]TPASS:' "$raw_file" 2>/dev/null || true)
+    fail_tfail=$(grep -cE '[[:space:]]TFAIL:' "$raw_file" 2>/dev/null || true)
+    fail_tbrok=$(grep -cE '[[:space:]]TBROK:' "$raw_file" 2>/dev/null || true)
+    skip_count=$(grep -cE '[[:space:]]TCONF:' "$raw_file" 2>/dev/null || true)
     fail_count=$((fail_tfail + fail_tbrok))
 
     SMOKE_LTP_PASS=$pass_count
@@ -2029,6 +2029,61 @@ EOF
     echo "Smoke summary reports generated: ${smoke_base}/smoke_summary.json, ${smoke_base}/smoke_summary.txt"
 }
 
+# Send combined smoke notification (WeChat + Email) with all three tools' results.
+# Arguments: $1 = smoke_base directory path; $2 = aggregate exit code; $3 = start timestamp (seconds since epoch).
+# Reads global SMOKE_PJD_*, SMOKE_LTP_*, SMOKE_MDT_PASS variables set by parse/validate functions.
+send_smoke_notification() {
+    local smoke_base="$1"
+    local aggregate_exit="$2"
+    local start_ts="$3"
+
+    # Calculate total duration
+    local end_ts=$(date +%s)
+    local duration_sec=$((end_ts - start_ts))
+    local duration_str
+    duration_str=$(printf '%dm%ds' $((duration_sec/60)) $((duration_sec%60)))
+
+    # Determine aggregate status
+    local agg_status="SUCCESS"
+    if [[ $aggregate_exit -ne 0 ]]; then
+        agg_status="FAIL"
+    fi
+
+    # Determine per-tool statuses
+    local pjd_status="PASS"
+    if [[ ${SMOKE_PJD_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_PJD_TOTAL:-0} -eq 0 ]]; then
+        pjd_status="FAIL"
+    fi
+
+    local mdt_status="PASS"
+    if [[ ${SMOKE_MDT_PASS:-0} -ne 1 ]]; then
+        mdt_status="FAIL"
+    fi
+
+    local ltp_status="PASS"
+    if [[ ${SMOKE_LTP_TIMEOUT:-0} -eq 1 ]]; then
+        ltp_status="TIMEOUT"
+    elif [[ ${SMOKE_LTP_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_LTP_TOTAL:-0} -eq 0 ]]; then
+        ltp_status="FAIL"
+    fi
+
+    # Build combined details string for notification functions (newline-separated for readability)
+    local details="pjdtest[${pjd_status}] pass:${SMOKE_PJD_PASS:-0} fail:${SMOKE_PJD_FAIL:-0} skip:${SMOKE_PJD_SKIP:-0} total:${SMOKE_PJD_TOTAL:-0}
+mdtest[${mdt_status}]
+ltp[${ltp_status}] pass:${SMOKE_LTP_PASS:-0} fail:${SMOKE_LTP_FAIL:-0} skip:${SMOKE_LTP_SKIP:-0} total:${SMOKE_LTP_TOTAL:-0}"
+
+    echo ""
+    echo "[notify] Sending combined smoke notification (WeChat: $WECHAT_ENABLED, Email: $EMAIL_ENABLED)..."
+
+    # Send WeChat notification (function sourced from notify.sh)
+    send_wechat_notification "smoke" "smoke" "$agg_status" "$duration_str" "$details"
+
+    # Send Email notification (function sourced from notify.sh)
+    send_email_notification "smoke" "smoke" "$agg_status" "$duration_str" "$details"
+
+    echo "[notify] Combined smoke notification sent."
+}
+
 smoke_run() {
     echo "=============================================="
     echo "Smoke Test Suite"
@@ -2041,6 +2096,9 @@ smoke_run() {
     echo "Mode:   fail-continue (all tools run regardless)"
     echo "=============================================="
     echo ""
+
+    # Record start time for notification duration calculation
+    local smoke_start_ts=$(date +%s)
 
     # Save original environment
     local orig_output="$OUTPUT"
@@ -2132,6 +2190,9 @@ smoke_run() {
 
     # Generate smoke summary reports
     generate_smoke_summary "$smoke_base" $aggregate_exit
+
+    # Send combined notification (only fires if WECHAT/EMAIL env vars are set)
+    send_smoke_notification "$smoke_base" $aggregate_exit $smoke_start_ts
 
     # Final summary with statistics
     echo "=============================================="

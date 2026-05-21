@@ -110,6 +110,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
 用法:
   dtt <命令> [选项]
+  dtt smoke [选项]               # 冒烟测试快捷命令
   dtt <命令> [选项]          # 快捷命令
 
 命令:
@@ -125,6 +126,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   ltp       - Linux测试项目 (内核测试套件)
   int       - DingoFS集成测试 (自动化框架)
   mlperf    - MLPerf Storage 存储基准测试
+  smoke     - 冒烟测试 (串行运行 pjdtest + mdtest + ltp)
 
 配置子命令:
   dtt config set testdir <目录>    设置测试目录 (挂载点)
@@ -142,7 +144,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                           (如未指定则使用配置中的testdir/output)
 
 选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke
   -s, --scenario <名称>   测试场景名称
   -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录 (从配置读取)
@@ -211,6 +213,15 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
   # 显示 mlperf 详细帮助
   dtt -t mlperf --help
+
+  # 运行冒烟测试（串行执行 pjdtest + mdtest + ltp）
+  dtt smoke
+
+  # 冒烟测试并发送微信通知
+  dtt smoke --wechat
+
+  # 冒烟测试并发送邮件通知
+  dtt smoke --email
 
 通知示例:
   # 启用微信通知
@@ -295,9 +306,203 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于
 EOF
 }
 
+show_smoke_help() {
+    cat << 'EOF'
+Smoke Test Suite
+===============
+
+快速验证存储系统基本健康状态的冒烟测试。
+
+用法:
+  dtt smoke [选项]
+
+说明:
+  dtt smoke 会在容器中自动串行执行以下三个测试:
+    1. pjdtest -s all    (POSIX文件系统测试套件)
+    2. mdtest  -s all -n 8 (元数据性能测试, 8进程)
+    3. ltp     -s smoke   (LTP文件系统快速测试)
+
+  三个工具全部执行，单个工具失败不会中止后续工具运行。
+  测试结果和汇总报告输出到 smoke_<timestamp>/ 目录。
+
+选项:
+  --wechat      启用企业微信通知（发送单条聚合通知，包含三个工具的汇总结果）
+  --email       启用邮件通知（发送单条聚合通知，包含三个工具的汇总结果）
+  --debug       调试模式，容器执行完毕后保留不删除
+  --help, -h    显示此帮助信息
+
+示例:
+  # 运行冒烟测试
+  dtt smoke
+
+  # 运行并发送微信通知
+  dtt smoke --wechat
+
+  # 运行并发送邮件通知
+  dtt smoke --email
+
+  # 同时启用微信和邮件通知
+  dtt smoke --wechat --email
+
+  # 调试模式（保留容器）
+  dtt smoke --debug
+
+注意:
+  - 需要先配置 testdir 和 output:
+    dtt config set testdir <目录>
+    dtt config set output <目录>
+  - 通知功能需要先配置 webhook_url 或 email:
+    dtt config set webhook_url <webhook地址>
+    dtt config set email <邮箱地址>
+  - 微信/邮件通知聚合为一条消息，包含三个工具的汇总结果
+
+更多信息:
+  - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
+EOF
+}
+
 # ==============================================================================
 # Command Handlers
 # ==============================================================================
+
+cmd_smoke() {
+    local image=$(load_config image)
+    local config_testdir=$(load_config testdir)
+    local config_output=$(load_config output)
+    local config_mdsaddr=$(load_config mdsaddr)
+    local runtime=$(load_config runtime)
+
+    # Handle --help before config checks
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        show_smoke_help
+        return 0
+    fi
+
+    # Parse flags: only --wechat, --email, --debug, --help
+    local wechat=""
+    local email_to=""
+    local debug=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --wechat)
+                wechat="yes"
+                shift
+                ;;
+            --email)
+                email_to="yes"
+                shift
+                ;;
+            --debug)
+                debug="yes"
+                shift
+                ;;
+            --help|-h)
+                show_smoke_help
+                return 0
+                ;;
+            *)
+                echo "Error: Unknown option '$1'"
+                echo "Run 'dtt smoke --help' for usage information"
+                return 1
+                ;;
+        esac
+    done
+
+    # Validate image is configured
+    if [[ -z "$image" ]]; then
+        echo "Error: No Docker image configured."
+        echo "Please run 'dtt config set image <image>' first."
+        return 1
+    fi
+
+    # Validate test directory
+    local mount="${config_testdir}"
+    if [[ -z "$mount" ]]; then
+        echo "Error: Test directory not set."
+        echo "Please run 'dtt config set testdir <directory>' first."
+        return 1
+    fi
+    if [[ ! -d "$mount" ]]; then
+        echo "Error: Mount directory '$mount' does not exist"
+        return 1
+    fi
+
+    # Validate/create output directory
+    local output="${config_output}"
+    if [[ -z "$output" ]]; then
+        echo "Error: Output directory not set."
+        echo "Please run 'dtt config set output <directory>' first."
+        return 1
+    fi
+    mkdir -p "$output"
+
+    # Build docker/podman command (omit --rm in debug mode)
+    local rm_flag="--rm"
+    if [[ -n "$debug" ]]; then
+        rm_flag=""
+    fi
+
+    local docker_cmd=(
+        $runtime run $rm_flag --privileged --net=host
+        -v "${mount}:/data"
+        -v "${output}:/output"
+    )
+
+    # Pass MDS address if configured (needed for integration test context)
+    if [[ -n "$config_mdsaddr" ]]; then
+        docker_cmd+=("-e" "MDSADDR=$config_mdsaddr")
+        # Add --add-host entries for MDS IPs
+        local -a added_ips=()
+        while IFS=',' read -ra ADDRS; do
+            for addr in "${ADDRS[@]}"; do
+                addr=$(echo "$addr" | xargs)
+                [[ -n "$addr" ]] || continue
+                local ip="${addr%:*}"
+                local already_added=false
+                for existing in "${added_ips[@]}"; do
+                    [[ "$existing" == "$ip" ]] && already_added=true && break
+                done
+                if [[ "$already_added" == "false" ]]; then
+                    docker_cmd+=("--add-host" "mds:${ip}")
+                    added_ips+=("$ip")
+                fi
+            done
+        done <<< "$config_mdsaddr"
+    fi
+
+    # WeChat notification env vars
+    if [[ -n "$wechat" ]]; then
+        local webhook_url=$(load_config webhook_url)
+        docker_cmd+=("-e" "WECHAT=yes")
+        docker_cmd+=("-e" "WEBHOOK_URL=$webhook_url")
+    fi
+
+    # Email notification env vars
+    if [[ -n "$email_to" ]]; then
+        local email_addr=$(load_config email)
+        docker_cmd+=("-e" "EMAIL=yes")
+        docker_cmd+=("-e" "EMAIL_TO=$email_addr")
+    fi
+
+    # Print execution info
+    echo "Starting smoke test suite..."
+    echo "  Image:       $image"
+    echo "  Test dir:    $mount -> /data"
+    echo "  Output dir:  $output -> /output"
+    if [[ -n "$wechat" ]]; then
+        echo "  WeChat:      enabled"
+    fi
+    if [[ -n "$email_to" ]]; then
+        echo "  Email:       enabled"
+    fi
+    if [[ -n "$debug" ]]; then
+        echo "  Debug:       container will be preserved"
+    fi
+    echo ""
+
+    # Execute: run container with -t smoke, mounting test/output dirs
+    "${docker_cmd[@]}" "$image" /entrypoint.sh -t smoke -m /data -o /output
+}
 
 cmd_config() {
     local subcommand="$1"
@@ -377,7 +582,7 @@ cmd_debug() {
     echo "Type 'exit' to leave the container"
     echo ""
 
-    local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--entrypoint" "/bin/bash")
+    local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
 
     if [[ -n "$testdir" ]]; then
         docker_cmd+=("-v" "${testdir}:/data")
@@ -427,7 +632,7 @@ run_docker_help() {
         return 1
     fi
 
-    $runtime run --rm "$image" -t "$tool" --help
+    $runtime run --rm --net=host "$image" -t "$tool" --help
 }
 
 run_testsuite() {
@@ -599,7 +804,7 @@ run_testsuite() {
             mlperf_rm_flag=""
         fi
         local docker_cmd=(
-            $runtime run -it $mlperf_rm_flag --privileged
+            $runtime run -it $mlperf_rm_flag --privileged --net=host
             --shm-size=8g
             -v "${mount}:/data"
             -v "${output}:/output"
@@ -683,7 +888,7 @@ run_testsuite() {
     fi
 
     local docker_cmd=(
-        $runtime run $rm_flag --privileged
+        $runtime run $rm_flag --privileged --net=host
         "${ltp_extra_flags[@]}"
         -v "${mount}:/data"
         -v "${output}:/output"
@@ -787,6 +992,10 @@ dingofs-testsuite-tool() {
     local command="$1"
 
     case "$command" in
+        smoke)
+            shift
+            cmd_smoke "$@"
+            ;;
         config)
             shift
             cmd_config "$@"

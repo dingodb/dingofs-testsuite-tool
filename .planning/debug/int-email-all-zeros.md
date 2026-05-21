@@ -1,5 +1,5 @@
 ---
-status: verifying
+status: awaiting_human_verify
 trigger: "int email shows all zeros — dtt -t int -s quota --email sends email but Total=0, Passed=0, Failed=0"
 created: 2026-05-12T00:00:00Z
 updated: 2026-05-12T00:00:00Z
@@ -7,10 +7,10 @@ updated: 2026-05-12T00:00:00Z
 
 ## Current Focus
 
-hypothesis: Fix applied; verifying against real test data
-test: Run full end-to-end test with dtt -t int -s quota --email
-expecting: Email shows correct test counts (e.g., Total=94, Passed=84, Failed=10) 
-next_action: Commit fix and request human verification
+hypothesis: Fix applied and self-verified. Awaiting human verification with real integration test.
+test: Run dtt -t int -s quota --email and check received email
+expecting: Email shows actual test counts, not all zeros
+next_action: Wait for user confirmation
 
 ## Symptoms
 

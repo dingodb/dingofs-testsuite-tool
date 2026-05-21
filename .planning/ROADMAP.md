@@ -27,9 +27,9 @@ This roadmap delivers a Docker-based storage performance testing toolkit with fi
 - [ ] **Phase 14: 工具通知集成** - Extend notification to all test tools
 - [x] **Phase 15: CLI 参数与帮助集成** - Add mlperf CLI parameters and help text to dtt wrapper (completed 2026-04-29)
 - [x] **Phase 16: MLPerf 容器执行与数据集成** - Launch mlperf-storage container with proper parameters, mounts, and output (completed 2026-04-29)
-- [ ] **Phase 17: Smoke Orchestration Core** - SMOKE_MODE guards + smoke_run() in entrypoint.sh with fail-continue and unified output
+- [x] **Phase 17: Smoke Orchestration Core** - SMOKE_MODE guards + smoke_run() in entrypoint.sh with fail-continue and unified output
 - [x] **Phase 18: Result Statistics & Summary** - TAP/LTP/mdtest parsers + smoke_summary generation (completed 2026-05-20)
-- [ ] **Phase 19: CLI & Notification** - cmd_smoke() in wrapper with help text + combined WeChat/Email notification
+- [x] **Phase 19: CLI & Notification** - cmd_smoke() in wrapper with help text + combined WeChat/Email notification
 
 ## Phase Details
 
@@ -482,7 +482,7 @@ Plans:
 | 16. MLPerf 容器执行与数据集成 | 3/3 | Complete    | 2026-04-29 |
 | 17. Smoke Orchestration Core | 1/1 | Complete | 2026-05-20 |
 | 18. Result Statistics & Summary | 1/1 | Complete    | 2026-05-20 |
-| 19. CLI & Notification | 0/1 | Planned | — |
+| 19. CLI & Notification | 1/1 | Complete | 2026-05-20 |
 
 ## Coverage
 
@@ -581,15 +581,15 @@ Plans:
 | DATA-01 | Phase 16 | Complete |
 | DATA-02 | Phase 16 | Complete |
 | DATA-03 | Phase 16 | Complete |
-| SMOKE-01 | Phase 17 | Pending |
-| SMOKE-02 | Phase 17 | Pending |
-| SMOKE-03 | Phase 19 | Pending |
-| STAT-01 | Phase 18 | Pending |
-| STAT-02 | Phase 18 | Pending |
-| STAT-03 | Phase 18 | Pending |
-| STAT-04 | Phase 18 | Pending |
-| OUT-01 | Phase 17 | Pending |
-| OUT-02 | Phase 19 | Pending |
+| SMOKE-01 | Phase 17 | Complete |
+| SMOKE-02 | Phase 17 | Complete |
+| SMOKE-03 | Phase 19 | Complete |
+| STAT-01 | Phase 18 | Complete |
+| STAT-02 | Phase 18 | Complete |
+| STAT-03 | Phase 18 | Complete |
+| STAT-04 | Phase 18 | Complete |
+| OUT-01 | Phase 17 | Complete |
+| OUT-02 | Phase 19 | Complete |
 
 ---
 

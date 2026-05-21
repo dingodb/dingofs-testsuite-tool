@@ -182,9 +182,9 @@
 
 ### Smoke 命令
 
-- [ ] **SMOKE-01**: 用户执行 `dtt smoke` 自动串行运行三个测试场景：pjdtest -s all, mdtest -s all -n 8, ltp -s smoke
-- [ ] **SMOKE-02**: 三个工具全部执行完成，单个工具失败不中止后续工具运行
-- [ ] **SMOKE-03**: `dtt --help` 列出 smoke 子命令，`dtt smoke --help` 显示 smoke 详细用法
+- [x] **SMOKE-01**: 用户执行 `dtt smoke` 自动串行运行三个测试场景：pjdtest -s all, mdtest -s all -n 8, ltp -s smoke
+- [x] **SMOKE-02**: 三个工具全部执行完成，单个工具失败不中止后续工具运行
+- [x] **SMOKE-03**: `dtt --help` 列出 smoke 子命令，`dtt smoke --help` 显示 smoke 详细用法
 
 ### 结果统计
 
@@ -195,8 +195,8 @@
 
 ### 输出与通知
 
-- [ ] **OUT-01**: 测试结果统一输出到 `smoke_<timestamp>/` 目录，每个工具各自子目录
-- [ ] **OUT-02**: smoke 测试完成后发送单条聚合通知（微信/邮件），汇总三个工具结果
+- [x] **OUT-01**: 测试结果统一输出到 `smoke_<timestamp>/` 目录，每个工具各自子目录
+- [x] **OUT-02**: smoke 测试完成后发送单条聚合通知（微信/邮件），汇总三个工具结果
 
 ## Traceability
 
@@ -285,15 +285,15 @@ Which phases cover which requirements. Updated during roadmap creation.
 | DATA-01 | Phase 16 | Complete |
 | DATA-02 | Phase 16 | Complete |
 | DATA-03 | Phase 16 | Complete |
-| SMOKE-01 | Phase 17 | Pending |
-| SMOKE-02 | Phase 17 | Pending |
-| SMOKE-03 | Phase 19 | Pending |
+| SMOKE-01 | Phase 17 | Complete |
+| SMOKE-02 | Phase 17 | Complete |
+| SMOKE-03 | Phase 19 | Complete |
 | STAT-01 | Phase 18 | Complete |
 | STAT-02 | Phase 18 | Complete |
 | STAT-03 | Phase 18 | Complete |
 | STAT-04 | Phase 18 | Complete |
-| OUT-01 | Phase 17 | Pending |
-| OUT-02 | Phase 19 | Pending |
+| OUT-01 | Phase 17 | Complete |
+| OUT-02 | Phase 19 | Complete |
 
 **Coverage:**
 - v1 requirements: 34 total
