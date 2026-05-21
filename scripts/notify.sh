@@ -291,7 +291,8 @@ send_wechat_notification() {
     if [[ -n "$details" ]]; then
         content="${content}
 
-**Details:** ${details}"
+**Details:**
+${details}"
     fi
 
     # Send to WeChat webhook
