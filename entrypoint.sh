@@ -1886,7 +1886,8 @@ parse_ltp_output() {
     echo "ltp stats: pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL [timeout=$timeout_str]"
 }
 
-# Parse integration test pytest output for smoke results.
+# Parse integration test output for smoke results.
+# Handles both run_tests.py "TEST SUITE SUMMARY" format and pytest summary lines.
 # Arguments: $1 = log file path; $2 = variable prefix (e.g., SMOKE_INT_CLIENT).
 # Sets global ${prefix}_PASS, ${prefix}_FAIL, ${prefix}_TOTAL variables.
 parse_int_smoke_output() {
@@ -1897,20 +1898,35 @@ parse_int_smoke_output() {
     local int_failed=0
     local int_total=0
 
-    if [[ -f "$log_file" ]]; then
+    if [[ ! -f "$log_file" ]]; then
+        eval "${prefix}_PASS=0"
+        eval "${prefix}_FAIL=0"
+        eval "${prefix}_TOTAL=0"
+        echo "${prefix} stats: pass=0 fail=0 total=0 (no log file)"
+        return 0
+    fi
+
+    # Try run_tests.py "TEST SUITE SUMMARY" format first
+    # Lines: Total Cases: N / Passed: N / Failed: N
+    if grep -q "TEST SUITE SUMMARY" "$log_file" 2>/dev/null; then
+        int_total=$(grep "Total Cases:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Total Cases:[[:space:]]*\([0-9]\+\).*/\1/p')
+        int_passed=$(grep "Passed:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Passed:[[:space:]]*\([0-9]\+\).*/\1/p')
+        int_failed=$(grep "Failed:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Failed:[[:space:]]*\([0-9]\+\).*/\1/p')
+        [[ -z "$int_total" ]] && int_total=0
+        [[ -z "$int_passed" ]] && int_passed=0
+        [[ -z "$int_failed" ]] && int_failed=0
+    else
+        # Fallback: try pytest summary line (e.g., "======= X passed, Y failed in Zs =======")
         local summary_line
         summary_line=$(grep -E "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file" 2>/dev/null | tail -1 || true)
-
         if [[ -n "$summary_line" ]]; then
             int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
             if [[ -z "$int_passed" ]]; then
                 int_passed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p' | head -1)
             fi
             [[ -z "$int_passed" ]] && int_passed=0
-
             int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
             [[ -z "$int_failed" ]] && int_failed=0
-
             int_total=$((int_passed + int_failed))
         fi
     fi
@@ -2070,7 +2086,7 @@ generate_smoke_summary() {
       "pass": ${SMOKE_INT_QUOTA_PASS:-0},
       "fail": ${SMOKE_INT_QUOTA_FAIL:-0},
       "total": ${SMOKE_INT_QUOTA_TOTAL:-0},
-      "env": "env_126_quota"
+      "env": "${INT_ENV}"
     }
   },
   "aggregate": {
@@ -2101,7 +2117,7 @@ mdtest        [${mdt_status}]  ${mdt_reason}
 ltp           [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}
 int_client    [${int_client_status}]  pass: ${SMOKE_INT_CLIENT_PASS:-0}  fail: ${SMOKE_INT_CLIENT_FAIL:-0}  total: ${SMOKE_INT_CLIENT_TOTAL:-0}  env: ${INT_ENV}
 int_cache_node [${int_cachenode_status}]  pass: ${SMOKE_INT_CACHENODE_PASS:-0}  fail: ${SMOKE_INT_CACHENODE_FAIL:-0}  total: ${SMOKE_INT_CACHENODE_TOTAL:-0}  env: ${INT_ENV}
-int_quota     [${int_quota_status}]  pass: ${SMOKE_INT_QUOTA_PASS:-0}  fail: ${SMOKE_INT_QUOTA_FAIL:-0}  total: ${SMOKE_INT_QUOTA_TOTAL:-0}  env: env_126_quota
+int_quota     [${int_quota_status}]  pass: ${SMOKE_INT_QUOTA_PASS:-0}  fail: ${SMOKE_INT_QUOTA_FAIL:-0}  total: ${SMOKE_INT_QUOTA_TOTAL:-0}  env: ${INT_ENV}
 
 Aggregate: ${agg_status}
 ==============================================
@@ -2406,7 +2422,7 @@ smoke_run() {
     set +e
     (
         trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py quota --run-level smoke --env env_126_quota --reruns 5 2>&1 | tee "$int_quota_log"
+        cd "$INTEGRATION_DIR" && python3 run_tests.py quota --run-level smoke --env "$INT_ENV" --reruns 5 2>&1 | tee "$int_quota_log"
     )
     local int_quota_exit=${PIPESTATUS[0]}
     set -e
