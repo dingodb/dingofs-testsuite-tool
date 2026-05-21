@@ -20,6 +20,7 @@ MDSADDR_FILE="$CONFIG_DIR/mdsaddr"
 WEBHOOK_URL_FILE="$CONFIG_DIR/webhook_url"
 EMAIL_FILE="$CONFIG_DIR/email"
 RUNTIME_FILE="$CONFIG_DIR/runtime"
+INTENV_FILE="$CONFIG_DIR/int_env"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
@@ -61,6 +62,9 @@ load_config() {
         runtime)
             [[ -f "$RUNTIME_FILE" ]] && cat "$RUNTIME_FILE" || echo "docker"
             ;;
+        int_env)
+            [[ -f "$INTENV_FILE" ]] && cat "$INTENV_FILE" || echo "env_126_smoke"
+            ;;
     esac
 }
 
@@ -88,6 +92,9 @@ save_config() {
             ;;
         runtime)
             echo "$value" > "$RUNTIME_FILE"
+            ;;
+        int_env)
+            echo "$value" > "$INTENV_FILE"
             ;;
     esac
 }
@@ -136,6 +143,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt config set webhook_url <url> 设置企业微信webhook地址
   dtt config set email <地址>      设置邮件通知地址 (默认: daigy@zetyun.com)
   dtt config set runtime <运行时>  设置容器运行时 (docker 或 podman, 默认: docker)
+  dtt config set int_env <环境名>   设置集成测试环境名 (默认: env_126_smoke)
   dtt config show                 显示当前配置
 
 测试命令:
@@ -371,6 +379,7 @@ cmd_smoke() {
     local config_output=$(load_config output)
     local config_mdsaddr=$(load_config mdsaddr)
     local runtime=$(load_config runtime)
+    local int_env=$(load_config int_env)
 
     # Handle --help before config checks
     if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
@@ -484,6 +493,9 @@ cmd_smoke() {
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
 
+    # Integration test environment
+    docker_cmd+=("-e" "INT_ENV=$int_env")
+
     # Print execution info
     echo "Starting smoke test suite..."
     echo "  Image:       $image"
@@ -520,13 +532,13 @@ cmd_config() {
             fi
 
             case "$key" in
-                testdir|output|image|mdsaddr|webhook_url|email|runtime)
+                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email, runtime"
+                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env"
                     return 1
                     ;;
             esac
@@ -540,6 +552,7 @@ cmd_config() {
             local webhook=$(load_config webhook_url)
             local email=$(load_config email)
             local runtime=$(load_config runtime)
+            local int_env=$(load_config int_env)
             echo "  testdir: ${td:-not set}"
             echo "  output:  ${out:-not set}"
             echo "  image:   ${img:-not set}"
@@ -547,6 +560,7 @@ cmd_config() {
             echo "  webhook_url: ${webhook:-not set}"
             echo "  email: ${email:-not set}"
             echo "  runtime: ${runtime:-docker}"
+            echo "  int_env: ${int_env:-env_126_smoke}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then

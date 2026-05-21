@@ -34,7 +34,7 @@ progress:
 Phase: 19 (CLI & Notification) — COMPLETE
 Plan: 19-01
 Status: v1.5 milestone complete — 3/3 phases, 9/9 requirements delivered
-Last activity: 2026-05-20 — Phase 19 executed and verified
+Last activity: 2026-05-21 - Completed quick task 260521-leq: dtt config add int_env param and smoke add client/cache_node/quota scenarios
 
 ```
 Progress: ██████████████████████ 3/3 phases complete (v1.5)
@@ -80,6 +80,12 @@ Progress: ██████████████████████ 3/3
 ### Blockers
 
 (None)
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260521-leq | dtt config add int_env param and smoke add client/cache_node/quota scenarios | 2026-05-21 | 2df1663 | [260521-leq-dtt-config-add-int-env-param-and-smoke-a](./quick/260521-leq-dtt-config-add-int-env-param-and-smoke-a/) |
 
 ### Key Files
 

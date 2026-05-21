@@ -41,6 +41,9 @@ WEBHOOK_URL="${WEBHOOK_URL:-}"
 EMAIL_ENABLED="${EMAIL:-no}"
 EMAIL_TO="${EMAIL_TO:-daigy@zetyun.com}"
 
+# Integration test environment
+INT_ENV="${INT_ENV:-env_126_smoke}"
+
 # Source notification script
 if [[ -f "/scripts/notify.sh" ]]; then
     source /scripts/notify.sh
@@ -1880,6 +1883,42 @@ parse_ltp_output() {
     echo "ltp stats: pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL [timeout=$timeout_str]"
 }
 
+# Parse integration test pytest output for smoke results.
+# Arguments: $1 = log file path; $2 = variable prefix (e.g., SMOKE_INT_CLIENT).
+# Sets global ${prefix}_PASS, ${prefix}_FAIL, ${prefix}_TOTAL variables.
+parse_int_smoke_output() {
+    local log_file="$1"
+    local prefix="$2"
+
+    local int_passed=0
+    local int_failed=0
+    local int_total=0
+
+    if [[ -f "$log_file" ]]; then
+        local summary_line
+        summary_line=$(grep -E "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file" 2>/dev/null | tail -1 || true)
+
+        if [[ -n "$summary_line" ]]; then
+            int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
+            if [[ -z "$int_passed" ]]; then
+                int_passed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p' | head -1)
+            fi
+            [[ -z "$int_passed" ]] && int_passed=0
+
+            int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
+            [[ -z "$int_failed" ]] && int_failed=0
+
+            int_total=$((int_passed + int_failed))
+        fi
+    fi
+
+    eval "${prefix}_PASS=$int_passed"
+    eval "${prefix}_FAIL=$int_failed"
+    eval "${prefix}_TOTAL=$int_total"
+
+    echo "${prefix} stats: pass=$int_passed fail=$int_failed total=$int_total"
+}
+
 # Validate mdtest smoke results using three conditions:
 # 1. Exit code is 0, 2. SUMMARY rate is present, 3. Operation counts are non-zero.
 # Arguments: $1 = directory path containing mdtest.raw files; $2 = mdtest exit code.
@@ -1963,6 +2002,21 @@ generate_smoke_summary() {
         ltp_status="PASS"
     fi
 
+    local int_client_status="FAIL"
+    if [[ ${SMOKE_INT_CLIENT_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_CLIENT_TOTAL:-0} -gt 0 ]]; then
+        int_client_status="PASS"
+    fi
+
+    local int_cachenode_status="FAIL"
+    if [[ ${SMOKE_INT_CACHENODE_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_CACHENODE_TOTAL:-0} -gt 0 ]]; then
+        int_cachenode_status="PASS"
+    fi
+
+    local int_quota_status="FAIL"
+    if [[ ${SMOKE_INT_QUOTA_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_QUOTA_TOTAL:-0} -gt 0 ]]; then
+        int_quota_status="PASS"
+    fi
+
     local agg_status="FAIL"
     [[ $aggregate_exit -eq 0 ]] && agg_status="PASS"
 
@@ -1993,6 +2047,27 @@ generate_smoke_summary() {
       "skip": ${SMOKE_LTP_SKIP:-0},
       "total": ${SMOKE_LTP_TOTAL:-0},
       "timeout": ${SMOKE_LTP_TIMEOUT:-0}
+    },
+    "int_client": {
+      "status": "${int_client_status}",
+      "pass": ${SMOKE_INT_CLIENT_PASS:-0},
+      "fail": ${SMOKE_INT_CLIENT_FAIL:-0},
+      "total": ${SMOKE_INT_CLIENT_TOTAL:-0},
+      "env": "${INT_ENV}"
+    },
+    "int_cache_node": {
+      "status": "${int_cachenode_status}",
+      "pass": ${SMOKE_INT_CACHENODE_PASS:-0},
+      "fail": ${SMOKE_INT_CACHENODE_FAIL:-0},
+      "total": ${SMOKE_INT_CACHENODE_TOTAL:-0},
+      "env": "${INT_ENV}"
+    },
+    "int_quota": {
+      "status": "${int_quota_status}",
+      "pass": ${SMOKE_INT_QUOTA_PASS:-0},
+      "fail": ${SMOKE_INT_QUOTA_FAIL:-0},
+      "total": ${SMOKE_INT_QUOTA_TOTAL:-0},
+      "env": "env_126_quota"
     }
   },
   "aggregate": {
@@ -2018,9 +2093,12 @@ Smoke Test Summary
 Timestamp: ${RUN_TIMESTAMP}
 ==============================================
 
-pjdtest  [${pjd_status}]  pass: ${SMOKE_PJD_PASS:-0}  fail: ${SMOKE_PJD_FAIL:-0}  skip: ${SMOKE_PJD_SKIP:-0}  total: ${SMOKE_PJD_TOTAL:-0}
-mdtest   [${mdt_status}]  ${mdt_reason}
-ltp      [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}
+pjdtest       [${pjd_status}]  pass: ${SMOKE_PJD_PASS:-0}  fail: ${SMOKE_PJD_FAIL:-0}  skip: ${SMOKE_PJD_SKIP:-0}  total: ${SMOKE_PJD_TOTAL:-0}
+mdtest        [${mdt_status}]  ${mdt_reason}
+ltp           [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}
+int_client    [${int_client_status}]  pass: ${SMOKE_INT_CLIENT_PASS:-0}  fail: ${SMOKE_INT_CLIENT_FAIL:-0}  total: ${SMOKE_INT_CLIENT_TOTAL:-0}  env: ${INT_ENV}
+int_cache_node [${int_cachenode_status}]  pass: ${SMOKE_INT_CACHENODE_PASS:-0}  fail: ${SMOKE_INT_CACHENODE_FAIL:-0}  total: ${SMOKE_INT_CACHENODE_TOTAL:-0}  env: ${INT_ENV}
+int_quota     [${int_quota_status}]  pass: ${SMOKE_INT_QUOTA_PASS:-0}  fail: ${SMOKE_INT_QUOTA_FAIL:-0}  total: ${SMOKE_INT_QUOTA_TOTAL:-0}  env: env_126_quota
 
 Aggregate: ${agg_status}
 ==============================================
@@ -2067,10 +2145,28 @@ send_smoke_notification() {
         ltp_status="FAIL"
     fi
 
+    local int_client_status="PASS"
+    if [[ ${SMOKE_INT_CLIENT_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_CLIENT_TOTAL:-0} -eq 0 ]]; then
+        int_client_status="FAIL"
+    fi
+
+    local int_cachenode_status="PASS"
+    if [[ ${SMOKE_INT_CACHENODE_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_CACHENODE_TOTAL:-0} -eq 0 ]]; then
+        int_cachenode_status="FAIL"
+    fi
+
+    local int_quota_status="PASS"
+    if [[ ${SMOKE_INT_QUOTA_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_QUOTA_TOTAL:-0} -eq 0 ]]; then
+        int_quota_status="FAIL"
+    fi
+
     # Build combined details string for notification functions (newline-separated for readability)
     local details="pjdtest[${pjd_status}] pass:${SMOKE_PJD_PASS:-0} fail:${SMOKE_PJD_FAIL:-0} skip:${SMOKE_PJD_SKIP:-0} total:${SMOKE_PJD_TOTAL:-0}
 mdtest[${mdt_status}]
-ltp[${ltp_status}] pass:${SMOKE_LTP_PASS:-0} fail:${SMOKE_LTP_FAIL:-0} skip:${SMOKE_LTP_SKIP:-0} total:${SMOKE_LTP_TOTAL:-0}"
+ltp[${ltp_status}] pass:${SMOKE_LTP_PASS:-0} fail:${SMOKE_LTP_FAIL:-0} skip:${SMOKE_LTP_SKIP:-0} total:${SMOKE_LTP_TOTAL:-0}
+int_client[${int_client_status}] pass:${SMOKE_INT_CLIENT_PASS:-0} fail:${SMOKE_INT_CLIENT_FAIL:-0} total:${SMOKE_INT_CLIENT_TOTAL:-0}
+int_cache_node[${int_cachenode_status}] pass:${SMOKE_INT_CACHENODE_PASS:-0} fail:${SMOKE_INT_CACHENODE_FAIL:-0} total:${SMOKE_INT_CACHENODE_TOTAL:-0}
+int_quota[${int_quota_status}] pass:${SMOKE_INT_QUOTA_PASS:-0} fail:${SMOKE_INT_QUOTA_FAIL:-0} total:${SMOKE_INT_QUOTA_TOTAL:-0}"
 
     echo ""
     echo "[notify] Sending combined smoke notification (WeChat: $WECHAT_ENABLED, Email: $EMAIL_ENABLED)..."
@@ -2088,10 +2184,13 @@ smoke_run() {
     echo "=============================================="
     echo "Smoke Test Suite"
     echo "=============================================="
-    echo "Executing 3 tools in sequence:"
-    echo "  1. pjdtest -s all"
-    echo "  2. mdtest  -s all -n 8"
-    echo "  3. ltp     -s smoke"
+    echo "Executing 6 tools in sequence:"
+    echo "  1. pjdtest     -s all"
+    echo "  2. mdtest      -s all -n 8"
+    echo "  3. ltp         -s smoke"
+    echo "  4. int_client  --run-level smoke --env $INT_ENV"
+    echo "  5. int_cache_node --run-level smoke --env $INT_ENV"
+    echo "  6. int_quota   --run-level smoke --env env_126_quota"
     echo "Output: $OUTPUT/smoke_${RUN_TIMESTAMP}/"
     echo "Mode:   fail-continue (all tools run regardless)"
     echo "=============================================="
@@ -2182,6 +2281,78 @@ smoke_run() {
     fi
     echo ""
 
+    # ---- Tool 4: int client ----
+    echo "=============================================="
+    echo "[4/6] Running integration test: client"
+    echo "=============================================="
+    local int_client_output="${smoke_base}/int_client"
+    mkdir -p "$int_client_output"
+    local int_client_log="${int_client_output}/int_client.log"
+    set +e
+    (
+        trap 'kill -INT $$' INT TERM
+        cd "$INTEGRATION_DIR" && python3 run_tests.py client --run-level smoke --env "$INT_ENV" --reruns 5 2>&1 | tee "$int_client_log"
+    )
+    local int_client_exit=${PIPESTATUS[0]}
+    set -e
+    echo "--- Parsing int client results ---"
+    parse_int_smoke_output "$int_client_log" "SMOKE_INT_CLIENT"
+    if [[ $int_client_exit -ne 0 ]]; then
+        echo "int client completed with failures (exit: $int_client_exit) -- continuing"
+        aggregate_exit=1
+    else
+        echo "int client completed successfully (exit: 0)"
+    fi
+    echo ""
+
+    # ---- Tool 5: int cache_node ----
+    echo "=============================================="
+    echo "[5/6] Running integration test: cache_node"
+    echo "=============================================="
+    local int_cachenode_output="${smoke_base}/int_cache_node"
+    mkdir -p "$int_cachenode_output"
+    local int_cachenode_log="${int_cachenode_output}/int_cache_node.log"
+    set +e
+    (
+        trap 'kill -INT $$' INT TERM
+        cd "$INTEGRATION_DIR" && python3 run_tests.py cache_node --run-level smoke --env "$INT_ENV" --reruns 5 2>&1 | tee "$int_cachenode_log"
+    )
+    local int_cachenode_exit=${PIPESTATUS[0]}
+    set -e
+    echo "--- Parsing int cache_node results ---"
+    parse_int_smoke_output "$int_cachenode_log" "SMOKE_INT_CACHENODE"
+    if [[ $int_cachenode_exit -ne 0 ]]; then
+        echo "int cache_node completed with failures (exit: $int_cachenode_exit) -- continuing"
+        aggregate_exit=1
+    else
+        echo "int cache_node completed successfully (exit: 0)"
+    fi
+    echo ""
+
+    # ---- Tool 6: int quota ----
+    echo "=============================================="
+    echo "[6/6] Running integration test: quota"
+    echo "=============================================="
+    local int_quota_output="${smoke_base}/int_quota"
+    mkdir -p "$int_quota_output"
+    local int_quota_log="${int_quota_output}/int_quota.log"
+    set +e
+    (
+        trap 'kill -INT $$' INT TERM
+        cd "$INTEGRATION_DIR" && python3 run_tests.py quota --run-level smoke --env env_126_quota --reruns 5 2>&1 | tee "$int_quota_log"
+    )
+    local int_quota_exit=${PIPESTATUS[0]}
+    set -e
+    echo "--- Parsing int quota results ---"
+    parse_int_smoke_output "$int_quota_log" "SMOKE_INT_QUOTA"
+    if [[ $int_quota_exit -ne 0 ]]; then
+        echo "int quota completed with failures (exit: $int_quota_exit) -- continuing"
+        aggregate_exit=1
+    else
+        echo "int quota completed successfully (exit: 0)"
+    fi
+    echo ""
+
     # Restore original environment
     OUTPUT="$orig_output"
     SCENARIO="$orig_scenario"
@@ -2198,9 +2369,12 @@ smoke_run() {
     echo "=============================================="
     echo "Smoke Test Suite Complete"
     echo "=============================================="
-    echo "  pjdtest: pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL (exit=$pjdtest_exit)"
-    echo "  mdtest:  $( [[ $SMOKE_MDT_PASS -eq 1 ]] && echo 'PASS' || echo 'FAIL' ) (exit=$mdtest_exit)"
-    echo "  ltp:     pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL (exit=$ltp_exit)"
+    echo "  pjdtest:     pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL (exit=$pjdtest_exit)"
+    echo "  mdtest:      $( [[ $SMOKE_MDT_PASS -eq 1 ]] && echo 'PASS' || echo 'FAIL' ) (exit=$mdtest_exit)"
+    echo "  ltp:         pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL (exit=$ltp_exit)"
+    echo "  int_client:  pass=$SMOKE_INT_CLIENT_PASS fail=$SMOKE_INT_CLIENT_FAIL total=$SMOKE_INT_CLIENT_TOTAL (exit=$int_client_exit)"
+    echo "  int_cache_node: pass=$SMOKE_INT_CACHENODE_PASS fail=$SMOKE_INT_CACHENODE_FAIL total=$SMOKE_INT_CACHENODE_TOTAL (exit=$int_cachenode_exit)"
+    echo "  int_quota:   pass=$SMOKE_INT_QUOTA_PASS fail=$SMOKE_INT_QUOTA_FAIL total=$SMOKE_INT_QUOTA_TOTAL (exit=$int_quota_exit)"
     echo "  aggregate exit: $aggregate_exit"
     echo "  Output: $smoke_base"
     echo "  Reports: smoke_summary.json, smoke_summary.txt"
