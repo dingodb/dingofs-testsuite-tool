@@ -40,30 +40,31 @@ mkdir -p "$CONFIG_DIR"
 
 load_config() {
     local key="$1"
+    local val=""
     case "$key" in
         testdir)
-            [[ -f "$TESTDIR_FILE" ]] && cat "$TESTDIR_FILE" || echo ""
+            val=$(cat "$TESTDIR_FILE" 2>/dev/null) && printf '%s' "$val" || echo ""
             ;;
         output)
-            [[ -f "$OUTPUT_FILE" ]] && cat "$OUTPUT_FILE" || echo ""
+            val=$(cat "$OUTPUT_FILE" 2>/dev/null) && printf '%s' "$val" || echo ""
             ;;
         image)
-            [[ -f "$IMAGE_FILE" ]] && cat "$IMAGE_FILE" || echo "$DEFAULT_IMAGE"
+            val=$(cat "$IMAGE_FILE" 2>/dev/null) && printf '%s' "$val" || echo "$DEFAULT_IMAGE"
             ;;
         mdsaddr)
-            [[ -f "$MDSADDR_FILE" ]] && cat "$MDSADDR_FILE" || echo ""
+            val=$(cat "$MDSADDR_FILE" 2>/dev/null) && printf '%s' "$val" || echo ""
             ;;
         webhook_url)
-            [[ -f "$WEBHOOK_URL_FILE" ]] && cat "$WEBHOOK_URL_FILE" || echo "$DEFAULT_WEBHOOK_URL"
+            val=$(cat "$WEBHOOK_URL_FILE" 2>/dev/null) && printf '%s' "$val" || echo "$DEFAULT_WEBHOOK_URL"
             ;;
         email)
-            [[ -f "$EMAIL_FILE" ]] && cat "$EMAIL_FILE" || echo "$DEFAULT_EMAIL"
+            val=$(cat "$EMAIL_FILE" 2>/dev/null) && printf '%s' "$val" || echo "$DEFAULT_EMAIL"
             ;;
         runtime)
-            [[ -f "$RUNTIME_FILE" ]] && cat "$RUNTIME_FILE" || echo "docker"
+            val=$(cat "$RUNTIME_FILE" 2>/dev/null) && printf '%s' "$val" || echo "docker"
             ;;
         int_env)
-            [[ -f "$INTENV_FILE" ]] && cat "$INTENV_FILE" || echo "env_126_smoke"
+            val=$(cat "$INTENV_FILE" 2>/dev/null) && printf '%s' "$val" || echo "env_126_smoke"
             ;;
     esac
 }
@@ -456,7 +457,10 @@ cmd_smoke() {
         echo "Please run 'dtt config set testdir <directory>' first."
         return 1
     fi
-    if [[ ! -d "$mount" ]]; then
+    if [[ -f "$mount" ]]; then
+        echo "Error: Mount path '$mount' is a file, not a directory"
+        return 1
+    elif [[ ! -d "$mount" ]]; then
         echo "Error: Mount directory '$mount' does not exist"
         return 1
     fi
@@ -907,7 +911,10 @@ run_testsuite() {
     fi
 
     # Validate mount directory exists
-    if [[ ! -d "$mount" ]]; then
+    if [[ -f "$mount" ]]; then
+        echo "Error: Mount path '$mount' is a file, not a directory"
+        return 1
+    elif [[ ! -d "$mount" ]]; then
         echo "Error: Mount directory '$mount' does not exist"
         return 1
     fi
