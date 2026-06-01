@@ -40,33 +40,24 @@ mkdir -p "$CONFIG_DIR"
 
 load_config() {
     local key="$1"
-    local val=""
+    local file=""
+    local default=""
     case "$key" in
-        testdir)
-            val=$(cat "$TESTDIR_FILE" 2>/dev/null) && printf '%s' "$val" || echo ""
-            ;;
-        output)
-            val=$(cat "$OUTPUT_FILE" 2>/dev/null) && printf '%s' "$val" || echo ""
-            ;;
-        image)
-            val=$(cat "$IMAGE_FILE" 2>/dev/null) && printf '%s' "$val" || echo "$DEFAULT_IMAGE"
-            ;;
-        mdsaddr)
-            val=$(cat "$MDSADDR_FILE" 2>/dev/null) && printf '%s' "$val" || echo ""
-            ;;
-        webhook_url)
-            val=$(cat "$WEBHOOK_URL_FILE" 2>/dev/null) && printf '%s' "$val" || echo "$DEFAULT_WEBHOOK_URL"
-            ;;
-        email)
-            val=$(cat "$EMAIL_FILE" 2>/dev/null) && printf '%s' "$val" || echo "$DEFAULT_EMAIL"
-            ;;
-        runtime)
-            val=$(cat "$RUNTIME_FILE" 2>/dev/null) && printf '%s' "$val" || echo "docker"
-            ;;
-        int_env)
-            val=$(cat "$INTENV_FILE" 2>/dev/null) && printf '%s' "$val" || echo "env_126_smoke"
-            ;;
+        testdir)   file="$TESTDIR_FILE"      default="" ;;
+        output)    file="$OUTPUT_FILE"       default="" ;;
+        image)     file="$IMAGE_FILE"        default="$DEFAULT_IMAGE" ;;
+        mdsaddr)   file="$MDSADDR_FILE"      default="" ;;
+        webhook_url) file="$WEBHOOK_URL_FILE" default="$DEFAULT_WEBHOOK_URL" ;;
+        email)     file="$EMAIL_FILE"        default="$DEFAULT_EMAIL" ;;
+        runtime)   file="$RUNTIME_FILE"      default="docker" ;;
+        int_env)   file="$INTENV_FILE"       default="env_126_smoke" ;;
     esac
+    if [[ -f "$file" ]]; then
+        local val
+        IFS= read -r val < "$file" 2>/dev/null && printf '%s' "$val" || printf '%s' "$default"
+    else
+        printf '%s' "$default"
+    fi
 }
 
 save_config() {
@@ -460,10 +451,8 @@ cmd_smoke() {
     if [[ -f "$mount" ]]; then
         echo "Error: Mount path '$mount' is a file, not a directory"
         return 1
-    elif [[ ! -d "$mount" ]]; then
-        echo "Error: Mount directory '$mount' does not exist"
-        return 1
     fi
+    mkdir -p "$mount"
 
     # Validate/create output directory
     local output="${config_output}"
@@ -914,10 +903,8 @@ run_testsuite() {
     if [[ -f "$mount" ]]; then
         echo "Error: Mount path '$mount' is a file, not a directory"
         return 1
-    elif [[ ! -d "$mount" ]]; then
-        echo "Error: Mount directory '$mount' does not exist"
-        return 1
     fi
+    mkdir -p "$mount"
 
     # Create output directory if it doesn't exist
     mkdir -p "$output"
