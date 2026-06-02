@@ -663,7 +663,7 @@ cmd_debug() {
             # FUSE mount: use shell cd to avoid runc mkdir on FUSE path
             debug_extra_args=("-c" "cd $container_mount; exec /bin/bash")
         fi
-        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" "$user_flag" "-v" "${host_mount}:${container_target}")
+        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" $user_flag "-v" "${host_mount}:${container_target}")
     else
         local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
     fi
