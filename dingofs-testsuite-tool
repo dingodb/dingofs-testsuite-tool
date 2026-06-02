@@ -472,6 +472,7 @@ cmd_smoke() {
 
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
+        --user $(stat -c '%u:%g' "$mount")
         -v "${mount}:/data"
         -v "${output}:/output"
     )
@@ -623,6 +624,7 @@ cmd_debug() {
     local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
 
     if [[ -n "$testdir" ]]; then
+        docker_cmd+=("--user" "$(stat -c '%u:%g' "$testdir")")
         docker_cmd+=("-v" "${testdir}:/data")
     fi
 
@@ -844,6 +846,7 @@ run_testsuite() {
         fi
         local docker_cmd=(
             $runtime run -it $mlperf_rm_flag --privileged --net=host
+            --user $(stat -c '%u:%g' "$mount")
             --shm-size=8g
             -v "${mount}:/data"
             -v "${output}:/output"
@@ -929,6 +932,7 @@ run_testsuite() {
 
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
+        --user $(stat -c '%u:%g' "$mount")
         "${ltp_extra_flags[@]}"
         -v "${mount}:/data"
         -v "${output}:/output"
