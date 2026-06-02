@@ -100,37 +100,6 @@ list_docker_images() {
     $runtime images --format "  {{.Repository}}:{{.Tag}}" 2>/dev/null
 }
 
-# Check if a path is on FUSE and inaccessible to root (Docker daemon).
-# Returns 0 if FUSE-inaccessible, 1 otherwise.
-_is_fuse_blocked() {
-    local path="$1"
-    local fstype
-    fstype=$(stat -f -c '%T' "$path" 2>/dev/null || echo "")
-    [[ "$fstype" == "fuseblk" ]] || return 1
-    # Root can't read FUSE mounts without allow_other
-    ! sudo test -r "$path" 2>/dev/null
-}
-
-# Resolve mount mapping, working around FUSE mounts that Docker daemon can't access.
-# When mount_path is on a FUSE filesystem blocked to root, uses the parent
-# directory as the bind-mount source and appends the basename to the container path,
-# and outputs a --user flag to run the container as the FUSE mount owner.
-# Output: host_path container_path user_flag (space-separated, one line)
-# user_flag is "--user UID:GID" for FUSE mounts, empty string otherwise.
-resolve_mount_target() {
-    local mount_path="$1"
-    local container_base="${2:-/data}"
-
-    if _is_fuse_blocked "$mount_path"; then
-        local subdir
-        subdir=$(basename "$mount_path")
-        local parent_dir
-        parent_dir=$(dirname "$mount_path")
-        echo "$parent_dir" "${container_base}/${subdir}" "--user $(id -u):$(id -g)"
-    else
-        echo "$mount_path" "$container_base" ""
-    fi
-}
 
 show_help() {
     cat << EOF
@@ -486,10 +455,6 @@ cmd_smoke() {
     fi
     mkdir -p "$mount"
 
-    # Resolve mount target (handle FUSE mounts root can't access)
-    local host_mount container_mount
-    read -r host_mount container_mount fuse_user_flag <<< "$(resolve_mount_target "$mount")"
-
     # Validate/create output directory
     local output="${config_output}"
     if [[ -z "$output" ]]; then
@@ -507,8 +472,7 @@ cmd_smoke() {
 
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
-        $fuse_user_flag
-        -v "${host_mount}:${container_mount}"
+        -v "${mount}:/data"
         -v "${output}:/output"
     )
 
@@ -559,7 +523,7 @@ cmd_smoke() {
     # Print execution info
     echo "Starting smoke test suite..."
     echo "  Image:       $image"
-    echo "  Test dir:    $host_mount -> $container_mount"
+    echo "  Test dir:    $mount -> /data"
     echo "  Output dir:  $output -> /output"
     if [[ -n "$wechat" ]]; then
         echo "  WeChat:      enabled"
@@ -573,7 +537,7 @@ cmd_smoke() {
     echo ""
 
     # Execute: run container with -t smoke, mounting test/output dirs
-    "${docker_cmd[@]}" "$image" /entrypoint.sh -t smoke -m "$container_mount" -o /output
+    "${docker_cmd[@]}" "$image" /entrypoint.sh -t smoke -m /data -o /output
 }
 
 cmd_config() {
@@ -649,11 +613,7 @@ cmd_debug() {
     fi
 
     echo "Starting debug shell with image: $image"
-    if [[ -n "$testdir" ]]; then
-        echo "Testdir: $testdir -> ${container_mount:-/data}"
-    else
-        echo "Testdir: <not set>"
-    fi
+    echo "Testdir: ${testdir:-<not set>}"
     echo "Output: ${output:-<not set>}"
     echo "MDSAddr: ${mdsaddr:-<not set>}"
     echo ""
@@ -663,10 +623,7 @@ cmd_debug() {
     local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
 
     if [[ -n "$testdir" ]]; then
-        local host_mount container_mount fuse_user_flag
-        read -r host_mount container_mount fuse_user_flag <<< "$(resolve_mount_target "$testdir")"
-        [[ -n "$fuse_user_flag" ]] && docker_cmd+=("$fuse_user_flag")
-        docker_cmd+=("-v" "${host_mount}:${container_mount}")
+        docker_cmd+=("-v" "${testdir}:/data")
     fi
 
     if [[ -n "$output" ]]; then
@@ -877,10 +834,6 @@ run_testsuite() {
         fi
         mkdir -p "$mount"
 
-        # Resolve mount target (handle FUSE mounts root can't access)
-        local host_mount container_mount fuse_user_flag
-        read -r host_mount container_mount fuse_user_flag <<< "$(resolve_mount_target "$mount")"
-
         # Create output directory if it doesn't exist
         mkdir -p "$output"
 
@@ -891,9 +844,8 @@ run_testsuite() {
         fi
         local docker_cmd=(
             $runtime run -it $mlperf_rm_flag --privileged --net=host
-            $fuse_user_flag
             --shm-size=8g
-            -v "${host_mount}:${container_mount}"
+            -v "${mount}:/data"
             -v "${output}:/output"
             -e "MODELS=${scenario}"
             -e "NUM_ACCELERATORS=${gpu_count}"
@@ -910,7 +862,7 @@ run_testsuite() {
         fi
 
         # Add container entrypoint args
-        docker_cmd+=("$image" "-t" "mlperf" "-s" "${scenario}" "-m" "$container_mount" "-o" "/output")
+        docker_cmd+=("$image" "-t" "mlperf" "-s" "${scenario}" "-m" "/data" "-o" "/output")
 
         # Print what we're about to do
         echo "Starting MLPerf Storage benchmark..."
@@ -922,7 +874,7 @@ run_testsuite() {
             echo "  Scale:       $scale"
         fi
         echo "  GPU Count:   $gpu_count"
-        echo "  Test dir:    $host_mount -> $container_mount"
+        echo "  Test dir:    $mount -> /data"
         echo "  Output dir:  $output -> /output"
         echo ""
 
@@ -956,10 +908,6 @@ run_testsuite() {
     fi
     mkdir -p "$mount"
 
-    # Resolve mount target (handle FUSE mounts root can't access)
-    local host_mount container_mount fuse_user_flag
-    read -r host_mount container_mount fuse_user_flag <<< "$(resolve_mount_target "$mount")"
-
     # Create output directory if it doesn't exist
     mkdir -p "$output"
 
@@ -981,9 +929,8 @@ run_testsuite() {
 
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
-        $fuse_user_flag
         "${ltp_extra_flags[@]}"
-        -v "${host_mount}:${container_mount}"
+        -v "${mount}:/data"
         -v "${output}:/output"
     )
 
@@ -1038,7 +985,7 @@ run_testsuite() {
     local entrypoint_cmd=(
         /entrypoint.sh
         -t "$tool"
-        -m "$container_mount"
+        -m /data
         -o /output
     )
 
@@ -1062,7 +1009,7 @@ run_testsuite() {
     fi
 
     echo "Running testsuite with image: $image"
-    echo "Mount: $host_mount -> $container_mount"
+    echo "Mount: $mount -> /data"
     echo "Output: $output -> /output"
     echo "Tool: $tool"
     if [[ -n "$scenario" ]]; then
