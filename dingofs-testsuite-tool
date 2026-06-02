@@ -111,7 +111,10 @@ _is_fuse_blocked() {
 }
 
 # Resolve mount mapping for FUSE mounts that Docker daemon can't access.
-# Output: host_path container_path
+# Output: host_path container_target container_mount_path
+#   host_path          - bind-mount source (parent dir for FUSE, original path otherwise)
+#   container_target   - bind-mount target (always /data)
+#   container_mount_path - entrypoint -m value (/data or /data/subdir for FUSE)
 resolve_mount_target() {
     local mount_path="$1"
     local container_base="${2:-/data}"
@@ -121,9 +124,9 @@ resolve_mount_target() {
         subdir=$(basename "$mount_path")
         local parent_dir
         parent_dir=$(dirname "$mount_path")
-        echo "$parent_dir" "${container_base}/${subdir}"
+        echo "$parent_dir" "$container_base" "${container_base}/${subdir}"
     else
-        echo "$mount_path" "$container_base"
+        echo "$mount_path" "$container_base" "$container_base"
     fi
 }
 
@@ -482,8 +485,8 @@ cmd_smoke() {
     mkdir -p "$mount"
 
     # Resolve mount target (handle FUSE mounts root can't access)
-    local host_mount container_mount
-    read -r host_mount container_mount <<< "$(resolve_mount_target "$mount")"
+    local host_mount container_target container_mount
+    read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$mount")"
 
     # Validate/create output directory
     local output="${config_output}"
@@ -503,7 +506,7 @@ cmd_smoke() {
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
         --user $(stat -c '%u:%g' "$mount")
-        -v "${host_mount}:${container_mount}"
+        -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
 
@@ -654,10 +657,10 @@ cmd_debug() {
     local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
 
     if [[ -n "$testdir" ]]; then
-        local host_mount container_mount
-        read -r host_mount container_mount <<< "$(resolve_mount_target "$testdir")"
+        local host_mount container_target container_mount
+        read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$testdir")"
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$testdir")")
-        docker_cmd+=("-v" "${host_mount}:${container_mount}")
+        docker_cmd+=("-v" "${host_mount}:${container_target}")
     fi
 
     if [[ -n "$output" ]]; then
@@ -869,8 +872,8 @@ run_testsuite() {
         mkdir -p "$mount"
 
         # Resolve mount target (handle FUSE mounts root can't access)
-        local host_mount container_mount
-        read -r host_mount container_mount <<< "$(resolve_mount_target "$mount")"
+        local host_mount container_target container_mount
+        read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$mount")"
 
         # Create output directory if it doesn't exist
         mkdir -p "$output"
@@ -884,7 +887,7 @@ run_testsuite() {
             $runtime run -it $mlperf_rm_flag --privileged --net=host
             --user $(stat -c '%u:%g' "$mount")
             --shm-size=8g
-            -v "${host_mount}:${container_mount}"
+            -v "${host_mount}:${container_target}"
             -v "${output}:/output"
             -e "MODELS=${scenario}"
             -e "NUM_ACCELERATORS=${gpu_count}"
@@ -913,7 +916,7 @@ run_testsuite() {
             echo "  Scale:       $scale"
         fi
         echo "  GPU Count:   $gpu_count"
-        echo "  Test dir:    $host_mount -> $container_mount"
+        echo "  Test dir:    $mount -> $container_mount"
         echo "  Output dir:  $output -> /output"
         echo ""
 
@@ -948,8 +951,8 @@ run_testsuite() {
     mkdir -p "$mount"
 
     # Resolve mount target (handle FUSE mounts root can't access)
-    local host_mount container_mount
-    read -r host_mount container_mount <<< "$(resolve_mount_target "$mount")"
+    local host_mount container_target container_mount
+    read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$mount")"
 
     # Create output directory if it doesn't exist
     mkdir -p "$output"
@@ -974,7 +977,7 @@ run_testsuite() {
         $runtime run $rm_flag --privileged --net=host
         --user $(stat -c '%u:%g' "$mount")
         "${ltp_extra_flags[@]}"
-        -v "${host_mount}:${container_mount}"
+        -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
 
@@ -1053,7 +1056,7 @@ run_testsuite() {
     fi
 
     echo "Running testsuite with image: $image"
-    echo "Mount: $host_mount -> $container_mount"
+    echo "Mount: $mount -> $container_mount"
     echo "Output: $output -> /output"
     echo "Tool: $tool"
     if [[ -n "$scenario" ]]; then
