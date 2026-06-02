@@ -661,6 +661,7 @@ cmd_debug() {
         read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$testdir")"
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$testdir")")
         docker_cmd+=("-v" "${host_mount}:${container_target}")
+        docker_cmd+=("-w" "$container_mount")
     fi
 
     if [[ -n "$output" ]]; then
