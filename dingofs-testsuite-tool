@@ -654,14 +654,18 @@ cmd_debug() {
     echo "Type 'exit' to leave the container"
     echo ""
 
-    local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
-
+    local debug_extra_args=()
     if [[ -n "$testdir" ]]; then
         local host_mount container_target container_mount
         read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$testdir")"
-        docker_cmd+=("--user" "$(stat -c '%u:%g' "$testdir")")
-        docker_cmd+=("-v" "${host_mount}:${container_target}")
-        docker_cmd+=("-w" "$container_mount")
+        local user_flag="--user $(stat -c '%u:%g' "$testdir")"
+        if [[ "$container_mount" != "/data" ]]; then
+            # FUSE mount: use shell cd to avoid runc mkdir on FUSE path
+            debug_extra_args=("-c" "cd $container_mount; exec /bin/bash")
+        fi
+        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" "$user_flag" "-v" "${host_mount}:${container_target}")
+    else
+        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
     fi
 
     if [[ -n "$output" ]]; then
@@ -692,7 +696,7 @@ cmd_debug() {
         docker_cmd+=("-e" "MDSADDR=$mdsaddr")
     fi
 
-    docker_cmd+=("$image")
+    docker_cmd+=("$image" "${debug_extra_args[@]}")
 
     "${docker_cmd[@]}"
 }
