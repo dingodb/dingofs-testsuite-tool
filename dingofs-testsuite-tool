@@ -102,12 +102,17 @@ list_docker_images() {
 
 
 # Check if a path is on FUSE and inaccessible to root (Docker daemon).
+# Also catches stale/disconnected mounts where stat fails entirely.
 _is_fuse_blocked() {
     local path="$1"
     local fstype
     fstype=$(stat -f -c '%T' "$path" 2>/dev/null || echo "")
-    [[ "$fstype" == "fuseblk" ]] || return 1
-    ! sudo test -r "$path" 2>/dev/null
+    # FUSE filesystem, or stat failed entirely (stale mount)
+    if [[ "$fstype" == "fuseblk" ]] || [[ -z "$fstype" ]]; then
+        ! sudo test -r "$path" 2>/dev/null
+        return $?
+    fi
+    return 1
 }
 
 # Resolve mount mapping for FUSE mounts that Docker daemon can't access.

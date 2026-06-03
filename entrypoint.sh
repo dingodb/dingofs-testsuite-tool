@@ -2274,6 +2274,39 @@ smoke_run() {
     local ltp_exit=0
     local aggregate_exit=0
 
+    # ---- Setup: test environment initialization ----
+    echo "=============================================="
+    echo "[Setup] Running test environment setup: $INT_ENV"
+    echo "=============================================="
+    local setup_output
+    set +e
+    setup_output=$(
+        trap 'kill -INT $$' INT TERM
+        cd "$INTEGRATION_DIR" && python3 tests/test_env_setup.py "$INT_ENV" 2>&1
+    )
+    local setup_exit=$?
+    set -e
+    echo "$setup_output"
+    if [[ $setup_exit -ne 0 ]]; then
+        echo "WARNING: test_env_setup.py failed (exit: $setup_exit) -- continuing"
+        aggregate_exit=1
+    else
+        echo "test_env_setup.py completed successfully"
+    fi
+
+    # Extract DINGOFS_TEMP_MOUNTDIR from setup output.
+    # The host parent dir is bind-mounted to /data, so the container path
+    # is /data/<basename_of_temp_mountdir>.
+    local temp_mountdir_host
+    temp_mountdir_host=$(echo "$setup_output" | sed -n 's/.*DINGOFS_TEMP_MOUNTDIR=//p' | head -1 | xargs)
+    if [[ -n "$temp_mountdir_host" ]]; then
+        local temp_mountdir_name
+        temp_mountdir_name=$(basename "$temp_mountdir_host")
+        MOUNT="/data/${temp_mountdir_name}"
+        echo "Smoke mount point updated to: $MOUNT"
+    fi
+    echo ""
+
     # ---- Tool 1: pjdtest -s all ----
     if ! is_excluded "pjdtest"; then
     echo "=============================================="
