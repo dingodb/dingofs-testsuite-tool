@@ -210,7 +210,9 @@ RUN cd /dingofs-integration-test && \
     pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
     chmod +x run_tests.py && \
     mkdir -p log && chmod 777 log && \
-    chmod 777 /opt/ltp
+    chmod 777 /opt/ltp && \
+    mkdir -p /opt/ltp/results /opt/ltp/output && \
+    chmod 777 /opt/ltp/results /opt/ltp/output
 
 # Phase 2: Copy and set entrypoint
 COPY entrypoint.sh /entrypoint.sh
