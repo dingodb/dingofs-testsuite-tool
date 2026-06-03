@@ -1341,9 +1341,10 @@ ltp_run() {
     # Change to mount directory for test execution
     cd "$MOUNT"
 
-    # Clean up stale ltp-pan zoo files and set TMPDIR to a writable location
-    rm -f /tmp/ltp-zoo.* 2>/dev/null || true
+    # Clean up stale ltp-pan zoo files and set TMPDIR to writable location
+    rm -f /opt/ltp/active /opt/ltp/ltp-zoo.* /tmp/ltp-zoo.* 2>/dev/null || true
     export TMPDIR="/opt/ltp"
+    export TMP="/opt/ltp"
 
     # Generate timestamp for output file
     local timestamp
