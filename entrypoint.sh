@@ -2274,25 +2274,6 @@ smoke_run() {
     local ltp_exit=0
     local aggregate_exit=0
 
-    # ---- Setup: test environment initialization ----
-    echo "=============================================="
-    echo "[Setup] Running test environment setup: $INT_ENV"
-    echo "=============================================="
-    set +e
-    (
-        trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 tests/test_env_setup.py "$INT_ENV" 2>&1
-    )
-    local setup_exit=$?
-    set -e
-    if [[ $setup_exit -ne 0 ]]; then
-        echo "WARNING: test_env_setup.py failed (exit: $setup_exit) -- continuing"
-        aggregate_exit=1
-    else
-        echo "test_env_setup.py completed successfully"
-    fi
-    echo ""
-
     # ---- Tool 1: pjdtest -s all ----
     if ! is_excluded "pjdtest"; then
     echo "=============================================="
