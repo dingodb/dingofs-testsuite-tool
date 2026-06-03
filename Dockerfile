@@ -208,7 +208,8 @@ RUN chmod +x /usr/local/bin/dingo
 COPY dingofs-integration-test /dingofs-integration-test
 RUN cd /dingofs-integration-test && \
     pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
-    chmod +x run_tests.py
+    chmod +x run_tests.py && \
+    mkdir -p log && chmod 777 log
 
 # Phase 2: Copy and set entrypoint
 COPY entrypoint.sh /entrypoint.sh
