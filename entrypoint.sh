@@ -1341,6 +1341,8 @@ ltp_run() {
     # Change to mount directory for test execution
     cd "$MOUNT"
 
+    # Fix /dev/kmsg permissions for non-root user
+    chmod 666 /dev/kmsg 2>/dev/null || true
     # Force zoo file to be in /opt/ltp instead of CWD to avoid stale root-owned files
     local ltp_zoofile="/opt/ltp/zoofile_$$"
     rm -f "$ltp_zoofile" 2>/dev/null || true
