@@ -1341,6 +1341,9 @@ ltp_run() {
     # Change to mount directory for test execution
     cd "$MOUNT"
 
+    # Clean up stale ltp-pan zoo files so non-root user can create new ones
+    rm -f /tmp/ltp-zoo.* 2>/dev/null || true
+
     # Generate timestamp for output file
     local timestamp
     timestamp=$(date +"%Y%m%d_%H%M%S")
