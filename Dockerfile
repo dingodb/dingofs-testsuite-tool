@@ -221,6 +221,9 @@ COPY entrypoint.sh /entrypoint.sh
 COPY run_model.sh /usr/local/bin/run_model.sh
 RUN chmod +x /usr/local/bin/run_model.sh
 RUN chmod +x /entrypoint.sh
+# Ensure non-root users can access all tool directories
+RUN chmod -R a+rX /opt /dingofs-integration-test /pjdtest /scenarios /scripts
+
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
 # Prevent OpenBLAS from spawning one thread per CPU core
