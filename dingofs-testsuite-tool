@@ -161,6 +161,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   int       - DingoFS集成测试 (自动化框架)
   mlperf    - MLPerf Storage 存储基准测试
   smoke     - 冒烟测试 (pjdtest + mdtest + ltp + int_client + int_cache_node + int_quota)
+  daily     - 每日集成测试 (client + cache_node + quota + basic_file_operation)
 
 配置子命令:
   dtt config set testdir <目录>    设置测试目录 (挂载点)
@@ -416,9 +417,223 @@ Smoke Test Suite
 EOF
 }
 
+show_daily_help() {
+    cat << 'EOF'
+Daily Integration Test
+=====================
+
+每日集成测试，运行 client / cache_node / quota / basic_file_operation 四个模块。
+
+用法:
+  dtt daily [选项]
+
+说明:
+  dtt daily 会在容器 /dingofs-integration-test 目录下执行 run_tests.py，
+  依次测试四个集成测试模块，结果通过 email 和微信发送。
+
+选项:
+  --env <环境编号>        环境编号 (默认: 126)
+  --email [地址]           邮件通知地址 (可选，默认: dingofs@zetyun.com)
+  --wechat                 启用企业微信通知
+  --debug                  调试模式，容器执行完毕后保留不删除
+  --help, -h               显示此帮助信息
+
+示例:
+  # 使用默认环境 126
+  dtt daily
+
+  # 指定自定义邮件地址
+  dtt daily --email daigy@zetyun.com
+
+  # 同时启用微信和邮件
+  dtt daily --wechat --email daigy@zetyun.com
+
+  # 调试模式（保留容器）
+  dtt daily --debug
+
+注意:
+  - 需要先配置 testdir 和 output:
+    dtt config set testdir <目录>
+    dtt config set output <目录>
+  - commit_info.yaml 需要存在于指定路径下
+  - 微信通知使用配置中的 webhook_url
+
+更多信息:
+  - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
+EOF
+}
+
 # ==============================================================================
 # Command Handlers
 # ==============================================================================
+
+cmd_daily() {
+    local image=$(load_config image)
+    local config_testdir=$(load_config testdir)
+    local config_output=$(load_config output)
+    local config_mdsaddr=$(load_config mdsaddr)
+    local runtime=$(load_config runtime)
+
+    # Handle --help before config checks
+    if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
+        show_daily_help
+        return 0
+    fi
+
+    # Parse flags
+    local env="126"
+    local email_to="dingofs@zetyun.com"
+    local wechat=""
+    local debug=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --env)
+                env="$2"
+                shift 2
+                ;;
+            --email)
+                if [[ -n "$2" ]] && [[ "$2" != -* ]]; then
+                    email_to="$2"
+                    shift 2
+                else
+                    email_to="dingofs@zetyun.com"
+                    shift
+                fi
+                ;;
+            --wechat)
+                wechat="yes"
+                shift
+                ;;
+            --debug)
+                debug="yes"
+                shift
+                ;;
+            --help|-h)
+                show_daily_help
+                return 0
+                ;;
+            *)
+                echo "Error: Unknown option '$1'"
+                echo "Run 'dtt daily --help' for usage information"
+                return 1
+                ;;
+        esac
+    done
+
+    # Validate image
+    if [[ -z "$image" ]]; then
+        echo "Error: No Docker image configured."
+        echo "Please run 'dtt config set image <image>' first."
+        return 1
+    fi
+
+    # Validate/test directory
+    local mount="${config_testdir}"
+    if [[ -n "$mount" ]]; then
+        if [[ -f "$mount" ]]; then
+            echo "Error: Mount path '$mount' is a file, not a directory"
+            return 1
+        fi
+        mkdir -p "$mount"
+    fi
+
+    # Resolve mount target (FUSE workaround)
+    local host_mount container_target container_mount
+    if [[ -n "$mount" ]]; then
+        read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$mount")"
+    fi
+
+    # Validate/create output directory
+    local output="${config_output}"
+    if [[ -z "$output" ]]; then
+        echo "Error: Output directory not set."
+        echo "Please run 'dtt config set output <directory>' first."
+        return 1
+    fi
+    mkdir -p "$output"
+
+    # commit_info.yaml file path
+    local commit_info_file="/home/jenkins/jenkins_workdir/script-main/commit_info.yaml"
+
+    # Build docker/podman command
+    local rm_flag="--rm"
+    if [[ -n "$debug" ]]; then
+        rm_flag=""
+    fi
+
+    local docker_cmd=(
+        $runtime run $rm_flag --privileged --net=host
+        --entrypoint /bin/bash
+    )
+
+    # Add --user if testdir is set (for FUSE access)
+    if [[ -n "$mount" ]]; then
+        docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
+        docker_cmd+=("-v" "${host_mount}:${container_target}")
+    fi
+
+    docker_cmd+=("-v" "${output}:/output")
+
+    # Mount commit_info.yaml if it exists
+    if [[ -f "$commit_info_file" ]]; then
+        docker_cmd+=("-v" "${commit_info_file}:${commit_info_file}:ro")
+    else
+        echo "Warning: commit_info.yaml not found at $commit_info_file"
+    fi
+
+    # MDS address
+    if [[ -n "$config_mdsaddr" ]]; then
+        docker_cmd+=("-e" "MDSADDR=$config_mdsaddr")
+        local -a added_ips=()
+        while IFS=',' read -ra ADDRS; do
+            for addr in "${ADDRS[@]}"; do
+                addr=$(echo "$addr" | xargs)
+                [[ -n "$addr" ]] || continue
+                local ip="${addr%:*}"
+                local already_added=false
+                for existing in "${added_ips[@]}"; do
+                    [[ "$existing" == "$ip" ]] && already_added=true && break
+                done
+                if [[ "$already_added" == "false" ]]; then
+                    docker_cmd+=("--add-host" "mds:${ip}")
+                    added_ips+=("$ip")
+                fi
+            done
+        done <<< "$config_mdsaddr"
+    fi
+
+    # Build the python command
+    local py_cmd="cd /dingofs-integration-test && python3 run_tests.py \
+        client --env env_${env}_smoke --run-level smoke \
+        cache_node --env env_${env}_smoke --run-level smoke \
+        quota --env env_${env}_quota \
+        basic_file_operation --env env_${env}_smoke \
+        --commit_info_file_path ${commit_info_file} \
+        --reruns 5 --email ${email_to}"
+
+    if [[ -n "$wechat" ]]; then
+        py_cmd="${py_cmd} --wechat"
+    fi
+
+    docker_cmd+=("$image" "-c" "$py_cmd")
+
+    # Print execution info
+    echo "Starting daily integration test..."
+    echo "  Image:       $image"
+    echo "  Environment: $env"
+    echo "  Email:       $email_to"
+    echo "  WeChat:      ${wechat:-no}"
+    if [[ -n "$mount" ]]; then
+        echo "  Test dir:    $mount -> $container_mount"
+    fi
+    echo "  Output dir:  $output -> /output"
+    if [[ -n "$debug" ]]; then
+        echo "  Debug:       container will be preserved"
+    fi
+    echo ""
+
+    "${docker_cmd[@]}"
+}
 
 cmd_smoke() {
     local image=$(load_config image)
@@ -1092,6 +1307,10 @@ dingofs-testsuite-tool() {
         smoke)
             shift
             cmd_smoke "$@"
+            ;;
+        daily)
+            shift
+            cmd_daily "$@"
             ;;
         config)
             shift
