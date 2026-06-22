@@ -422,7 +422,7 @@ show_daily_help() {
 Daily Integration Test
 =====================
 
-每日集成测试，运行 client / cache_node / quota / basic_file_operation 四个模块。
+每日集成测试，运行 client / cache_node / quota / basic_file_operation / mount_subdir 五个模块。
 
 用法:
   dtt daily [选项]
@@ -623,6 +623,7 @@ cmd_daily() {
         cache_node --env env_${env}_smoke --run-level smoke \
         quota --env env_${env}_quota \
         basic_file_operation --env env_${env}_smoke \
+        mount_subdir --env env_${env}_mount_subdir \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
 
