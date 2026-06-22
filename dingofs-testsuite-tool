@@ -436,6 +436,7 @@ Daily Integration Test
   --email [地址]           邮件通知地址 (可选，默认: dingofs@zetyun.com)
   --wechat                 启用企业微信通知
   --debug                  调试模式，容器执行完毕后保留不删除
+  --report-path <路径>     报告输出路径，映射到容器 /allure-report (默认: /output)
   --help, -h               显示此帮助信息
 
 示例:
@@ -450,6 +451,9 @@ Daily Integration Test
 
   # 调试模式（保留容器）
   dtt daily --debug
+
+  # 指定报告路径
+  dtt daily --report-path /mnt/reports
 
 注意:
   - 需要先配置 testdir 和 output:
@@ -485,6 +489,7 @@ cmd_daily() {
     local email_to="dingofs@zetyun.com"
     local wechat=""
     local debug=""
+    local report_path=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --env)
@@ -507,6 +512,10 @@ cmd_daily() {
             --debug)
                 debug="yes"
                 shift
+                ;;
+            --report-path)
+                report_path="$2"
+                shift 2
                 ;;
             --help|-h)
                 show_daily_help
@@ -574,6 +583,12 @@ cmd_daily() {
 
     docker_cmd+=("-v" "${output}:/output")
 
+    # Mount report path if specified
+    if [[ -n "$report_path" ]]; then
+        mkdir -p "$report_path"
+        docker_cmd+=("-v" "${report_path}:/allure-report")
+    fi
+
     # Mount commit_info.yaml if it exists
     if [[ -f "$commit_info_file" ]]; then
         docker_cmd+=("-v" "${commit_info_file}:${commit_info_file}:ro")
@@ -615,6 +630,12 @@ cmd_daily() {
         py_cmd="${py_cmd} --wechat"
     fi
 
+    if [[ -n "$report_path" ]]; then
+        py_cmd="${py_cmd} --report-path /allure-report"
+    else
+        py_cmd="${py_cmd} --report-path /output"
+    fi
+
     docker_cmd+=("$image" "-c" "$py_cmd")
 
     # Print execution info
@@ -627,6 +648,9 @@ cmd_daily() {
         echo "  Test dir:    $mount -> $container_mount"
     fi
     echo "  Output dir:  $output -> /output"
+    if [[ -n "$report_path" ]]; then
+        echo "  Report path: $report_path -> /allure-report"
+    fi
     if [[ -n "$debug" ]]; then
         echo "  Debug:       container will be preserved"
     fi
