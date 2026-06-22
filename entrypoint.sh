@@ -1396,7 +1396,7 @@ ltp_run() {
         # Use subshell to allow Ctrl+C to interrupt
         (
             trap 'kill -INT $$' INT TERM
-            timeout 3600 /opt/ltp/runltp -f "$scenario" -W "$ltp_zoofile" -d . -p "$OUTPUT" -l "${output_file}_${scenario}.log" 2>&1 | tee "${output_file}_${scenario}.raw"
+            timeout 3600 /opt/ltp/runltp -Q -f "$scenario" -W "$ltp_zoofile" -d . -p "$OUTPUT" -l "${output_file}_${scenario}.log" 2>&1 | tee "${output_file}_${scenario}.raw"
         )
         local ltp_exit=${PIPESTATUS[0]}
         if [[ $ltp_exit -ne 0 ]]; then
