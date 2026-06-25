@@ -433,8 +433,10 @@ Daily Integration Test
 
 选项:
   --env <环境编号>        环境编号 (默认: 126)
-  --email [地址]           邮件通知地址 (可选，默认: dingofs@zetyun.com)
+  --email [地址]           邮件地址，支持逗号分隔多个 (默认: dingofs@zetyun.com)
   --wechat                 启用企业微信通知
+  --daily                  启用每日模式，传递给 run_tests.py
+  --report-port <端口>     Allure 报告服务端口，传递给 run_tests.py
   --debug                  调试模式，容器执行完毕后保留不删除
   --report-path <路径>     报告输出路径，映射到容器 /allure-report (默认: /output)
   --help, -h               显示此帮助信息
@@ -454,6 +456,9 @@ Daily Integration Test
 
   # 指定报告路径
   dtt daily --report-path /mnt/reports
+
+  # 启用每日模式并指定报告端口
+  dtt daily --daily --report-port 8080
 
 注意:
   - 需要先配置 testdir 和 output:
@@ -490,6 +495,8 @@ cmd_daily() {
     local wechat=""
     local debug=""
     local report_path=""
+    local daily=""
+    local report_port=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --env)
@@ -515,6 +522,14 @@ cmd_daily() {
                 ;;
             --report-path)
                 report_path="$2"
+                shift 2
+                ;;
+            --daily)
+                daily="yes"
+                shift
+                ;;
+            --report-port)
+                report_port="$2"
                 shift 2
                 ;;
             --help|-h)
@@ -638,6 +653,14 @@ cmd_daily() {
         py_cmd="${py_cmd} --report-path /output"
     fi
 
+    if [[ -n "$daily" ]]; then
+        py_cmd="${py_cmd} --daily"
+    fi
+
+    if [[ -n "$report_port" ]]; then
+        py_cmd="${py_cmd} --report-port ${report_port}"
+    fi
+
     docker_cmd+=("$image" "-c" "$py_cmd")
 
     # Print execution info
@@ -646,6 +669,10 @@ cmd_daily() {
     echo "  Environment: $env"
     echo "  Email:       $email_to"
     echo "  WeChat:      ${wechat:-no}"
+    echo "  Daily:       ${daily:-no}"
+    if [[ -n "$report_port" ]]; then
+        echo "  Report port: $report_port"
+    fi
     if [[ -n "$mount" ]]; then
         echo "  Test dir:    $mount -> $container_mount"
     fi
