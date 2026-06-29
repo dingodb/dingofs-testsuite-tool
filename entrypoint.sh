@@ -1254,6 +1254,9 @@ mdtest_run() {
         local mdtest_exit=$?
         set -e
 
+        # Save the command for report generation
+        grep -v '^#' "$script" | head -1 > "$scenario_output/mdtest.cmd" 2>/dev/null || true
+
         if [[ $mdtest_exit -ne 0 ]]; then
             echo "Warning: Scenario '$scenario_name' exited with code $mdtest_exit"
             overall_exit=$mdtest_exit

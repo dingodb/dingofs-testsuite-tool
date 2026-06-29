@@ -645,12 +645,23 @@ def aggregate_mdtest_results(output_dir):
         summary = parse_mdtest_summary(raw_text)
         file_count = extract_mdtest_file_count(raw_text)
 
+        # Read stored command from mdtest.cmd (written by entrypoint.sh)
+        cmd = ""
+        cmd_path = os.path.join(subdir_path, "mdtest.cmd")
+        if os.path.exists(cmd_path):
+            try:
+                with open(cmd_path, "r") as f:
+                    cmd = f.read().strip()
+            except IOError:
+                pass
+
         scenarios.append({
             "name": subdir,
             "params": params,
             "file_count": file_count,
             "operations": summary.get("operations", []),
             "raw_output": raw_text,
+            "cmd": cmd,
         })
 
     return scenarios
@@ -747,8 +758,9 @@ def generate_mdtest_combined_markdown(output_dir, scenarios, mount, np=16):
                 cmd = f"mdtest -z {params['z']} -b {params['b']} -I {params['I']} -d ./"
             else:
                 cmd = f"mdtest -d ./test -z {params['z']} -F -n {params['n']}"
+        elif sc.get("cmd"):
+            cmd = sc["cmd"]
         else:
-            # Custom scenario: params not parseable from name
             cmd = f"(custom scenario: {sc['name']})"
 
         lines.append(f"### {sc['name']}")
