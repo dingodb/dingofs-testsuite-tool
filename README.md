@@ -1,6 +1,6 @@
 # DingoFS 存储性能测试工具
 
-DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbench、mdtest 三种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
+DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、mdtest、ltp、mlperf登多种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
 
 ## 快速开始 (dingofs-testsuite-tool)
 
