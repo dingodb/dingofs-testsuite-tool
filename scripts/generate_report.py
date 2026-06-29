@@ -714,7 +714,10 @@ def generate_mdtest_combined_markdown(output_dir, scenarios, mount, np=16):
 
     for sc in scenarios:
         params = sc["params"]
-        if params["b"] is not None:
+        if params["z"] is None:
+            # Custom scenario: params not parseable from name
+            z, b, I, n = "-", "-", "-", "-"
+        elif params["b"] is not None:
             # z5_b4_I1 format
             z = params["z"]
             b = params["b"]
@@ -739,10 +742,14 @@ def generate_mdtest_combined_markdown(output_dir, scenarios, mount, np=16):
     # Detailed data for each scenario
     for sc in scenarios:
         params = sc["params"]
-        if params["b"] is not None:
-            cmd = f"mdtest -z {params['z']} -b {params['b']} -I {params['I']} -d ./"
+        if params["z"] is not None:
+            if params["b"] is not None:
+                cmd = f"mdtest -z {params['z']} -b {params['b']} -I {params['I']} -d ./"
+            else:
+                cmd = f"mdtest -d ./test -z {params['z']} -F -n {params['n']}"
         else:
-            cmd = f"mdtest -d ./test -z {params['z']} -F -n {params['n']}"
+            # Custom scenario: params not parseable from name
+            cmd = f"(custom scenario: {sc['name']})"
 
         lines.append(f"### {sc['name']}")
         lines.append(f"**命令**: `{cmd}`")
