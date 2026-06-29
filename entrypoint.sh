@@ -1231,6 +1231,7 @@ mdtest_run() {
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(basename "$script" .sh)
+        scenario_name=$(basename "$scenario_name" .mdtest)
         # Each scenario gets its own subdirectory
         local scenario_output="$mdtest_base/$scenario_name"
         local scenario_start_time=$(date +"%Y-%m-%d %H:%M:%S")
