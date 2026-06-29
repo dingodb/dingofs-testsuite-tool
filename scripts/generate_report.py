@@ -87,35 +87,39 @@ def parse_fio_scenario_name(scenario_name):
     return None
 
 
+def _extract_params_from_fio_job(job):
+    """Extract scenario parameters from fio job options (for custom scenarios)."""
+    opts = job.get("job options", {})
+    rw = opts.get("rw", "read")
+    bs = opts.get("bs", "4m")
+    numjobs = int(opts.get("numjobs", 1))
+    direct = int(opts.get("direct", 1))
+    return {"rw": rw, "bs": bs, "numjobs": numjobs, "direct": direct}
+
+
 def process_fio_json(fio_json_path, scenario_name, direct_0, direct_1):
-    """Process a single fio.json file and add metrics to the appropriate dictionary.
-
-    Args:
-        fio_json_path: Path to the fio.json file
-        scenario_name: Name of the scenario (used for parsing parameters)
-        direct_0: Dictionary to store direct=0 results (modified in place)
-        direct_1: Dictionary to store direct=1 results (modified in place)
-    """
-    # Parse scenario name to get parameters
-    params = parse_fio_scenario_name(scenario_name)
-    if not params:
-        return
-
-    # Read and parse fio JSON
+    """Process a single fio.json file and add metrics to the appropriate dictionary."""
+    # Read and parse fio JSON first (needed for custom scenario param extraction)
     try:
         with open(fio_json_path, "r") as f:
             data = json.load(f)
     except (json.JSONDecodeError, IOError):
         return
 
-    # Extract metrics from jobs
     jobs = data.get("jobs", [])
     if not jobs:
         return
 
-    # Determine if read or write based on scenario name
-    is_read = params["rw"] in ("seq_read", "rand_read")
+    # Parse scenario name to get parameters, fall back to job options for custom names
+    params = parse_fio_scenario_name(scenario_name)
+    if not params:
+        params = _extract_params_from_fio_job(jobs[0])
+
     job = jobs[0]
+
+    # Determine if read or write
+    rw_type = params["rw"]
+    is_read = "read" in rw_type
 
     if is_read:
         metrics = job.get("read", {})
@@ -125,7 +129,6 @@ def process_fio_json(fio_json_path, scenario_name, direct_0, direct_1):
     if not metrics:
         return
 
-    # Get bandwidth (KiB/s) and latency mean (ns)
     bw_kib = metrics.get("bw", 0)
     latency_ns_mean = metrics.get("lat_ns", {}).get("mean", 0)
 
@@ -1174,49 +1177,47 @@ def generate_fio_summary_tables_html(direct_0, direct_1, rw_type, bs_size="norma
     else:
         bw_label = "WRITE_BANDWIDTH"
 
-    # Define row order based on bs_size
-    # Note: stored keys use format '128', '256', '512', '1k', '2k', '4k', '8k' (no 'B' suffix, lowercase k)
-    if bs_size == "small":
-        bs_order = ["128", "256", "512", "1k", "2k", "4k", "8k"]
-    else:
-        bs_order = ["128k", "1m", "4m"]
-    numjobs_order = [1, 8, 16, 32]
+    # Collect actual bs/numjobs keys from data
+    bs_keys = set()
+    nj_keys = set()
+    for key in set(list(direct_0.keys()) + list(direct_1.keys())):
+        bs_keys.add(key[0])
+        nj_keys.add(key[1])
+    bs_order = sorted(bs_keys, key=_bs_sort_key)
+    numjobs_order = sorted(nj_keys)
 
-    # direct=0 table
-    html += "<div style='margin-bottom: 30px;'>"
-    html += "<h3>Summary Table (direct=0, Buffered I/O)</h3>"
-    html += "<table><thead><tr><th>Block Size</th><th>Num Jobs</th><th>BANDWIDTH (MiB/s)</th><th>Latency (us)</th></tr></thead><tbody>"
+    def _render_table(direct_dict, title):
+        h = f"<div style='margin-bottom: 30px;'><h3>{title}</h3>"
+        h += "<table><thead><tr><th>Block Size</th><th>Num Jobs</th><th>BANDWIDTH (MiB/s)</th><th>Latency (us)</th></tr></thead><tbody>"
+        for bs in bs_order:
+            for numjobs in numjobs_order:
+                key = (bs, numjobs)
+                if key in direct_dict:
+                    data = direct_dict[key]
+                    bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
+                    lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
+                    h += f"<tr><td>{bs}</td><td>{numjobs}</td><td class='metric-value'>{bw_mib:.2f}</td><td>{lat_us:.2f}</td></tr>"
+                else:
+                    h += f"<tr><td>{bs}</td><td>{numjobs}</td><td>-</td><td>-</td></tr>"
+        h += "</tbody></table></div>"
+        return h
 
-    for bs in bs_order:
-        for numjobs in numjobs_order:
-            key = (bs, numjobs)
-            if key in direct_0:
-                data = direct_0[key]
-                bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
-                lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
-                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td class='metric-value'>{bw_mib:.2f}</td><td>{lat_us:.2f}</td></tr>"
-            else:
-                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td>-</td><td>-</td></tr>"
-    html += "</tbody></table></div>"
-
-    # direct=1 table
-    html += "<div style='margin-bottom: 30px;'>"
-    html += "<h3>Summary Table (direct=1, Direct I/O)</h3>"
-    html += "<table><thead><tr><th>Block Size</th><th>Num Jobs</th><th>BANDWIDTH (MiB/s)</th><th>Latency (us)</th></tr></thead><tbody>"
-
-    for bs in bs_order:
-        for numjobs in numjobs_order:
-            key = (bs, numjobs)
-            if key in direct_1:
-                data = direct_1[key]
-                bw_mib = data["bandwidth_kib"] / 1024 if data["bandwidth_kib"] else 0
-                lat_us = data["latency_ns_mean"] / 1000 if data["latency_ns_mean"] else 0
-                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td class='metric-value'>{bw_mib:.2f}</td><td>{lat_us:.2f}</td></tr>"
-            else:
-                html += f"<tr><td>{bs}</td><td>{numjobs}</td><td>-</td><td>-</td></tr>"
-    html += "</tbody></table></div>"
+    html += _render_table(direct_0, "Summary Table (direct=0, Buffered I/O)")
+    html += _render_table(direct_1, "Summary Table (direct=1, Direct I/O)")
 
     return html
+
+
+def _bs_sort_key(bs):
+    """Sort key for block sizes: 128 < 128k < 1m < 4m etc."""
+    import re
+    m = re.match(r'^(\d+)([km]?)$', bs)
+    if not m:
+        return (0, 0)
+    val = int(m.group(1))
+    unit = m.group(2)
+    multiplier = {"k": 1, "m": 1024}.get(unit, 0)
+    return (multiplier, val)
 
 
 def generate_fio_summary_tables_text(direct_0, direct_1, rw_type, bs_size="normal"):
@@ -1229,13 +1230,14 @@ def generate_fio_summary_tables_text(direct_0, direct_1, rw_type, bs_size="norma
     else:
         bw_label = "写带宽 (MiB/s)"
 
-    # Define row order based on bs_size
-    # Note: stored keys use format '128', '256', '512', '1k', '2k', '4k', '8k' (no 'B' suffix, lowercase k)
-    if bs_size == "small":
-        bs_order = ["128", "256", "512", "1k", "2k", "4k", "8k"]
-    else:
-        bs_order = ["128k", "1m", "4m"]
-    numjobs_order = [1, 8, 16, 32]
+    # Collect all unique bs and numjobs from actual data, then sort
+    bs_keys = set()
+    nj_keys = set()
+    for key in set(list(direct_0.keys()) + list(direct_1.keys())):
+        bs_keys.add(key[0])
+        nj_keys.add(key[1])
+    bs_order = sorted(bs_keys, key=_bs_sort_key)
+    numjobs_order = sorted(nj_keys)
 
     # direct=0 table
     lines.append("")
@@ -1371,10 +1373,11 @@ def main():
     scenario_str = scenario if scenario else tool
     txt_filename = f"{tool}_{scenario_str}_summary_{timestamp}.md"
     txt_path = os.path.join(output_dir, txt_filename)
+    html_path = os.path.join(output_dir, "report.html")
 
-    if not (is_combined and tool == "mdtest"):
-        # For combined mdtest, skip single-report generation (use aggregate below)
-        if tool == "fio":
+    if not (is_combined and tool in ("mdtest", "fio")):
+        # For combined mdtest/fio, skip single-report generation (use aggregate below)
+        if not is_combined and tool == "fio":
             data, error = parse_fio_json(output_dir)
         elif tool == "vdbench":
             data, error = parse_vdbench_output(output_dir)
@@ -1392,7 +1395,6 @@ def main():
 
         # Generate HTML report
         html_report = generate_html_report(tool, output_dir, data, scenario, mount, txt_filename)
-        html_path = os.path.join(output_dir, "report.html")
         with open(html_path, "w") as f:
             f.write(html_report)
         print(f"HTML report generated: {html_path}")
@@ -1425,29 +1427,39 @@ def main():
             summary_text = generate_fio_summary_tables_text(direct_0, direct_1, rw_type, bs_size)
             summary_html = generate_fio_summary_tables_html(direct_0, direct_1, rw_type, bs_size)
 
-        # Generate and append summary tables to HTML report
-        with open(html_path, "r") as f:
-            html_content = f.read()
+        # Generate summary tables HTML report
+        if os.path.exists(html_path):
+            with open(html_path, "r") as f:
+                html_content = f.read()
+            summary_html_block = """
+            <div class="card">
+                <h2>Combined Summary (All Sub-Scenarios)</h2>
+            """ + summary_html + "</div>"
+            footer_pos = html_content.find('<div class="footer">')
+            if footer_pos > 0:
+                html_content = html_content[:footer_pos] + summary_html_block + "\n" + html_content[footer_pos:]
+            with open(html_path, "w") as f:
+                f.write(html_content)
+            print(f"Combined summary HTML appended: {html_path}")
+        else:
+            # No existing HTML report (combined-only mode), generate standalone
+            html_report = generate_html_report(tool, output_dir, None, scenario, mount, "")
+            html_pos = html_report.find('<div class="footer">')
+            if html_pos > 0:
+                summary_html_block = """
+                <div class="card">
+                    <h2>Combined Summary (All Sub-Scenarios)</h2>
+                """ + summary_html + "</div>"
+                html_report = html_report[:html_pos] + summary_html_block + "\n" + html_report[html_pos:]
+            with open(html_path, "w") as f:
+                f.write(html_report)
+            print(f"Combined summary report generated: {html_path}")
 
-        # Insert summary tables before </div> in the metrics card
-        summary_html = """
-        <div class="card">
-            <h2>Combined Summary (All Sub-Scenarios)</h2>
-        """ + summary_html + "</div>"
-
-        # Find the last </div> before <div class="footer"> and insert before it
-        footer_pos = html_content.find('<div class="footer">')
-        if footer_pos > 0:
-            html_content = html_content[:footer_pos] + summary_html + "\n" + html_content[footer_pos:]
-
-        with open(html_path, "w") as f:
-            f.write(html_content)
-        print(f"Combined summary HTML appended: {html_path}")
-
-        # Generate and append summary tables to text summary
-        with open(txt_path, "a") as f:
-            f.write("\n" + summary_text)
-        print(f"Combined summary text appended: {txt_path}")
+        # Generate summary tables to text report
+        if tool == "fio":
+            with open(txt_path, "w") as f:
+                f.write(summary_text)
+            print(f"Combined summary text generated: {txt_path}")
 
     # Generate combined mdtest report if requested
     if is_combined and tool == "mdtest":
