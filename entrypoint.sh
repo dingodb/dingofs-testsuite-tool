@@ -622,7 +622,7 @@ get_scenario_paths() {
                 done < <(ls /custom/*.vdbench 2>/dev/null | sort)
             elif [[ -f "/custom/${scenario}.vdbench" ]]; then
                 paths+=("/custom/${scenario}.vdbench")
-            else
+            elif [[ -f "${SCENARIOS_DIR}/vdbench/${scenario}.par" ]]; then
                 paths+=("${SCENARIOS_DIR}/vdbench/${scenario}.par")
             fi
             ;;
@@ -640,7 +640,7 @@ get_scenario_paths() {
                 done < <(ls /custom/*.mdtest 2>/dev/null | sort)
             elif [[ -f "/custom/${scenario}.mdtest" ]]; then
                 paths+=("/custom/${scenario}.mdtest")
-            else
+            elif [[ -f "${SCENARIOS_DIR}/mdtest/${scenario}.sh" ]]; then
                 paths+=("${SCENARIOS_DIR}/mdtest/${scenario}.sh")
             fi
             ;;
