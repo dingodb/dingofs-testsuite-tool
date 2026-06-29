@@ -116,14 +116,14 @@ FROM ubuntu:24.04
 
 LABEL maintainer="DingoFS Team"
 LABEL description="Storage performance testing tools: fio, vdbench, mdtest, pjdtest, LTP"
-LABEL version="1.1"
+LABEL version="1.2"
 
 ENV TZ=Asia/Shanghai
 ENV PATH=/opt/vdbench:/opt/ltp:/opt/mlpstorage-env/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
-RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# Install runtime dependencies only (no build tools)
-RUN apt-get update && \
+# Layer 1: system packages + mdtest build + cleanup all in one layer
+RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone && \
+    apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         fio \
         python3 \
@@ -150,79 +150,55 @@ RUN apt-get update && \
         procps \
         bc \
         libjemalloc2 && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/* && \
-    # Create symlink for libjemalloc.so.2 at /lib64/ path used by dingofs tools
-    ln -sf /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 /lib64/libjemalloc.so.2
-
-# Copy vdbench archive and install vdbench
-COPY vdbench50406.zip /tmp/vdbench.zip
-RUN mkdir -p /opt/vdbench && \
-    unzip -q /tmp/vdbench.zip -d /opt/vdbench/ && \
-    chmod +x /opt/vdbench/vdbench && \
-    rm -f /tmp/vdbench.zip
-
-# Build mdtest from source (part of IOR suite)
-RUN cd /tmp && \
+    ln -sf /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 /lib64/libjemalloc.so.2 && \
+    cd /tmp && \
     git clone --depth 1 https://github.com/hpc/ior.git && \
     cd ior && \
     ./bootstrap && \
     ./configure --prefix=/usr/local && \
     make -j$(nproc) && \
     make install && \
-    rm -rf /tmp/ior
+    rm -rf /tmp/ior && \
+    apt-get clean && \
+    rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
-# Copy LTP from builder stage
-COPY --from=ltp-builder /opt/ltp /opt/ltp
+# Layer 2: install vdbench
+COPY vdbench50406.zip /tmp/vdbench.zip
+RUN mkdir -p /opt/vdbench && \
+    unzip -q /tmp/vdbench.zip -d /opt/vdbench/ && \
+    chmod +x /opt/vdbench/vdbench && \
+    rm -f /tmp/vdbench.zip
 
-# Copy mlperf-storage from builder stage
-COPY --from=mlperf-builder /opt/mlpstorage-env /opt/mlpstorage-env
-COPY --from=mlperf-builder /opt/mlpstorage-src /opt/mlpstorage-src
-COPY --from=mlperf-builder /opt/dlio-src /opt/dlio-src
+# Layer 3-6: copy heavy directories from builders (--chmod avoids duplicate layer)
+COPY --from=ltp-builder --chmod=755 /opt/ltp /opt/ltp
+COPY --from=mlperf-builder --chmod=755 /opt/mlpstorage-env /opt/mlpstorage-env
+COPY --from=mlperf-builder --chmod=755 /opt/mlpstorage-src /opt/mlpstorage-src
+COPY --from=mlperf-builder --chmod=755 /opt/dlio-src /opt/dlio-src
 
-# Phase 3: Python and report generation scripts
-RUN mkdir -p /scripts
-COPY scripts/generate_report.py /scripts/generate_report.py
-COPY scripts/notify.sh /scripts/notify.sh
-RUN chmod +x /scripts/generate_report.py /scripts/notify.sh
-
-# Phase 2: Copy scenario files (includes fio and fio_small directories)
-COPY scenarios/ /scenarios/
-
-# Phase 5: Copy and build pjdtest tool
+# Layer 7: copy project files with permissions
+COPY --chmod=755 scripts/ /scripts/
+COPY --chmod=755 scenarios/ /scenarios/
 COPY pjdtest/ /pjdtest/
-RUN cd /pjdtest && \
-    autoreconf -ifs && \
-    ./configure && \
-    make pjdfstest && \
-    rm -rf autom4te.cache
-
-# Create custom config mount point
-RUN mkdir -p /custom && chmod 777 /custom/
-
-# Copy dingo CLI tool
-COPY dingo /usr/local/bin/dingo
-RUN chmod +x /usr/local/bin/dingo
-
-# Copy dingofs-integration-test
+COPY --chmod=755 dingo /usr/local/bin/dingo
 COPY dingofs-integration-test /dingofs-integration-test
-RUN cd /dingofs-integration-test && \
+COPY --chmod=755 entrypoint.sh /entrypoint.sh
+COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
+
+# Layer 8: build pjdtest, install python deps, set remaining permissions
+RUN chmod +x /scripts/generate_report.py /scripts/notify.sh \
+        /usr/local/bin/dingo /usr/local/bin/run_model.sh /entrypoint.sh && \
+    cd /pjdtest && \
+    autoreconf -ifs && ./configure && make pjdfstest && rm -rf autom4te.cache && \
+    cd /dingofs-integration-test && \
     pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
+    pip3 cache purge && \
     chmod +x run_tests.py && \
     mkdir -p log && chmod 777 log && \
     chmod 777 /opt/ltp && \
     mkdir -p /opt/ltp/results /opt/ltp/output && \
-    chmod 777 /opt/ltp/results /opt/ltp/output
-
-# Phase 2: Copy and set entrypoint
-COPY entrypoint.sh /entrypoint.sh
-
-# Copy mlperf run_model.sh
-COPY run_model.sh /usr/local/bin/run_model.sh
-RUN chmod +x /usr/local/bin/run_model.sh
-RUN chmod +x /entrypoint.sh
-# Ensure non-root users can access all tool directories
-RUN chmod -R a+rX /opt /dingofs-integration-test /pjdtest /scenarios /scripts
+    chmod 777 /opt/ltp/results /opt/ltp/output && \
+    mkdir -p /custom && chmod 777 /custom/ && \
+    chmod -R a+rX /pjdtest /dingofs-integration-test
 
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
