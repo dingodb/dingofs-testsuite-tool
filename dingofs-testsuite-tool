@@ -1066,6 +1066,8 @@ run_testsuite() {
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local wechat="" email_to=""
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
+    local setup_env=""
+    local do_cleanup=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -1117,6 +1119,14 @@ run_testsuite() {
                 debug="yes"
                 shift
                 ;;
+            --setup-env)
+                setup_env="$2"
+                shift 2
+                ;;
+            --cleanup)
+                do_cleanup="yes"
+                shift
+                ;;
             --help|-h)
                 if [[ -n "$tool" ]]; then
                     if [[ "$tool" == "mlperf" ]]; then
@@ -1138,9 +1148,52 @@ run_testsuite() {
         esac
     done
 
+    if [[ -n "$do_cleanup" ]] && [[ -z "$setup_env" ]]; then
+        echo "Error: --cleanup requires --setup-env"
+        return 1
+    fi
+
     # Use config values if not provided via command line
     mount="${mount:-$config_testdir}"
     output="${output:-$config_output}"
+
+    # --- setup-env: create filesystem and mount ---
+    local integration_test_dir
+    integration_test_dir="$(cd "$(dirname "$0")" && pwd)/dingofs-integration-test"
+
+    if [[ -n "$setup_env" ]]; then
+        # Resolve env yaml. Python's load_env_configs() handles single-file
+        # and multi-section yamls. We only do a lightweight pre-check here:
+        # if a custom .yaml file exists for this env name, symlink it so
+        # Python can discover it.
+        local cleanup_symlink=""
+        if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
+            ln -sf "$config_custom/${setup_env}.yaml" "$integration_test_dir/conf/env/${setup_env}.yaml"
+            cleanup_symlink="$integration_test_dir/conf/env/${setup_env}.yaml"
+            echo "Using custom env: $config_custom/${setup_env}.yaml"
+        fi
+
+        echo "Setting up environment: $setup_env"
+
+        local setup_exit=0
+        (
+            cd "$integration_test_dir"
+            python3 tests/test_env_setup.py "$setup_env"
+        ) || setup_exit=$?
+
+        # Remove temporary symlink for custom yaml
+        [[ -n "$cleanup_symlink" ]] && rm -f "$cleanup_symlink"
+
+        if [[ $setup_exit -ne 0 ]]; then
+            echo "Error: env_setup failed (exit: $setup_exit)"
+            return $setup_exit
+        fi
+
+        # test_env_setup.py internally ran: dtt config set testdir <mount_path>
+        # Reload testdir from config
+        mount=$(load_config testdir)
+        echo "Test dir updated to: $mount"
+    fi
 
     # mlperf-specific parameter handling
     if [[ "$tool" == "mlperf" ]]; then
@@ -1417,6 +1470,32 @@ run_testsuite() {
 
     # Execute docker command with entrypoint
     "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"
+    local test_exit=$?
+
+    # --- cleanup: unmount and delete filesystem ---
+    if [[ -n "$do_cleanup" ]] && [[ -n "$setup_env" ]]; then
+        echo ""
+        echo "Cleaning up environment: $setup_env"
+
+        local cleanup_exit=0
+        (
+            cd "$integration_test_dir"
+            python3 -c "
+import sys
+sys.path.insert(0, '.')
+from src.config import env_cleanup
+env_cleanup('$setup_env')
+"
+        ) || cleanup_exit=$?
+
+        if [[ $cleanup_exit -ne 0 ]]; then
+            echo "Warning: env_cleanup failed (exit: $cleanup_exit)"
+        else
+            echo "Environment cleanup complete."
+        fi
+    fi
+
+    return $test_exit
 }
 
 # ==============================================================================
