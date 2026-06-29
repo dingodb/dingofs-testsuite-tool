@@ -21,6 +21,7 @@ WEBHOOK_URL_FILE="$CONFIG_DIR/webhook_url"
 EMAIL_FILE="$CONFIG_DIR/email"
 RUNTIME_FILE="$CONFIG_DIR/runtime"
 INTENV_FILE="$CONFIG_DIR/int_env"
+CUSTOM_FILE="$CONFIG_DIR/custom"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
@@ -51,6 +52,7 @@ load_config() {
         email)     file="$EMAIL_FILE"        default="$DEFAULT_EMAIL" ;;
         runtime)   file="$RUNTIME_FILE"      default="docker" ;;
         int_env)   file="$INTENV_FILE"       default="env_126_smoke" ;;
+        custom)    file="$CUSTOM_FILE"       default="" ;;
     esac
     if [[ -f "$file" ]]; then
         local val
@@ -87,6 +89,9 @@ save_config() {
             ;;
         int_env)
             echo "$value" > "$INTENV_FILE"
+            ;;
+        custom)
+            echo "$value" > "$CUSTOM_FILE"
             ;;
     esac
 }
@@ -172,6 +177,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt config set email <地址>      设置邮件通知地址 (默认: daigy@zetyun.com)
   dtt config set runtime <运行时>  设置容器运行时 (docker 或 podman, 默认: docker)
   dtt config set int_env <环境名>   设置集成测试环境名 (默认: env_126_smoke)
+  dtt config set custom <目录>     设置自定义场景目录 (挂载到容器 /custom)
   dtt config show                 显示当前配置
 
 测试命令:
@@ -181,7 +187,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
 选项:
   -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke
-  -s, --scenario <名称>   测试场景名称
+  -s, --scenario <名称>   测试场景名称，custom=所有自定义场景，<名称>=指定场景
   -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录 (从配置读取)
   -o, --output <目录>     覆盖输出目录 (从配置读取)
@@ -250,6 +256,27 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
   # 显示 mlperf 详细帮助
   dtt -t mlperf --help
+
+自定义场景:
+  # 配置自定义场景目录
+  dtt config set custom ~/my_scenarios
+
+  # 自定义场景文件命名: <名称>.<工具后缀>
+  # fio: .fio    vdbench: .vdbench    mdtest: .mdtest
+  # 示例:
+  #   ~/my_scenarios/test1.fio
+  #   ~/my_scenarios/bench.vdbench
+  #   ~/my_scenarios/perf.mdtest
+
+  # 运行所有自定义场景（对应工具后缀的全部文件）
+  dtt -t fio -s custom
+  dtt -t vdbench -s custom
+  dtt -t mdtest -s custom
+
+  # 运行指定名称的自定义场景
+  dtt -t fio -s test1        # → /custom/test1.fio
+  dtt -t vdbench -s bench    # → /custom/bench.vdbench
+  dtt -t mdtest -s perf      # → /custom/perf.mdtest
 
   # 运行冒烟测试（串行执行全部6个工具）
   dtt smoke
@@ -481,6 +508,7 @@ cmd_daily() {
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
     local config_mdsaddr=$(load_config mdsaddr)
+    local config_custom=$(load_config custom)
     local runtime=$(load_config runtime)
 
     # Handle --help before config checks
@@ -598,6 +626,12 @@ cmd_daily() {
 
     docker_cmd+=("-v" "${output}:/output")
 
+    # Mount custom scenarios directory if configured
+    if [[ -n "$config_custom" ]]; then
+        mkdir -p "$config_custom"
+        docker_cmd+=("-v" "${config_custom}:/custom")
+    fi
+
     # Mount report path if specified
     if [[ -n "$report_path" ]]; then
         mkdir -p "$report_path"
@@ -700,6 +734,7 @@ cmd_smoke() {
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
     local config_mdsaddr=$(load_config mdsaddr)
+    local config_custom=$(load_config custom)
     local runtime=$(load_config runtime)
     local int_env=$(load_config int_env)
 
@@ -790,6 +825,12 @@ cmd_smoke() {
         -v "${output}:/output"
     )
 
+    # Mount custom scenarios directory if configured
+    if [[ -n "$config_custom" ]]; then
+        mkdir -p "$config_custom"
+        docker_cmd+=("-v" "${config_custom}:/custom")
+    fi
+
     # Pass MDS address if configured (needed for integration test context)
     if [[ -n "$config_mdsaddr" ]]; then
         docker_cmd+=("-e" "MDSADDR=$config_mdsaddr")
@@ -865,18 +906,18 @@ cmd_config() {
             if [[ -z "$key" ]] || [[ -z "$value" ]]; then
                 echo "Error: key and value required"
                 echo "Usage: dingofs-testsuite-tool config set <key> <value>"
-                echo "Keys: testdir, output, image"
+                echo "Keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env, custom"
                 return 1
             fi
 
             case "$key" in
-                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env)
+                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env"
+                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env, custom"
                     return 1
                     ;;
             esac
@@ -891,6 +932,7 @@ cmd_config() {
             local email=$(load_config email)
             local runtime=$(load_config runtime)
             local int_env=$(load_config int_env)
+            local custom=$(load_config custom)
             echo "  testdir: ${td:-not set}"
             echo "  output:  ${out:-not set}"
             echo "  image:   ${img:-not set}"
@@ -899,6 +941,7 @@ cmd_config() {
             echo "  email: ${email:-not set}"
             echo "  runtime: ${runtime:-docker}"
             echo "  int_env: ${int_env:-env_126_smoke}"
+            echo "  custom:  ${custom:-not set}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then
@@ -918,6 +961,7 @@ cmd_debug() {
     local testdir=$(load_config testdir)
     local output=$(load_config output)
     local mdsaddr=$(load_config mdsaddr)
+    local custom=$(load_config custom)
     local runtime=$(load_config runtime)
 
     if [[ -z "$image" ]]; then
@@ -930,6 +974,7 @@ cmd_debug() {
     echo "Testdir: ${testdir:-<not set>}"
     echo "Output: ${output:-<not set>}"
     echo "MDSAddr: ${mdsaddr:-<not set>}"
+    echo "Custom: ${custom:-<not set>}"
     echo ""
     echo "Type 'exit' to leave the container"
     echo ""
@@ -950,6 +995,11 @@ cmd_debug() {
 
     if [[ -n "$output" ]]; then
         docker_cmd+=("-v" "${output}:/output")
+    fi
+
+    if [[ -n "$custom" ]]; then
+        mkdir -p "$custom"
+        docker_cmd+=("-v" "${custom}:/custom")
     fi
 
     if [[ -n "$mdsaddr" ]]; then
@@ -1000,6 +1050,7 @@ run_testsuite() {
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
     local config_mdsaddr=$(load_config mdsaddr)
+    local config_custom=$(load_config custom)
     local runtime=$(load_config runtime)
 
     if [[ -z "$image" ]]; then
@@ -1188,6 +1239,12 @@ run_testsuite() {
             docker_cmd+=("-e" "SCALE=${scale}")
         fi
 
+        # Mount custom scenarios directory if configured
+        if [[ -n "$config_custom" ]]; then
+            mkdir -p "$config_custom"
+            docker_cmd+=("-v" "${config_custom}:/custom")
+        fi
+
         # Add container entrypoint args
         docker_cmd+=("$image" "-t" "mlperf" "-s" "${scenario}" "-m" "$container_mount" "-o" "/output")
 
@@ -1265,6 +1322,12 @@ run_testsuite() {
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
+
+    # Mount custom scenarios directory if configured
+    if [[ -n "$config_custom" ]]; then
+        mkdir -p "$config_custom"
+        docker_cmd+=("-v" "${config_custom}:/custom")
+    fi
 
     # Pass MDSADDR to container as environment variable for dingo CLI
     if [[ -n "$config_mdsaddr" ]]; then

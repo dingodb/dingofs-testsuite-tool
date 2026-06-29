@@ -269,6 +269,11 @@ FIO 存储性能测试
 
   # 运行单个场景
   dtt -t fio -s rand_read_0d_128k_1j
+
+自定义场景:
+  将 .fio 文件放入自定义场景目录（通过 dtt config set custom 配置）
+  dtt -t fio -s custom    # 运行所有 .fio 文件
+  dtt -t fio -s mytest    # 运行 /custom/mytest.fio
 EOF
 }
 
@@ -297,6 +302,13 @@ MDTEST 元数据测试
 
   # 自定义MPI进程数
   dtt -t mdtest -s all -n 32
+
+自定义场景:
+  将 .mdtest 文件放入自定义场景目录（通过 dtt config set custom 配置）
+  文件内容为 mdtest 命令，-d ./ 即挂载点:
+    mpirun --allow-run-as-root -np 32 mdtest -z 0 -b 1 -I 1000 -d ./
+  dtt -t mdtest -s custom    # 运行所有 .mdtest 文件
+  dtt -t mdtest -s mytest    # 运行 /custom/mytest.mdtest
 EOF
 }
 
@@ -441,6 +453,23 @@ validate_params() {
             # Check if scenario exists (either in /custom/ or /scenarios/)
             if ! scenario_exists "$TOOL" "$SCENARIO"; then
                 echo "Error: Scenario '$SCENARIO' not found for tool '$TOOL'"
+                if [[ "$SCENARIO" == "custom" ]]; then
+                    case "$TOOL" in
+                        fio)
+                            echo "  Put .fio files in your custom dir (e.g. test1.fio)"
+                            echo "  run: dtt -t fio -s test1   (single)  or  dtt -t fio -s custom  (all)"
+                            ;;
+                        vdbench)
+                            echo "  Put .vdbench files in your custom dir (e.g. test1.vdbench)"
+                            echo "  run: dtt -t vdbench -s test1   or  dtt -t vdbench -s custom"
+                            ;;
+                        mdtest)
+                            echo "  Put .mdtest files in your custom dir (e.g. test1.mdtest)"
+                            echo "  Example: echo 'mpirun --allow-run-as-root -np 32 mdtest -z 0 -b 1 -I 1000 -d ./' > /custom/test1.mdtest"
+                            echo "  run: dtt -t mdtest -s test1   or  dtt -t mdtest -s custom"
+                            ;;
+                    esac
+                fi
                 error=1
             fi
         fi
@@ -494,8 +523,13 @@ scenario_exists() {
             if [[ "$scenario" == "all" ]]; then
                 return 0
             fi
-            # Check exact match first
-            if [[ -f "/custom/${scenario}.fio" ]] || [[ -f "/custom/${scenario}.conf" ]] || [[ -f "${fio_scenarios_dir}/${scenario}.fio" ]]; then
+            # Accept "custom" if any .fio files exist in /custom/
+            if [[ "$scenario" == "custom" ]]; then
+                [[ -n "$(ls /custom/*.fio 2>/dev/null | head -1)" ]]
+                return $?
+            fi
+            # Check exact match first: /custom/<name>.fio or built-in
+            if [[ -f "/custom/${scenario}.fio" ]] || [[ -f "${fio_scenarios_dir}/${scenario}.fio" ]]; then
                 return 0
             fi
             # Check for prefix matches (e.g., seq_read matches seq_read_*.fio)
@@ -505,7 +539,11 @@ scenario_exists() {
             return 1
             ;;
         vdbench)
-            [[ -f "/custom/${scenario}.par" ]] || [[ -f "${SCENARIOS_DIR}/vdbench/${scenario}.par" ]]
+            if [[ "$scenario" == "custom" ]]; then
+                [[ -n "$(ls /custom/*.vdbench 2>/dev/null | head -1)" ]]
+            else
+                [[ -f "/custom/${scenario}.vdbench" ]] || [[ -f "${SCENARIOS_DIR}/vdbench/${scenario}.par" ]]
+            fi
             ;;
         mdtest)
             # mdtest scenarios: mdtest_z0_n100, mdtest_z5_b4_I1, mdtest_z6_b3_I1, mdtest_z9_b2_I1
@@ -513,7 +551,11 @@ scenario_exists() {
             if [[ "$scenario" == "all" ]] || [[ "$scenario" == "mdtest" ]]; then
                 return 0
             fi
-            [[ -f "${SCENARIOS_DIR}/mdtest/${scenario}.sh" ]]
+            if [[ "$scenario" == "custom" ]]; then
+                [[ -n "$(ls /custom/*.mdtest 2>/dev/null | head -1)" ]]
+            else
+                [[ -f "/custom/${scenario}.mdtest" ]] || [[ -f "${SCENARIOS_DIR}/mdtest/${scenario}.sh" ]]
+            fi
             ;;
         pjdtest)
             # pjdtest: accept "all" or "pjdtest" to run all tests
@@ -556,11 +598,14 @@ get_scenario_paths() {
                         paths+=("$file")
                     done < <(ls "${SCENARIOS_DIR}/${type}"_*.fio 2>/dev/null | sort)
                 done
+            # Custom scenario: run all .fio files in /custom/
+            elif [[ "$scenario" == "custom" ]]; then
+                while IFS= read -r file; do
+                    paths+=("$file")
+                done < <(ls /custom/*.fio 2>/dev/null | sort)
             # Check custom override first (exact match only)
             elif [[ -f "/custom/${scenario}.fio" ]]; then
                 paths+=("/custom/${scenario}.fio")
-            elif [[ -f "/custom/${scenario}.conf" ]]; then
-                paths+=("/custom/${scenario}.conf")
             elif [[ -f "${SCENARIOS_DIR}/${scenario}.fio" ]]; then
                 paths+=("${SCENARIOS_DIR}/${scenario}.fio")
             else
@@ -571,18 +616,30 @@ get_scenario_paths() {
             fi
             ;;
         vdbench)
-            if [[ -f "/custom/${scenario}.par" ]]; then
-                paths+=("/custom/${scenario}.par")
+            if [[ "$scenario" == "custom" ]]; then
+                while IFS= read -r file; do
+                    paths+=("$file")
+                done < <(ls /custom/*.vdbench 2>/dev/null | sort)
+            elif [[ -f "/custom/${scenario}.vdbench" ]]; then
+                paths+=("/custom/${scenario}.vdbench")
             else
                 paths+=("${SCENARIOS_DIR}/vdbench/${scenario}.par")
             fi
             ;;
         mdtest)
-            # mdtest can run all scenarios at once
             if [[ "$scenario" == "all" ]] || [[ "$scenario" == "mdtest" ]]; then
                 for script in "${SCENARIOS_DIR}"/mdtest/*.sh; do
                     [[ -f "$script" ]] && paths+=("$script")
                 done
+                for script in /custom/*.mdtest; do
+                    [[ -f "$script" ]] && paths+=("$script")
+                done
+            elif [[ "$scenario" == "custom" ]]; then
+                while IFS= read -r file; do
+                    paths+=("$file")
+                done < <(ls /custom/*.mdtest 2>/dev/null | sort)
+            elif [[ -f "/custom/${scenario}.mdtest" ]]; then
+                paths+=("/custom/${scenario}.mdtest")
             else
                 paths+=("${SCENARIOS_DIR}/mdtest/${scenario}.sh")
             fi
@@ -909,6 +966,9 @@ fio_run() {
 
     if [[ -z "$scenario_paths" ]] || [[ "$path_count" -eq 0 ]]; then
         echo "Error: No scenario found for '$SCENARIO'"
+        if [[ "$SCENARIO" == "custom" ]]; then
+            echo "  Put .fio files in your custom dir, then run: dtt -t fio -s custom"
+        fi
         exit 1
     fi
 
@@ -1052,23 +1112,27 @@ vdbench_run() {
     mkdir -p "$OUTPUT"
     mkdir -p "$OUTPUT/vdbench_${RUN_TIMESTAMP}/$SCENARIO"
 
-    # Replace anchor paths in config with MOUNT if needed
-    # vdbench configs often have wd= anchor=/path/to/mount
     local vdbench_output="$OUTPUT/vdbench_${RUN_TIMESTAMP}/$SCENARIO"
-    local vdbench_cmd=("$VDBENCH_BIN" "-f" "$config" "-o" "$vdbench_output")
+
+    # Replace anchor= paths with actual mount point
+    # vdbench uses anchor= to specify the test directory
+    local tmp_config="/tmp/vdbench_custom_$$.par"
+    sed "s|anchor=[^,)]*|anchor=${MOUNT}|g" "$config" > "$tmp_config"
+    echo "Auto-replaced anchor= with $MOUNT in vdbench config"
 
     # Change to vdbench directory for execution
     cd "$VDBENCH_DIR"
 
-    echo "Executing: ./vdbench -f $config -o $vdbench_output"
+    echo "Executing: ./vdbench -f $tmp_config -o $vdbench_output"
 
     # Capture console output to raw file while running vdbench
     # Use subshell to allow Ctrl+C to interrupt
     (
         trap 'kill -INT $$' INT TERM
-        "./vdbench" -f "$config" -o "$vdbench_output" 2>&1 | tee "$vdbench_output/vdbench.raw"
+        "./vdbench" -f "$tmp_config" -o "$vdbench_output" 2>&1 | tee "$vdbench_output/vdbench.raw"
     )
     local vdbench_exit=${PIPESTATUS[0]}
+    rm -f "$tmp_config"
 
     # Generate reports
     echo "Generating reports..."
@@ -1119,6 +1183,10 @@ mdtest_run() {
 
     if [[ -z "$scenario_paths" ]] || [[ "$path_count" -eq 0 ]]; then
         echo "Error: No scenario found for '$SCENARIO'"
+        if [[ "$SCENARIO" == "custom" ]]; then
+            echo "  Put .mdtest files in your custom dir, then run: dtt -t mdtest -s custom"
+            echo "  Example: echo 'mpirun --allow-run-as-root -np 32 mdtest -z 0 -b 1 -I 1000 -d ./' > /custom/test1.mdtest"
+        fi
         exit 1
     fi
 
@@ -1179,9 +1247,9 @@ mdtest_run() {
         echo "Executing: $script"
 
         # Run the mdtest scenario script
-        # Capture output to raw file
+        # Use bash to execute so +x is not required
         set +e
-        "$script" > "$scenario_output/mdtest.raw" 2>&1
+        bash "$script" > "$scenario_output/mdtest.raw" 2>&1
         local mdtest_exit=$?
         set -e
 
