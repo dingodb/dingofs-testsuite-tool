@@ -623,19 +623,14 @@ def aggregate_mdtest_results(output_dir):
         if not os.path.isdir(subdir_path):
             continue
 
-        # Skip non-mdtest directories
-        if not subdir.startswith("mdtest_"):
-            continue
-
         mdtest_raw_path = os.path.join(subdir_path, "mdtest.raw")
         if not os.path.exists(mdtest_raw_path):
             continue
 
         # Parse scenario name to extract z, b, I parameters
-        # Pattern: mdtest_z0_n100, mdtest_z5_b4_I1, etc.
+        # Built-in: mdtest_z0_n100, mdtest_z5_b4_I1, etc.
+        # Custom: any name (test1, my_bench, etc.)
         params = parse_mdtest_scenario_name(subdir)
-        if not params:
-            continue
 
         # Read and parse mdtest output
         try:
@@ -678,7 +673,8 @@ def parse_mdtest_scenario_name(scenario_name):
     if match:
         return {"z": int(match.group(1)), "b": int(match.group(2)), "I": int(match.group(3)), "n": None}
 
-    return None
+    # Custom scenario: return placeholder params for report display
+    return {"z": None, "b": None, "I": None, "n": None}
 
 
 def extract_mdtest_file_count(text):
@@ -1371,32 +1367,35 @@ def main():
     data = None
     error = None
 
-    if tool == "fio":
-        data, error = parse_fio_json(output_dir)
-    elif tool == "vdbench":
-        data, error = parse_vdbench_output(output_dir)
-    elif tool == "mdtest":
-        data, error = parse_mdtest_output(output_dir)
-
-    if error:
-        print(f"Warning: {error}", file=sys.stderr)
-
-    # Generate text summary with timestamped filename first
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     scenario_str = scenario if scenario else tool
     txt_filename = f"{tool}_{scenario_str}_summary_{timestamp}.md"
     txt_path = os.path.join(output_dir, txt_filename)
-    text_summary = generate_text_summary(tool, output_dir, data, scenario, mount, txt_filename)
-    with open(txt_path, "w") as f:
-        f.write(text_summary)
-    print(f"Text summary generated: {txt_path}")
 
-    # Generate HTML report
-    html_report = generate_html_report(tool, output_dir, data, scenario, mount, txt_filename)
-    html_path = os.path.join(output_dir, "report.html")
-    with open(html_path, "w") as f:
-        f.write(html_report)
-    print(f"HTML report generated: {html_path}")
+    if not (is_combined and tool == "mdtest"):
+        # For combined mdtest, skip single-report generation (use aggregate below)
+        if tool == "fio":
+            data, error = parse_fio_json(output_dir)
+        elif tool == "vdbench":
+            data, error = parse_vdbench_output(output_dir)
+        elif tool == "mdtest":
+            data, error = parse_mdtest_output(output_dir)
+
+        if error:
+            print(f"Warning: {error}", file=sys.stderr)
+
+        # Generate text summary with timestamped filename first
+        text_summary = generate_text_summary(tool, output_dir, data, scenario, mount, txt_filename)
+        with open(txt_path, "w") as f:
+            f.write(text_summary)
+        print(f"Text summary generated: {txt_path}")
+
+        # Generate HTML report
+        html_report = generate_html_report(tool, output_dir, data, scenario, mount, txt_filename)
+        html_path = os.path.join(output_dir, "report.html")
+        with open(html_path, "w") as f:
+            f.write(html_report)
+        print(f"HTML report generated: {html_path}")
 
     # Generate combined summary tables if requested
     if is_combined and tool == "fio":
