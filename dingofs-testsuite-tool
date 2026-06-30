@@ -627,7 +627,7 @@ cmd_daily() {
     mkdir -p "$output"
 
     # commit_info.yaml file path
-    local commit_info_file="/home/jenkins/jenkins_workdir/script-main/commit_info.yaml"
+    local commit_info_file="__USER_HOME__/jenkins_workdir/script-main/commit_info.yaml"
 
     # Build docker/podman command
     local rm_flag="--rm"
@@ -2167,13 +2167,20 @@ TOOL_EOF
 
 # 检查参数个数
 if [ $# -ne 2 ]; then
-    echo "用法: $0 <fsname> <mountfolder>"
-    echo "示例: $0 trash-test-1 mount_point"
+    echo "用法: $0 <fsname> <父目录>"
+    echo "  fsname : 文件系统名，也作为挂载点目录名"
+    echo " 父目录 : 挂载点的父目录，挂载点将创建为 <父目录>/<fsname>"
+    echo "示例: $0 trash-test-1 /mnt/disk0/dingofs-autotest/client"
     exit 1
 fi
 
 FS_NAME="$1"
-MOUNT_FOLDER="$2"
+MOUNT_PARENT="$2"
+MOUNT_FOLDER="${MOUNT_PARENT}/${FS_NAME}"
+BASE_DIR=$(dirname "$MOUNT_PARENT")
+
+# 创建挂载点目录
+mkdir -p "$MOUNT_FOLDER"
 
 # 生成 10000~20000 之间的随机端口
 PORT=$((RANDOM % 10001 + 10000))
@@ -2184,10 +2191,10 @@ numactl --cpunodebind=0 --membind=0 \
 __DINGO_PATH__ fs mount \
 "mds://__MDS_ADDR__/${FS_NAME}" \
 "${MOUNT_FOLDER}" \
---cache_dir "/mnt/disk5/dingo_autotest/local_cache" \
+--cache_dir "${BASE_DIR}/local_cache/${FS_NAME}" \
 --cache_store disk \
 --fuse_max_threads 512 \
---log_dir "/mnt/disk5/dingo_autotest/client_log/trash-test" \
+--log_dir "${BASE_DIR}/client_log/${FS_NAME}" \
 --log_v 0 \
 --vfs_dummy_server_port "${PORT}" \
 --vfs_read_buffer_total_mb 8000 \
@@ -2219,10 +2226,10 @@ fi
 CONTAINER_ID="$1"
 
 # 定义目标目录（可根据需要调整）
-DINGO_CLIENT_DIR="/home/jenkins/.dingo/components/dingo-client/main"
-DINGO_MDS_CLIENT_DIR="/home/jenkins/.dingo/components/dingo-mds-client/main"
-DINGO_CACHE_DIR="/home/jenkins/.dingo/components/dingo-cache/main"
-DINGO_TOOLS_DIR="/home/jenkins/bin"
+DINGO_CLIENT_DIR="__USER_HOME__/.dingo/components/dingo-client/main"
+DINGO_MDS_CLIENT_DIR="__USER_HOME__/.dingo/components/dingo-mds-client/main"
+DINGO_CACHE_DIR="__USER_HOME__/.dingo/components/dingo-cache/main"
+DINGO_TOOLS_DIR="__USER_HOME__/bin"
 
 # 确保目标目录存在
 mkdir -p "$DINGO_CLIENT_DIR"
@@ -2230,11 +2237,32 @@ mkdir -p "$DINGO_MDS_CLIENT_DIR"
 mkdir -p "$DINGO_CACHE_DIR"
 mkdir -p "$DINGO_TOOLS_DIR"
 
+# docker cp 封装：先直接尝试，权限不足时自动 sudo 重试
+_docker_cp() {
+    local src="$1"
+    local dst="$2"
+
+    local output
+    output=$(docker cp "$src" "$dst" 2>&1)
+    if [ $? -eq 0 ]; then
+        return 0
+    fi
+
+    # 容器存在但无权限访问时，用 sudo 重试
+    if echo "$output" | grep -q "does not exist"; then
+        echo "  直接访问失败，尝试 sudo ..."
+        sudo docker cp "$src" "$dst"
+        return $?
+    fi
+
+    echo "$output" >&2
+    return 1
+}
+
 echo "开始从容器 ${CONTAINER_ID} 复制文件..."
 
 # 复制 dingo-client
-docker cp "${CONTAINER_ID}:/dingofs/client/sbin/dingo-client" "${DINGO_CLIENT_DIR}/"
-if [ $? -eq 0 ]; then
+if _docker_cp "${CONTAINER_ID}:/dingofs/client/sbin/dingo-client" "${DINGO_CLIENT_DIR}/"; then
     echo "? dingo-client 复制成功"
 else
     echo "? dingo-client 复制失败"
@@ -2242,8 +2270,7 @@ else
 fi
 
 # 复制 dingo-mds-client
-docker cp "${CONTAINER_ID}:/dingofs/mds-client/sbin/dingo-mds-client" "${DINGO_MDS_CLIENT_DIR}/"
-if [ $? -eq 0 ]; then
+if _docker_cp "${CONTAINER_ID}:/dingofs/mds-client/sbin/dingo-mds-client" "${DINGO_MDS_CLIENT_DIR}/"; then
     echo "? dingo-mds-client 复制成功"
 else
     echo "? dingo-mds-client 复制失败"
@@ -2251,8 +2278,7 @@ else
 fi
 
 # 复制 dingo-cache
-docker cp "${CONTAINER_ID}:/dingofs/cache/sbin/dingo-cache" "${DINGO_CACHE_DIR}/"
-if [ $? -eq 0 ]; then
+if _docker_cp "${CONTAINER_ID}:/dingofs/cache/sbin/dingo-cache" "${DINGO_CACHE_DIR}/"; then
     echo "? dingo-cache 复制成功"
 else
     echo "? dingo-cache 复制失败"
@@ -2260,12 +2286,16 @@ else
 fi
 
 # 复制 dingo 工具
-docker cp "${CONTAINER_ID}:/dingofs/tools/sbin/dingo" "${DINGO_TOOLS_DIR}/"
-if [ $? -eq 0 ]; then
+if _docker_cp "${CONTAINER_ID}:/dingofs/tools/sbin/dingo" "${DINGO_TOOLS_DIR}/"; then
     echo "? dingo 工具复制成功"
 else
     echo "? dingo 工具复制失败"
     exit 1
+fi
+
+# 如果用 sudo 复制，修正文件所有者
+if [[ "$EUID" -ne 0 ]]; then
+    sudo chown -R "$(id -u):$(id -g)" "$DINGO_CLIENT_DIR" "$DINGO_MDS_CLIENT_DIR" "$DINGO_CACHE_DIR" "$DINGO_TOOLS_DIR" 2>/dev/null
 fi
 
 echo "所有文件复制完成！"
