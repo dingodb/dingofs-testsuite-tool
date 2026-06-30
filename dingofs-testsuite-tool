@@ -153,6 +153,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt <命令> [选项]          # 快捷命令
 
 命令:
+  cluster <子命令>   管理DingoFS集群更新
   config <子命令>    管理配置
   debug              在测试容器中启动交互式Shell
   -t <工具> --help   显示特定工具的帮助
@@ -167,6 +168,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   mlperf    - MLPerf Storage 存储基准测试
   smoke     - 冒烟测试 (pjdtest + mdtest + ltp + int_client + int_cache_node + int_quota)
   daily     - 每日集成测试 (client + cache_node + quota + basic_file_operation)
+  cluster   - 更新DingoFS集群
 
 配置子命令:
   dtt config set testdir <目录>    设置测试目录 (挂载点)
@@ -179,6 +181,12 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt config set int_env <环境名>   设置集成测试环境名 (默认: env_126_smoke)
   dtt config set custom <目录>     设置自定义场景目录 (挂载到容器 /custom)
   dtt config show                 显示当前配置
+
+集群命令:
+  dtt cluster update <集群ID> <用户> [-f <拓扑文件>]
+                                 更新指定集群到最新DingoFS镜像
+                                 示例: dtt cluster update 29 root
+                                       dtt cluster update 29 root -f /path/to/topology.yaml
 
 测试命令:
   dtt -t <工具> -s <场景> [-n <进程数>] [选项]
@@ -1499,6 +1507,231 @@ env_cleanup('$setup_env')
 }
 
 # ==============================================================================
+# Cluster Update
+# ==============================================================================
+
+cmd_cluster_update() {
+    # Parse -f/--file flag
+    local topology_file=""
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -f|--file)
+                topology_file="$2"
+                shift 2
+                ;;
+            --help|-h)
+                echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+                echo ""
+                echo "Update a DingoFS cluster to the latest image."
+                echo ""
+                echo "Arguments:"
+                echo "  cluster_id   Cluster ID (e.g. 29)"
+                echo "  user         Deploy user, used to locate topology file"
+                echo "               (e.g. root → /root/dingofs/deploy/...)"
+                echo ""
+                echo "Options:"
+                echo "  -f, --file   Override topology YAML file path"
+                echo ""
+                echo "Examples:"
+                echo "  dtt cluster update 29 root"
+                echo "  dtt cluster update 29 dingofs"
+                echo "  dtt cluster update 29 root -f /custom/topology.yaml"
+                return 0
+                ;;
+            -*)
+                echo "Error: Unknown option '$1'"
+                return 1
+                ;;
+            *)
+                break
+                ;;
+        esac
+    done
+
+    # Consume subcommand (update)
+    local subcmd="$1"
+    if [[ "$subcmd" != "update" ]]; then
+        echo "Error: Unknown cluster subcommand '$subcmd'"
+        echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+        return 1
+    fi
+    shift
+
+    local cluster_id="$1"
+    local deploy_user="$2"
+
+    if [[ -z "$cluster_id" ]]; then
+        echo "Error: Cluster ID required"
+        echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+        echo "Example: dtt cluster update 29 root"
+        return 1
+    fi
+
+    if [[ -z "$deploy_user" ]]; then
+        echo "Error: Deploy user required"
+        echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+        echo "Example: dtt cluster update 29 root"
+        return 1
+    fi
+
+    # Determine topology file path:
+    # 1) -f flag (already set above)
+    # 2) built-in mapping: <user_home>/dingofs/deploy/<topology_filename>
+    local dingo_path=""
+    if [[ -z "$topology_file" ]]; then
+        # Resolve user home directory
+        local user_home
+        if [[ "$deploy_user" == "root" ]]; then
+            user_home="/root"
+        else
+            user_home="/home/$deploy_user"
+        fi
+
+        # Built-in cluster mapping
+        local topo_filename=""
+        case "$cluster_id" in
+            29)
+                topo_filename="topology-v5.2-main.yaml"
+                if [[ "$deploy_user" == "root" ]]; then
+                    dingo_path="/usr/local/bin/dingo"
+                fi
+                ;;
+            *)
+                echo "Error: Unknown cluster '$cluster_id'"
+                echo "Supported clusters: 29"
+                return 1
+                ;;
+        esac
+
+        topology_file="${user_home}/dingofs/deploy/${topo_filename}"
+    fi
+
+    # Resolve dingo path if not already set by cluster mapping
+    if [[ -z "$dingo_path" ]]; then
+        dingo_path=$(command -v dingo) || {
+            echo "Error: dingo command not found in PATH"
+            return 1
+        }
+    fi
+    local DINGO_BIN="$dingo_path"
+
+    # Determine if we need sudo (before file check, since /root/ needs sudo to access)
+    local SUDO=""
+    if [[ "$EUID" -ne 0 ]]; then
+        SUDO="sudo -E"
+    fi
+
+    if ! $SUDO test -f "$topology_file"; then
+        echo "Error: Topology file not found: $topology_file"
+        return 1
+    fi
+
+    if [[ "$EUID" -ne 0 ]]; then
+        echo "Not running as root, using sudo for privileged operations"
+    fi
+
+    echo "=============================================="
+    echo "Updating DingoFS Cluster $cluster_id"
+    echo "=============================================="
+    echo ""
+
+    # Step 1: Set proxy
+    export http_proxy=http://hproxy.it.zetyun.cn:1080
+    export https_proxy=http://hproxy.it.zetyun.cn:1080
+
+    local attempt=1
+    local max_attempts=2
+    local backup_file="${topology_file}.$(date +%Y%m%d_%H%M%S).bak"
+    local did_backup=false
+
+    while [[ $attempt -le $max_attempts ]]; do
+        local image_tag
+        local tag_label
+        if [[ $attempt -eq 1 ]]; then
+            tag_label="latest"
+        else
+            tag_label="previous"
+        fi
+
+        echo "[1/6] Fetching ${tag_label} image tag (attempt $attempt/$max_attempts)..."
+        local result_index
+        if [[ $attempt -eq 1 ]]; then
+            result_index=0
+        else
+            result_index=2
+        fi
+        image_tag=$(curl -fsSL "https://hub.docker.com/v2/repositories/dingodatabase/dingofs/tags/?page=${attempt}&page_size=3&ordering=last_updated" | jq -r ".results[${result_index}].name")
+        if [[ -z "$image_tag" || "$image_tag" == "null" ]]; then
+            echo "Error: Failed to get image tag from Docker Hub"
+            return 1
+        fi
+        echo "      Image tag: $image_tag"
+
+        # Backup and update yaml (only on first attempt)
+        if [[ "$did_backup" != "true" ]]; then
+            echo "[2/6] Updating topology yaml..."
+            $SUDO cp "$topology_file" "$backup_file"
+            echo "      Backup saved: $backup_file"
+            did_backup=true
+        else
+            echo "[2/6] Updating topology yaml (retry)..."
+        fi
+        $SUDO sed -i "0,/^  container_image:.*:/{s/\(container_image: .*:\).*/\1$image_tag/}" "$topology_file"
+        echo "      Updated global.container_image in $topology_file"
+
+        # Step 3: Commit config
+        echo "[3/6] Committing cluster config..."
+        $SUDO $DINGO_BIN config commit -f "$topology_file" || {
+            echo "Error: Failed to commit cluster config"
+            return 1
+        }
+
+        # Step 4: Stop all services
+        echo "[4/6] Stopping all services..."
+        $SUDO $DINGO_BIN cluster stop -f || {
+            echo "Error: Failed to stop services"
+            return 1
+        }
+
+        # Step 5: Clean old data
+        echo "[5/6] Cleaning old data..."
+        $SUDO $DINGO_BIN cluster clean -f || {
+            echo "Error: Failed to clean old data"
+            return 1
+        }
+
+        # Step 6: Deploy new services
+        echo "[6/6] Deploying new services..."
+        local deploy_output
+        deploy_output=$($SUDO $DINGO_BIN cluster deploy -k 2>&1) && {
+            echo ""
+            echo "=============================================="
+            echo "Cluster $cluster_id update complete!"
+            echo "=============================================="
+            echo ""
+            echo "New image: harbor.zetyun.cn/dingofs/dingofs:$image_tag"
+            return 0
+        }
+
+        # Deploy failed — check if it's a pull failure worth retrying
+        if echo "$deploy_output" | grep -q "Error-Code: 630001" && \
+           echo "$deploy_output" | grep -q "pull image failed" && \
+           [[ $attempt -lt $max_attempts ]]; then
+            echo "      Image pull failed (630001), retrying with previous image..."
+            ((attempt++))
+            continue
+        fi
+
+        echo "Error: Failed to deploy services"
+        echo "$deploy_output"
+        return 1
+    done
+
+    # Clear proxy
+    unset http_proxy https_proxy
+}
+
+# ==============================================================================
 # Main Entry Point
 # ==============================================================================
 
@@ -1513,6 +1746,10 @@ dingofs-testsuite-tool() {
         daily)
             shift
             cmd_daily "$@"
+            ;;
+        cluster)
+            shift
+            cmd_cluster_update "$@"
             ;;
         config)
             shift

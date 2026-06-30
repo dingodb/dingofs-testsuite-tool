@@ -62,7 +62,7 @@ echo ""
 cd "$SCRIPT_DIR"
 
 # Try build without proxy first, then with proxy if it fails
-if docker build -t "$IMAGE_NAME" . 2>/dev/null; then
+if docker build -t "$IMAGE_NAME" . ; then
     BUILD_SUCCESS=true
 else
     echo ""
@@ -70,7 +70,7 @@ else
     if docker build -t "$IMAGE_NAME" \
         --build-arg http_proxy=http://hproxy.it.zetyun.cn:1080 \
         --build-arg https_proxy=http://hproxy.it.zetyun.cn:1080 \
-        . 2>/dev/null; then
+        . ; then
         BUILD_SUCCESS=true
     else
         BUILD_SUCCESS=false
@@ -110,14 +110,14 @@ echo ""
 echo "[5/5] Pushing to Harbor..."
 
 # Try push without proxy first, then with proxy if it fails
-if docker push "$HARBOR_IMAGE" 2>/dev/null; then
+if docker push "$HARBOR_IMAGE" ; then
     PUSH_SUCCESS=true
 else
     echo ""
     echo "      Push failed, retrying with proxy settings..."
     if http_proxy=http://hproxy.it.zetyun.cn:1080 \
        https_proxy=http://hproxy.it.zetyun.cn:1080 \
-       docker push "$HARBOR_IMAGE" 2>/dev/null; then
+       docker push "$HARBOR_IMAGE" ; then
         PUSH_SUCCESS=true
     else
         PUSH_SUCCESS=false

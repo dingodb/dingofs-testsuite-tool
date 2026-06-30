@@ -33,18 +33,28 @@ Conventions not yet established. Will populate as patterns emerge during develop
 Architecture not yet mapped. Follow existing patterns found in the codebase.
 <!-- GSD:architecture-end -->
 
-<!-- GSD:workflow-start source:GSD defaults -->
-## GSD Workflow Enforcement
+## Superpowers Workflow Enforcement
 
-Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+This project uses the **superpowers** plugin for all development work. Always follow the superpowers workflow without needing the user to explicitly request it.
 
-Use these entry points:
-- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
-- `/gsd:debug` for investigation and bug fixing
-- `/gsd:execute-phase` for planned phase work
+### Core Skills (load automatically when relevant)
 
-Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
-<!-- GSD:workflow-end -->
+- **brainstorming** — Structured brainstorming before implementation
+- **subagent-driven-development** — Dispatch subagents for implementation with built-in code review
+- **systematic-debugging** — Structured debugging process
+- **test-driven-development** — Red/green TDD
+- **writing-plans** — Write implementation plans before coding
+- **executing-plans** — Execute plans with task tracking
+- **requesting-code-review** / **receiving-code-review** — Code review workflow
+- **verification-before-completion** — Verify work before marking complete
+- **using-git-worktrees** — Isolate work in git worktrees
+
+### Default Behavior
+
+- Before any non-trivial code change, **brainstorm** and **write a plan** first
+- For implementation, use **subagent-driven-development** with code review
+- For bug fixing, use **systematic-debugging**
+- Always **verify before completion**
 
 
 
