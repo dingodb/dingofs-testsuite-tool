@@ -196,6 +196,23 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  部署运维工具到目标用户bin目录
                                  MDS地址取第一个作为主MDS
 
+已部署的运维工具（位于 ~/bin/）:
+  createfs <fsname> <trash_days> [immediate_trash_quota]
+                                 创建文件系统
+  deletefs <fsname>              删除指定文件系统
+  deletefsall                    删除所有文件系统（跳过含DELETE的）
+  edittrashdays <fsname> <days>  修改文件系统回收站天数
+  killclient                     强制终止所有dingo-client进程
+  listfs                         列出所有文件系统
+  mountfs <fsname> <父目录>       挂载文件系统到 <父目录>/<fsname>
+  quotaget <fsname> [path]       查询文件系统配额
+  quotaset <fsname> <path> [capacity] [inodes]
+                                 设置文件系统配额
+  restoretrash <fsname> <hours> [put_back]
+                                 恢复回收站文件
+  umountall <目录>                卸载目录下所有子目录挂载点
+  updatebin <容器ID>              从容器更新dingo二进制文件
+
 测试命令:
   dtt -t <工具> -s <场景> [-n <进程数>] [选项]
                           运行测试套件
