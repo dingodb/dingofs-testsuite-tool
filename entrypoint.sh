@@ -1273,12 +1273,12 @@ mdtest_run() {
     # Generate combined report for all mdtest scenarios (BEFORE logging results)
     # For "all", generate combined report at base mdtest dir
     # For specific scenario, generate at that scenario's dir
-    echo "Generating combined mdtest report..."
+    echo "Generating mdtest report..."
     if [[ "$SCENARIO" == "all" ]] || [[ "$SCENARIO" == "custom" ]]; then
         python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_base" --scenario "mdtest" --mount "$MOUNT" --np "$NP" --combined
         local mdtest_report_dir="$mdtest_base"
     else
-        python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_base/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --np "$NP" --combined
+        python3 /scripts/generate_report.py --tool mdtest --output-dir "$mdtest_base/$SCENARIO" --scenario "$SCENARIO" --mount "$MOUNT" --np "$NP"
         local mdtest_report_dir="$mdtest_base/$SCENARIO"
     fi
 

@@ -1165,21 +1165,20 @@ def generate_vdbench_markdown_metrics(summary, data):
 
 def generate_mdtest_markdown_metrics(summary, data):
     """Add mdtest metrics to markdown summary."""
-    metrics = data.get("metrics", {}) if data else {}
-
-    if not metrics:
+    if not data or not data.get("summary"):
         summary.append("*无 mdtest 指标数据*")
         return
 
-    summary.append("| Metric | Average | Min | Max |")
-    summary.append("|--------|---------|-----|-----|")
-    for key in ["create_rate", "remove_rate"]:
-        avg_key = f"{key}_avg"
-        if avg_key in metrics:
-            avg = f"{metrics[avg_key]:.2f} items/sec"
-            min_val = f"{metrics.get(f'{key}_min', '-'):.2f}"
-            max_val = f"{metrics.get(f'{key}_max', '-'):.2f}"
-            summary.append(f"| {key.replace('_', ' ').capitalize()} | {avg} | {min_val} | {max_val} |")
+    ops = data["summary"].get("operations", [])
+    if not ops:
+        summary.append("*无 mdtest 指标数据*")
+        return
+
+    summary.append("| 操作 | Max (ops/s) | Min (ops/s) | Mean (ops/s) | Std Dev |")
+    summary.append("|------|-------------|-------------|--------------|---------|")
+    for op in ops:
+        name = op.get("name", "Unknown").capitalize()
+        summary.append(f"| {name} | {op.get('max', '-'):.3f} | {op.get('min', '-'):.3f} | {op.get('mean', '-'):.3f} | {op.get('stddev', '-'):.3f} |")
 
 
 # ==============================================================================
