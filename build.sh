@@ -32,7 +32,7 @@ if [[ -d "dingofs-automation-framwork" ]] && [[ ! -d "dingofs-integration-test" 
 fi
 
 if [[ ! -d "dingofs-integration-test" ]]; then
-    git clone git@github.com:dingodb/dingofs-automation-framwork.git dingofs-integration-test
+    git clone git@github.com:dingodb/dingofs-integration-test.git dingofs-integration-test
 else
     echo "      dingofs-integration-test already exists, pulling latest..."
     cd dingofs-integration-test && git pull && cd ..

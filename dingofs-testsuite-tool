@@ -153,9 +153,10 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt <命令> [选项]          # 快捷命令
 
 命令:
-  cluster <子命令>   管理DingoFS集群更新
+  cluster <子命令>   管理DingoFS集群
   config <子命令>    管理配置
   debug              在测试容器中启动交互式Shell
+  --setup-env <名>   创建文件系统并挂载，更新testdir配置
   -t <工具> --help   显示特定工具的帮助
 
 工具:
@@ -185,8 +186,9 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 集群命令:
   dtt cluster update <集群ID> <用户> [-f <拓扑文件>]
                                  更新指定集群到最新DingoFS镜像
-                                 示例: dtt cluster update 29 root
-                                       dtt cluster update 29 root -f /path/to/topology.yaml
+  dtt cluster status <集群ID> <用户>
+                                 查看集群状态
+                                 示例: dtt cluster status 29 root
 
 测试命令:
   dtt -t <工具> -s <场景> [-n <进程数>] [选项]
@@ -237,6 +239,9 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
 
   # 运行所有 ltp 测试
   dtt -t ltp -s all
+
+  # 创建测试环境（仅 setup，不运行测试）
+  dtt --setup-env env_29_bug
 
   # 进入调试Shell
   dtt debug
@@ -1507,8 +1512,91 @@ env_cleanup('$setup_env')
 }
 
 # ==============================================================================
-# Cluster Update
+# Cluster Commands
 # ==============================================================================
+
+cmd_cluster() {
+    local subcmd="$1"
+
+    case "$subcmd" in
+        update)
+            shift
+            cmd_cluster_update "$@"
+            ;;
+        status)
+            shift
+            cmd_cluster_status "$@"
+            ;;
+        --help|-h)
+            echo "Usage: dtt cluster <update|status> [options]"
+            echo ""
+            echo "Cluster management commands:"
+            echo "  update    Update cluster to latest DingoFS image"
+            echo "  status    Show cluster status"
+            echo ""
+            echo "Examples:"
+            echo "  dtt cluster update 29 root"
+            echo "  dtt cluster status 29 root"
+            return 0
+            ;;
+        *)
+            echo "Error: Unknown cluster subcommand '${subcmd:-<empty>}'"
+            echo "Usage: dtt cluster <update|status> [options]"
+            return 1
+            ;;
+    esac
+}
+
+cmd_cluster_status() {
+    local cluster_id="$1"
+    local deploy_user="$2"
+
+    if [[ -z "$cluster_id" ]]; then
+        echo "Error: Cluster ID required"
+        echo "Usage: dtt cluster status <cluster_id> <user>"
+        return 1
+    fi
+
+    if [[ -z "$deploy_user" ]]; then
+        echo "Error: Deploy user required"
+        echo "Usage: dtt cluster status <cluster_id> <user>"
+        return 1
+    fi
+
+    # Resolve dingo path
+    local dingo_path=""
+    case "$cluster_id" in
+        29)
+            if [[ "$deploy_user" == "root" ]]; then
+                dingo_path="/usr/local/bin/dingo"
+            fi
+            ;;
+        *)
+            echo "Error: Unknown cluster '$cluster_id'"
+            return 1
+            ;;
+    esac
+
+    if [[ -z "$dingo_path" ]]; then
+        dingo_path=$(command -v dingo) || {
+            echo "Error: dingo command not found in PATH"
+            return 1
+        }
+    fi
+    local DINGO_BIN="$dingo_path"
+
+    local SUDO=""
+    if [[ "$EUID" -ne 0 ]]; then
+        SUDO="sudo -E"
+    fi
+
+    echo "=============================================="
+    echo "Cluster $cluster_id Status"
+    echo "=============================================="
+    echo ""
+
+    $SUDO $DINGO_BIN cluster status -sv
+}
 
 cmd_cluster_update() {
     # Parse -f/--file flag
@@ -1547,15 +1635,6 @@ cmd_cluster_update() {
                 ;;
         esac
     done
-
-    # Consume subcommand (update)
-    local subcmd="$1"
-    if [[ "$subcmd" != "update" ]]; then
-        echo "Error: Unknown cluster subcommand '$subcmd'"
-        echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
-        return 1
-    fi
-    shift
 
     local cluster_id="$1"
     local deploy_user="$2"
@@ -1732,6 +1811,65 @@ cmd_cluster_update() {
 }
 
 # ==============================================================================
+# Setup Environment (standalone)
+# ==============================================================================
+
+cmd_setup_env() {
+    local setup_env="$1"
+    local config_custom
+    config_custom=$(load_config custom)
+
+    if [[ -z "$setup_env" ]]; then
+        echo "Error: Environment name required"
+        echo "Usage: dtt --setup-env <env_name>"
+        echo "Example: dtt --setup-env env_29_bug"
+        return 1
+    fi
+
+    local integration_test_dir
+    integration_test_dir="$(cd "$(dirname "$0")" && pwd)/dingofs-integration-test"
+
+    if [[ ! -d "$integration_test_dir" ]]; then
+        echo "Error: dingofs-integration-test not found at $integration_test_dir"
+        return 1
+    fi
+
+    # Symlink custom env yaml if exists
+    local cleanup_symlink=""
+    if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
+        ln -sf "$config_custom/${setup_env}.yaml" "$integration_test_dir/conf/env/${setup_env}.yaml"
+        cleanup_symlink="$integration_test_dir/conf/env/${setup_env}.yaml"
+        echo "Using custom env: $config_custom/${setup_env}.yaml"
+    fi
+
+    echo "Setting up environment: $setup_env"
+
+    local setup_exit=0
+    (
+        cd "$integration_test_dir"
+        python3 tests/test_env_setup.py "$setup_env"
+    ) || setup_exit=$?
+
+    # Remove temporary symlink
+    [[ -n "$cleanup_symlink" ]] && rm -f "$cleanup_symlink"
+
+    if [[ $setup_exit -ne 0 ]]; then
+        echo "Error: env_setup failed (exit: $setup_exit)"
+        return $setup_exit
+    fi
+
+    # test_env_setup.py internally ran: dtt config set testdir <mount_path>
+    local mount
+    mount=$(load_config testdir)
+    echo ""
+    echo "=============================================="
+    echo "Environment setup complete!"
+    echo "=============================================="
+    echo ""
+    echo "Mount point (testdir): $mount"
+}
+
+# ==============================================================================
 # Main Entry Point
 # ==============================================================================
 
@@ -1749,7 +1887,7 @@ dingofs-testsuite-tool() {
             ;;
         cluster)
             shift
-            cmd_cluster_update "$@"
+            cmd_cluster "$@"
             ;;
         config)
             shift
@@ -1757,6 +1895,10 @@ dingofs-testsuite-tool() {
             ;;
         debug)
             cmd_debug
+            ;;
+        --setup-env)
+            shift
+            cmd_setup_env "$@"
             ;;
         help|--help|-h)
             show_help
