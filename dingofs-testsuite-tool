@@ -208,6 +208,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  创建文件系统
   deletefs <fsname>              删除指定文件系统
   deletefsall                    删除所有文件系统（跳过含DELETE的）
+  dirstat info <fsname> <path>   查询目录统计信息
   edittrashdays <fsname> <days>  修改文件系统回收站天数
   killclient                     强制终止所有dingo-client进程
   listfs                         列出所有文件系统
@@ -2288,6 +2289,91 @@ find "$target_dir" -maxdepth 1 -mindepth 1 -type d -print0 | while IFS= read -r 
 done
 TOOL_EOF
             ;;
+        dirstat)
+            cat <<'TOOL_EOF'
+#!/bin/bash
+
+if [ $# -lt 2 ]; then
+    echo "用法: $0 info <fs_name> <path>"
+    echo "  info    : 查询目录统计信息"
+    echo "  fs_name : 文件系统名称"
+    echo "  path    : 文件系统内的相对路径"
+    echo "示例: $0 info trash-test-1 /"
+    echo "示例: $0 info trash-test-1 /subdir"
+    exit 1
+fi
+
+SUB_CMD="$1"
+FS_NAME="$2"
+USER_PATH="$3"
+
+if [[ "$SUB_CMD" != "info" ]]; then
+    echo "错误: 未知子命令 '$SUB_CMD'，目前仅支持 info"
+    exit 1
+fi
+
+echo "正在查询文件系统列表..."
+FS_LIST=$(__DINGO_PATH__ fs list --mdsaddr __MDS_ADDR__ 2>&1 | tee /dev/tty)
+
+if [ $? -ne 0 ]; then
+    echo "错误: '__DINGO_PATH__ fs list' 执行失败"
+    exit 1
+fi
+
+FS_ID=$(echo "$FS_LIST" | awk -v target="$FS_NAME" '
+BEGIN { FS="[|]"; found=0 }
+{
+    if ($0 ~ /^\+/ || NF < 10) next
+    gsub(/^[ \t]+|[ \t]+$/, "", $2)
+    gsub(/^[ \t]+|[ \t]+$/, "", $3)
+    if ($3 == target) {
+        print $2
+        found=1
+        exit
+    }
+}
+END {
+    if (!found) exit 1
+}
+')
+
+if [ -z "$FS_ID" ]; then
+    echo "错误: 未找到名称为 '${FS_NAME}' 的文件系统。"
+    echo "以下是解析出的所有文件系统名称（用于核对）："
+    echo "$FS_LIST" | awk -F'[|]' '
+        $0 !~ /^\+/ && NF>=10 {
+            gsub(/^[ \t]+|[ \t]+$/, "", $3)
+            if($3!="") print "  '"'"'" $3 "'"'"'"
+        }
+    '
+    exit 1
+fi
+
+echo "找到 FSID = ${FS_ID}"
+
+# 从 df 中查找挂载点
+MOUNT_POINT=$(df -h 2>/dev/null | awk -v fs="$FS_NAME" '$1 == fs {print $NF; exit}')
+if [ -z "$MOUNT_POINT" ]; then
+    # 如果 df -h 第一列不匹配，尝试 grep（部分发行版第一列是设备路径而非 fsname）
+    MOUNT_POINT=$(mount 2>/dev/null | grep "${FS_NAME}" | awk '{print $3}' | head -1)
+fi
+if [ -z "$MOUNT_POINT" ]; then
+    echo "错误: 无法从 df/mount 中找到文件系统 '${FS_NAME}' 的挂载点"
+    exit 1
+fi
+
+FULL_PATH="${MOUNT_POINT%/}${USER_PATH%/}"
+echo "挂载点:   ${MOUNT_POINT}"
+echo "完整路径: ${FULL_PATH}"
+
+echo "正在查询目录统计..."
+sudo __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+    --mds_addr=__MDS_ADDR__ \
+    --cmd=info \
+    --fs_id="${FS_ID}" \
+    --path="${FULL_PATH}"
+TOOL_EOF
+            ;;
         mountfs)
             cat <<'TOOL_EOF'
 #!/bin/bash
@@ -2504,6 +2590,7 @@ cmd_deploy_bin_tool() {
         createfs
         deletefs
         deletefsall
+        dirstat
         edittrashdays
         killclient
         listfs
