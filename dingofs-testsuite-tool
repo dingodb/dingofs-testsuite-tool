@@ -22,6 +22,7 @@ EMAIL_FILE="$CONFIG_DIR/email"
 RUNTIME_FILE="$CONFIG_DIR/runtime"
 INTENV_FILE="$CONFIG_DIR/int_env"
 CUSTOM_FILE="$CONFIG_DIR/custom"
+REPO_FILE="$CONFIG_DIR/repo"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
@@ -53,6 +54,7 @@ load_config() {
         runtime)   file="$RUNTIME_FILE"      default="docker" ;;
         int_env)   file="$INTENV_FILE"       default="env_126_smoke" ;;
         custom)    file="$CUSTOM_FILE"       default="" ;;
+        repo)      file="$REPO_FILE"         default="" ;;
     esac
     if [[ -f "$file" ]]; then
         local val
@@ -92,6 +94,9 @@ save_config() {
             ;;
         custom)
             echo "$value" > "$CUSTOM_FILE"
+            ;;
+        repo)
+            echo "$value" > "$REPO_FILE"
             ;;
     esac
 }
@@ -158,6 +163,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   deploy <子命令>    部署工具（bin_tool等）
   debug              在测试容器中启动交互式Shell
   --setup-env <名>   创建文件系统并挂载，更新testdir配置
+  --cleanup-env <名> 卸载并清理文件系统
   -t <工具> --help   显示特定工具的帮助
 
 工具:
@@ -183,6 +189,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
   dtt config set runtime <运行时>  设置容器运行时 (docker 或 podman, 默认: docker)
   dtt config set int_env <环境名>   设置集成测试环境名 (默认: env_126_smoke)
   dtt config set custom <目录>     设置自定义场景目录 (挂载到容器 /custom)
+  dtt config set repo <目录>       设置仓库根目录 (用于定位 dingofs-integration-test)
   dtt config show                 显示当前配置
 
 集群命令:
@@ -197,7 +204,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  MDS地址取第一个作为主MDS
 
 已部署的运维工具（位于 ~/bin/）:
-  createfs <fsname> <trash_days> [immediate_trash_quota]
+  createfs <fsname> <trash_days> [immediate_trash_quota] [enable_dir_stats]
                                  创建文件系统
   deletefs <fsname>              删除指定文件系统
   deletefsall                    删除所有文件系统（跳过含DELETE的）
@@ -212,6 +219,14 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  恢复回收站文件
   umountall <目录>                卸载目录下所有子目录挂载点
   updatebin <容器ID>              从容器更新dingo二进制文件
+
+环境命令:
+  dtt --setup-env <环境名>       创建文件系统并挂载，更新testdir配置
+                                 环境名对应 dingofs-integration-test/conf/env/<name>.yaml
+                                 若设置 custom 目录，优先使用 custom/<name>.yaml
+  dtt --cleanup-env <环境名>     卸载并清理文件系统
+  dtt --setup-env <环境名> --cleanup
+                                 先创建再清理（用于测试后清理）
 
 测试命令:
   dtt -t <工具> -s <场景> [-n <进程数>] [选项]
@@ -945,12 +960,12 @@ cmd_config() {
             if [[ -z "$key" ]] || [[ -z "$value" ]]; then
                 echo "Error: key and value required"
                 echo "Usage: dingofs-testsuite-tool config set <key> <value>"
-                echo "Keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env, custom"
+                echo "Keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo"
                 return 1
             fi
 
             case "$key" in
-                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom)
+                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom|repo)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
@@ -981,6 +996,8 @@ cmd_config() {
             echo "  runtime: ${runtime:-docker}"
             echo "  int_env: ${int_env:-env_126_smoke}"
             echo "  custom:  ${custom:-not set}"
+            local repo=$(load_config repo)
+            echo "  repo:    ${repo:-not set}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then
@@ -1033,6 +1050,7 @@ cmd_debug() {
     fi
 
     if [[ -n "$output" ]]; then
+        mkdir -p "$output"
         docker_cmd+=("-v" "${output}:/output")
     fi
 
@@ -1166,6 +1184,10 @@ run_testsuite() {
                 do_cleanup="yes"
                 shift
                 ;;
+            --cleanup-env)
+                cmd_cleanup_env "$2"
+                return $?
+                ;;
             --help|-h)
                 if [[ -n "$tool" ]]; then
                     if [[ "$tool" == "mlperf" ]]; then
@@ -1188,7 +1210,7 @@ run_testsuite() {
     done
 
     if [[ -n "$do_cleanup" ]] && [[ -z "$setup_env" ]]; then
-        echo "Error: --cleanup requires --setup-env"
+        echo "Error: --cleanup requires --setup-env, or use --cleanup-env <name> directly"
         return 1
     fi
 
@@ -1197,39 +1219,9 @@ run_testsuite() {
     output="${output:-$config_output}"
 
     # --- setup-env: create filesystem and mount ---
-    local integration_test_dir
-    integration_test_dir="$(cd "$(dirname "$0")" && pwd)/dingofs-integration-test"
-
     if [[ -n "$setup_env" ]]; then
-        # Resolve env yaml. Python's load_env_configs() handles single-file
-        # and multi-section yamls. We only do a lightweight pre-check here:
-        # if a custom .yaml file exists for this env name, symlink it so
-        # Python can discover it.
-        local cleanup_symlink=""
-        if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
-            ln -sf "$config_custom/${setup_env}.yaml" "$integration_test_dir/conf/env/${setup_env}.yaml"
-            cleanup_symlink="$integration_test_dir/conf/env/${setup_env}.yaml"
-            echo "Using custom env: $config_custom/${setup_env}.yaml"
-        fi
-
-        echo "Setting up environment: $setup_env"
-
-        local setup_exit=0
-        (
-            cd "$integration_test_dir"
-            python3 tests/test_env_setup.py "$setup_env"
-        ) || setup_exit=$?
-
-        # Remove temporary symlink for custom yaml
-        [[ -n "$cleanup_symlink" ]] && rm -f "$cleanup_symlink"
-
-        if [[ $setup_exit -ne 0 ]]; then
-            echo "Error: env_setup failed (exit: $setup_exit)"
-            return $setup_exit
-        fi
-
+        _run_setup_env "$setup_env" || return $?
         # test_env_setup.py internally ran: dtt config set testdir <mount_path>
-        # Reload testdir from config
         mount=$(load_config testdir)
         echo "Test dir updated to: $mount"
     fi
@@ -1765,7 +1757,7 @@ cmd_cluster_update() {
         else
             result_index=2
         fi
-        image_tag=$(curl -fsSL "https://hub.docker.com/v2/repositories/dingodatabase/dingofs/tags/?page=${attempt}&page_size=3&ordering=last_updated" | jq -r ".results[${result_index}].name")
+        image_tag=$(curl -fsSL "https://hub.docker.com/v2/repositories/dingodatabase/dingofs/tags/?page_size=3&ordering=last_updated" | jq -r ".results[${result_index}].name")
         if [[ -z "$image_tag" || "$image_tag" == "null" ]]; then
             echo "Error: Failed to get image tag from Docker Hub"
             return 1
@@ -1840,10 +1832,142 @@ cmd_cluster_update() {
 # Setup Environment (standalone)
 # ==============================================================================
 
-cmd_setup_env() {
+_run_setup_env() {
     local setup_env="$1"
+    local image runtime
+    image=$(load_config image)
+    runtime=$(load_config runtime)
+
+    local repo_dir
+    repo_dir=$(load_config repo)
+    if [[ -z "$repo_dir" ]]; then
+        repo_dir="$(cd "$(dirname "$0")" && pwd)"
+    fi
+    local integration_test_dir="${repo_dir}/dingofs-integration-test"
+
+    # Custom env yaml symlink (only for local checkout)
+    local cleanup_symlink=""
     local config_custom
     config_custom=$(load_config custom)
+    if [[ -d "$integration_test_dir" ]] && [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
+        ln -sf "$config_custom/${setup_env}.yaml" "$integration_test_dir/conf/env/${setup_env}.yaml"
+        cleanup_symlink="$integration_test_dir/conf/env/${setup_env}.yaml"
+        echo "Using custom env: $config_custom/${setup_env}.yaml"
+    fi
+
+    if [[ -d "$integration_test_dir" ]]; then
+        echo "Setting up environment (local): $setup_env"
+        local setup_exit=0
+        (
+            cd "$integration_test_dir"
+            python3 tests/test_env_setup.py "$setup_env"
+        ) || setup_exit=$?
+    elif [[ -n "$image" ]]; then
+        echo "Setting up environment (Docker): $setup_env"
+        # Ensure /mnt has shared mount propagation for FUSE visibility
+        sudo mount --make-rshared /mnt 2>/dev/null || true
+        local docker_args=(
+            $runtime run --rm --privileged --net=host
+            --entrypoint ""
+            -e "DINGOFS_TESTSUITE_CONFIG_DIR=$CONFIG_DIR"
+            -v "$CONFIG_DIR:$CONFIG_DIR"
+            -v /mnt:/mnt:shared
+        )
+        # Pass SSH credentials for remote host access
+        if [[ -d "$HOME/.ssh" ]]; then
+            docker_args+=(-v "$HOME/.ssh:/root/.ssh:ro")
+        fi
+        if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "$SSH_AUTH_SOCK" ]]; then
+            docker_args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e "SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
+        fi
+        # Mount custom env yaml into container if exists
+        if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
+            docker_args+=(-v "$config_custom/${setup_env}.yaml:/dingofs-integration-test/conf/env/${setup_env}.yaml:ro")
+            echo "Using custom env: $config_custom/${setup_env}.yaml"
+        fi
+        local setup_exit=0
+        "${docker_args[@]}" "$image" \
+            python3 /dingofs-integration-test/tests/test_env_setup.py "$setup_env" || setup_exit=$?
+    else
+        echo "Error: dingofs-integration-test not found and no image configured"
+        echo "  Local path: $integration_test_dir"
+        echo "  Set repo dir: dtt config set repo <path>"
+        echo "  Or set image:  dtt config set image <image>"
+        return 1
+    fi
+
+    [[ -n "$cleanup_symlink" ]] && rm -f "$cleanup_symlink"
+
+    if [[ $setup_exit -ne 0 ]]; then
+        echo "Error: env_setup failed (exit: $setup_exit)"
+        return $setup_exit
+    fi
+}
+
+_run_cleanup_env() {
+    local cleanup_env="$1"
+    local image runtime
+    image=$(load_config image)
+    runtime=$(load_config runtime)
+
+    local repo_dir
+    repo_dir=$(load_config repo)
+    if [[ -z "$repo_dir" ]]; then
+        repo_dir="$(cd "$(dirname "$0")" && pwd)"
+    fi
+    local integration_test_dir="${repo_dir}/dingofs-integration-test"
+
+    if [[ -d "$integration_test_dir" ]]; then
+        echo "Cleaning up environment (local): $cleanup_env"
+        local cleanup_exit=0
+        (
+            cd "$integration_test_dir"
+            python3 -c "
+import sys
+sys.path.insert(0, '.')
+from src.config import env_cleanup
+env_cleanup('$cleanup_env')
+"
+        ) || cleanup_exit=$?
+    elif [[ -n "$image" ]]; then
+        echo "Cleaning up environment (Docker): $cleanup_env"
+        local docker_args=(
+            $runtime run --rm --privileged --net=host
+            --entrypoint ""
+            -e "DINGOFS_TESTSUITE_CONFIG_DIR=$CONFIG_DIR"
+            -v "$CONFIG_DIR:$CONFIG_DIR"
+            -v /mnt:/mnt:shared
+        )
+        if [[ -d "$HOME/.ssh" ]]; then
+            docker_args+=(-v "$HOME/.ssh:/root/.ssh:ro")
+        fi
+        if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "$SSH_AUTH_SOCK" ]]; then
+            docker_args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e "SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
+        fi
+        local cleanup_exit=0
+        "${docker_args[@]}" "$image" \
+            python3 -c "
+import sys
+sys.path.insert(0, '/dingofs-integration-test')
+from src.config import env_cleanup
+env_cleanup('$cleanup_env')
+" || cleanup_exit=$?
+    else
+        echo "Error: dingofs-integration-test not found and no image configured"
+        echo "  Set repo dir: dtt config set repo <path>"
+        echo "  Or set image:  dtt config set image <image>"
+        return 1
+    fi
+
+    if [[ $cleanup_exit -ne 0 ]]; then
+        echo "Warning: env_cleanup failed (exit: $cleanup_exit)"
+        return $cleanup_exit
+    fi
+    echo "Environment cleanup complete."
+}
+
+cmd_setup_env() {
+    local setup_env="$1"
 
     if [[ -z "$setup_env" ]]; then
         echo "Error: Environment name required"
@@ -1852,39 +1976,8 @@ cmd_setup_env() {
         return 1
     fi
 
-    local integration_test_dir
-    integration_test_dir="$(cd "$(dirname "$0")" && pwd)/dingofs-integration-test"
+    _run_setup_env "$setup_env" || return $?
 
-    if [[ ! -d "$integration_test_dir" ]]; then
-        echo "Error: dingofs-integration-test not found at $integration_test_dir"
-        return 1
-    fi
-
-    # Symlink custom env yaml if exists
-    local cleanup_symlink=""
-    if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
-        ln -sf "$config_custom/${setup_env}.yaml" "$integration_test_dir/conf/env/${setup_env}.yaml"
-        cleanup_symlink="$integration_test_dir/conf/env/${setup_env}.yaml"
-        echo "Using custom env: $config_custom/${setup_env}.yaml"
-    fi
-
-    echo "Setting up environment: $setup_env"
-
-    local setup_exit=0
-    (
-        cd "$integration_test_dir"
-        python3 tests/test_env_setup.py "$setup_env"
-    ) || setup_exit=$?
-
-    # Remove temporary symlink
-    [[ -n "$cleanup_symlink" ]] && rm -f "$cleanup_symlink"
-
-    if [[ $setup_exit -ne 0 ]]; then
-        echo "Error: env_setup failed (exit: $setup_exit)"
-        return $setup_exit
-    fi
-
-    # test_env_setup.py internally ran: dtt config set testdir <mount_path>
     local mount
     mount=$(load_config testdir)
     echo ""
@@ -1893,6 +1986,19 @@ cmd_setup_env() {
     echo "=============================================="
     echo ""
     echo "Mount point (testdir): $mount"
+}
+
+cmd_cleanup_env() {
+    local cleanup_env="$1"
+
+    if [[ -z "$cleanup_env" ]]; then
+        echo "Error: Environment name required"
+        echo "Usage: dtt --cleanup-env <env_name>"
+        echo "Example: dtt --cleanup-env env_29_base"
+        return 1
+    fi
+
+    _run_cleanup_env "$cleanup_env" || return $?
 }
 
 # ==============================================================================
@@ -1937,18 +2043,21 @@ _embedded_tool_content() {
             cat <<'TOOL_EOF'
 #!/bin/bash
 
-# 检查参数个数（至少2个，最多3个）
-if [ $# -lt 2 ] || [ $# -gt 3 ]; then
-    echo "用法: $0 <fs_name> <trash_days> [immediate_trash_quota]"
-    echo "  immediate_trash_quota 可选，默认值为 true，可传入 true 或 false"
-    echo "示例: $0 trash-test-1 1        # 使用默认 true"
-    echo "示例: $0 trash-test-1 1 false  # 显式传入 false"
+# 检查参数个数（2~4个）
+if [ $# -lt 2 ] || [ $# -gt 4 ]; then
+    echo "用法: $0 <fs_name> <trash_days> [immediate_trash_quota] [enable_dir_stats]"
+    echo "  immediate_trash_quota 可选，默认值为 true"
+    echo "  enable_dir_stats      可选，默认值为 true"
+    echo "示例: $0 trash-test-1 1                    # 全部默认"
+    echo "示例: $0 trash-test-1 1 false              # 关闭即时配额"
+    echo "示例: $0 trash-test-1 1 true false         # 关闭目录统计"
     exit 1
 fi
 
 FS_NAME="$1"
 TRASH_DAYS="$2"
 IMMEDIATE_TRASH_QUOTA="${3:-true}"
+ENABLE_DIR_STATS="${4:-true}"
 
 __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
     --mds_addr=__MDS_ADDR__ \
@@ -1960,7 +2069,8 @@ __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
     --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
     --s3_bucketname=dingofs \
     --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
-    --trash_days="${TRASH_DAYS}"
+    --trash_days="${TRASH_DAYS}" \
+    --enable_dir_stats="${ENABLE_DIR_STATS}"
 TOOL_EOF
             ;;
         deletefs)
@@ -2464,6 +2574,10 @@ dingofs-testsuite-tool() {
         --setup-env)
             shift
             cmd_setup_env "$@"
+            ;;
+        --cleanup-env)
+            shift
+            cmd_cleanup_env "$@"
             ;;
         help|--help|-h)
             show_help

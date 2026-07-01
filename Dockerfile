@@ -186,18 +186,22 @@ COPY --chmod=755 scripts/ /scripts/
 COPY --chmod=755 scenarios/ /scenarios/
 COPY pjdtest/ /pjdtest/
 COPY --chmod=755 dingo /usr/local/bin/dingo
-COPY dingofs-integration-test /dingofs-integration-test
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 
-# Layer 8: build pjdtest, install python deps, set remaining permissions
+# Layer 8: install python deps first (cached unless requirements.txt changes)
+COPY dingofs-integration-test/requirements.txt /tmp/req.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/req.txt && \
+    pip3 cache purge && \
+    rm -f /tmp/req.txt
+COPY dingofs-integration-test /dingofs-integration-test
+
+# Layer 9: build pjdtest, set remaining permissions
 RUN chmod +x /scripts/generate_report.py /scripts/notify.sh \
         /usr/local/bin/dingo /usr/local/bin/run_model.sh /entrypoint.sh && \
     cd /pjdtest && \
     autoreconf -ifs && ./configure && make pjdfstest && rm -rf autom4te.cache && \
     cd /dingofs-integration-test && \
-    pip3 install --no-cache-dir --break-system-packages -r requirements.txt && \
-    pip3 cache purge && \
     chmod +x run_tests.py && \
     mkdir -p log && chmod 777 log && \
     chmod 777 /opt/ltp && \
