@@ -208,7 +208,9 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  创建文件系统
   deletefs <fsname>              删除指定文件系统
   deletefsall                    删除所有文件系统（跳过含DELETE的）
-  dirstat info <fsname> <path>   查询目录统计信息
+  dirstat info <fsname> <path>       查询目录统计信息
+  dirstat enable <fsname> <stat>   启用/禁用目录统计
+  dirstat sync <fsname> <path>     同步目录统计
   edittrashdays <fsname> <days>  修改文件系统回收站天数
   killclient                     强制终止所有dingo-client进程
   listfs                         列出所有文件系统
@@ -2044,14 +2046,15 @@ _embedded_tool_content() {
             cat <<'TOOL_EOF'
 #!/bin/bash
 
-# 检查参数个数（2~4个）
-if [ $# -lt 2 ] || [ $# -gt 4 ]; then
-    echo "用法: $0 <fs_name> <trash_days> [immediate_trash_quota] [enable_dir_stats]"
+# 检查参数个数（2~5个）
+if [ $# -lt 2 ] || [ $# -gt 5 ]; then
+    echo "用法: $0 <fs_name> <trash_days> [immediate_trash_quota] [enable_dir_stats] [store_type]"
     echo "  immediate_trash_quota 可选，默认值为 true"
     echo "  enable_dir_stats      可选，默认值为 true"
-    echo "示例: $0 trash-test-1 1                    # 全部默认"
-    echo "示例: $0 trash-test-1 1 false              # 关闭即时配额"
-    echo "示例: $0 trash-test-1 1 true false         # 关闭目录统计"
+    echo "  store_type            可选，s3 或 rados，默认为 s3"
+    echo "示例: $0 trash-test-1 1                         # 全部默认(s3)"
+    echo "示例: $0 trash-test-1 1 false                   # 关闭即时配额"
+    echo "示例: $0 trash-test-1 1 true false rados        # rados后端"
     exit 1
 fi
 
@@ -2059,19 +2062,36 @@ FS_NAME="$1"
 TRASH_DAYS="$2"
 IMMEDIATE_TRASH_QUOTA="${3:-true}"
 ENABLE_DIR_STATS="${4:-true}"
+STORE_TYPE="${5:-s3}"
 
-__USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
-    --mds_addr=__MDS_ADDR__ \
-    --cmd=createfs \
-    --fs_name="${FS_NAME}" \
-    --fs_partition_type=parent_hash \
-    --s3_endpoint=http://172.30.14.126:9198 \
-    --s3_ak=lu7k2R6r9KhfGxUcA08N \
-    --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
-    --s3_bucketname=dingofs \
-    --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
-    --trash_days="${TRASH_DAYS}" \
-    --enable_dir_stats="${ENABLE_DIR_STATS}"
+if [[ "$STORE_TYPE" == "rados" ]]; then
+    __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+        --mds_addr=__MDS_ADDR__ \
+        --cmd=createfs \
+        --fs_name="${FS_NAME}" \
+        --fs_partition_type=parent_hash \
+        --rados_user_name=client.rados-rgw \
+        --rados_key=AQBGFYZpdkZjJxAAkxPZQdLt8vFTgMc7QbrhZg== \
+        --rados_mon_host=100.64.0.21:6789,100.64.0.22:6789,100.64.0.23:6789 \
+        --rados_pool_name=dingofs-rados \
+        --rados_cluster_name=5eb61dc2-036f-11f1-96ae-6891d06cb3a4 \
+        --trash_days="${TRASH_DAYS}" \
+        --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
+        --enable_dir_stats="${ENABLE_DIR_STATS}"
+else
+    __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+        --mds_addr=__MDS_ADDR__ \
+        --cmd=createfs \
+        --fs_name="${FS_NAME}" \
+        --fs_partition_type=parent_hash \
+        --s3_endpoint=http://172.30.14.126:9198 \
+        --s3_ak=lu7k2R6r9KhfGxUcA08N \
+        --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
+        --s3_bucketname=dingofs \
+        --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
+        --trash_days="${TRASH_DAYS}" \
+        --enable_dir_stats="${ENABLE_DIR_STATS}"
+fi
 TOOL_EOF
             ;;
         deletefs)
@@ -2294,84 +2314,318 @@ TOOL_EOF
 #!/bin/bash
 
 if [ $# -lt 2 ]; then
-    echo "用法: $0 info <fs_name> <path>"
-    echo "  info    : 查询目录统计信息"
-    echo "  fs_name : 文件系统名称"
-    echo "  path    : 文件系统内的相对路径"
+    echo "用法: $0 <subcommand> [args...]"
+    echo "子命令:"
+    echo "  info    <fs_name> <path> [--recursive] [--raw] [--strict]  查询目录统计信息"
+    echo "  enable  <fs_name> <stat>                                     启用/禁用目录统计"
+    echo "  sync    <fs_name> <path> [--recursive] [--repair]           同步目录统计"
+    echo "  summary <fs_name> <path> [--depth N] [--entry N] [--strict] 目录统计摘要"
     echo "示例: $0 info trash-test-1 /"
-    echo "示例: $0 info trash-test-1 /subdir"
+    echo "示例: $0 info trash-test-1 /subdir --recursive"
+    echo "示例: $0 enable trash-test-1 true"
+    echo "示例: $0 sync trash-test-1 / --recursive"
+    echo "示例: $0 summary trash-test-1 / --depth 10 --entry 10"
     exit 1
 fi
 
 SUB_CMD="$1"
-FS_NAME="$2"
-USER_PATH="$3"
 
-if [[ "$SUB_CMD" != "info" ]]; then
-    echo "错误: 未知子命令 '$SUB_CMD'，目前仅支持 info"
-    exit 1
-fi
+case "$SUB_CMD" in
+    info)
+        if [ $# -lt 3 ]; then
+            echo "错误: info 需要 <fs_name> <path>"
+            echo "用法: $0 info <fs_name> <path> [--recursive] [--raw] [--strict]"
+            exit 1
+        fi
+        FS_NAME="$2"
+        USER_PATH="$3"
+        shift 3
 
-echo "正在查询文件系统列表..."
-FS_LIST=$(__DINGO_PATH__ fs list --mdsaddr __MDS_ADDR__ 2>&1 | tee /dev/tty)
+        RECURSIVE=""
+        RAW=""
+        STRICT=""
+        for arg in "$@"; do
+            case "$arg" in
+                --recursive) RECURSIVE="--recursive" ;;
+                --raw)       RAW="--raw" ;;
+                --strict)    STRICT="--strict" ;;
+                *)           echo "错误: 未知选项 '$arg'"; exit 1 ;;
+            esac
+        done
 
-if [ $? -ne 0 ]; then
-    echo "错误: '__DINGO_PATH__ fs list' 执行失败"
-    exit 1
-fi
+        echo "正在查询文件系统列表..."
+        FS_LIST=$(__DINGO_PATH__ fs list --mdsaddr __MDS_ADDR__ 2>&1 | tee /dev/tty)
 
-FS_ID=$(echo "$FS_LIST" | awk -v target="$FS_NAME" '
-BEGIN { FS="[|]"; found=0 }
-{
-    if ($0 ~ /^\+/ || NF < 10) next
-    gsub(/^[ \t]+|[ \t]+$/, "", $2)
-    gsub(/^[ \t]+|[ \t]+$/, "", $3)
-    if ($3 == target) {
-        print $2
-        found=1
-        exit
-    }
-}
-END {
-    if (!found) exit 1
-}
-')
+        if [ $? -ne 0 ]; then
+            echo "错误: '__DINGO_PATH__ fs list' 执行失败"
+            exit 1
+        fi
 
-if [ -z "$FS_ID" ]; then
-    echo "错误: 未找到名称为 '${FS_NAME}' 的文件系统。"
-    echo "以下是解析出的所有文件系统名称（用于核对）："
-    echo "$FS_LIST" | awk -F'[|]' '
-        $0 !~ /^\+/ && NF>=10 {
+        FS_ID=$(echo "$FS_LIST" | awk -v target="$FS_NAME" '
+        BEGIN { FS="[|]"; found=0 }
+        {
+            if ($0 ~ /^\+/ || NF < 10) next
+            gsub(/^[ \t]+|[ \t]+$/, "", $2)
             gsub(/^[ \t]+|[ \t]+$/, "", $3)
-            if($3!="") print "  '"'"'" $3 "'"'"'"
+            if ($3 == target) {
+                print $2
+                found=1
+                exit
+            }
         }
-    '
-    exit 1
-fi
+        END {
+            if (!found) exit 1
+        }
+        ')
 
-echo "找到 FSID = ${FS_ID}"
+        if [ -z "$FS_ID" ]; then
+            echo "错误: 未找到名称为 '${FS_NAME}' 的文件系统。"
+            echo "以下是解析出的所有文件系统名称（用于核对）："
+            echo "$FS_LIST" | awk -F'[|]' '
+                $0 !~ /^\+/ && NF>=10 {
+                    gsub(/^[ \t]+|[ \t]+$/, "", $3)
+                    if($3!="") print "  '"'"'" $3 "'"'"'"
+                }
+            '
+            exit 1
+        fi
 
-# 从 df 中查找挂载点
-MOUNT_POINT=$(df -h 2>/dev/null | awk -v fs="$FS_NAME" '$1 == fs {print $NF; exit}')
-if [ -z "$MOUNT_POINT" ]; then
-    # 如果 df -h 第一列不匹配，尝试 grep（部分发行版第一列是设备路径而非 fsname）
-    MOUNT_POINT=$(mount 2>/dev/null | grep "${FS_NAME}" | awk '{print $3}' | head -1)
-fi
-if [ -z "$MOUNT_POINT" ]; then
-    echo "错误: 无法从 df/mount 中找到文件系统 '${FS_NAME}' 的挂载点"
-    exit 1
-fi
+        echo "找到 FSID = ${FS_ID}"
 
-FULL_PATH="${MOUNT_POINT%/}${USER_PATH%/}"
-echo "挂载点:   ${MOUNT_POINT}"
-echo "完整路径: ${FULL_PATH}"
+        # 从 df 中查找挂载点
+        MOUNT_POINT=$(df -h 2>/dev/null | awk -v fs="$FS_NAME" '$1 == fs {print $NF; exit}')
+        if [ -z "$MOUNT_POINT" ]; then
+            MOUNT_POINT=$(mount 2>/dev/null | grep "${FS_NAME}" | awk '{print $3}' | head -1)
+        fi
+        if [ -z "$MOUNT_POINT" ]; then
+            echo "错误: 无法从 df/mount 中找到文件系统 '${FS_NAME}' 的挂载点"
+            exit 1
+        fi
 
-echo "正在查询目录统计..."
-sudo __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
-    --mds_addr=__MDS_ADDR__ \
-    --cmd=info \
-    --fs_id="${FS_ID}" \
-    --path="${FULL_PATH}"
+        FULL_PATH="${MOUNT_POINT%/}${USER_PATH%/}"
+        echo "挂载点:   ${MOUNT_POINT}"
+        echo "完整路径: ${FULL_PATH}"
+
+        CMD=(__USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=info \
+            --fs_id="${FS_ID}" \
+            --path="${FULL_PATH}")
+        if [[ -n "$RECURSIVE" ]]; then
+            CMD+=(--recursive)
+        fi
+        if [[ -n "$RAW" ]]; then
+            CMD+=(--raw)
+        fi
+        if [[ -n "$STRICT" ]]; then
+            CMD+=(--strict)
+        fi
+        echo "执行命令: ${CMD[*]}"
+        "${CMD[@]}"
+        ;;
+
+    enable)
+        if [ $# -ne 3 ]; then
+            echo "错误: enable 需要 <fs_name> <stat>"
+            echo "用法: $0 enable <fs_name> <stat>"
+            exit 1
+        fi
+        FS_NAME="$2"
+        STAT="$3"
+
+        CMD=(__USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=UpdateFsEnableDirStats \
+            --fs_name="${FS_NAME}" \
+            --enable_dir_stats="${STAT}")
+        echo "执行命令: ${CMD[*]}"
+        "${CMD[@]}"
+        ;;
+
+    sync)
+        if [ $# -lt 3 ]; then
+            echo "错误: sync 需要 <fs_name> <path>"
+            echo "用法: $0 sync <fs_name> <path> [--recursive] [--repair]"
+            exit 1
+        fi
+        FS_NAME="$2"
+        USER_PATH="$3"
+        shift 3
+
+        RECURSIVE=""
+        REPAIR=""
+        for arg in "$@"; do
+            case "$arg" in
+                --recursive) RECURSIVE="--recursive" ;;
+                --repair)    REPAIR="--repair" ;;
+                *)           echo "错误: 未知选项 '$arg'"; exit 1 ;;
+            esac
+        done
+
+        echo "正在查询文件系统列表..."
+        FS_LIST=$(__DINGO_PATH__ fs list --mdsaddr __MDS_ADDR__ 2>&1 | tee /dev/tty)
+
+        if [ $? -ne 0 ]; then
+            echo "错误: '__DINGO_PATH__ fs list' 执行失败"
+            exit 1
+        fi
+
+        FS_ID=$(echo "$FS_LIST" | awk -v target="$FS_NAME" '
+        BEGIN { FS="[|]"; found=0 }
+        {
+            if ($0 ~ /^\+/ || NF < 10) next
+            gsub(/^[ \t]+|[ \t]+$/, "", $2)
+            gsub(/^[ \t]+|[ \t]+$/, "", $3)
+            if ($3 == target) {
+                print $2
+                found=1
+                exit
+            }
+        }
+        END {
+            if (!found) exit 1
+        }
+        ')
+
+        if [ -z "$FS_ID" ]; then
+            echo "错误: 未找到名称为 '${FS_NAME}' 的文件系统。"
+            echo "以下是解析出的所有文件系统名称（用于核对）："
+            echo "$FS_LIST" | awk -F'[|]' '
+                $0 !~ /^\+/ && NF>=10 {
+                    gsub(/^[ \t]+|[ \t]+$/, "", $3)
+                    if($3!="") print "  '"'"'" $3 "'"'"'"
+                }
+            '
+            exit 1
+        fi
+
+        echo "找到 FSID = ${FS_ID}"
+
+        MOUNT_POINT=$(df -h 2>/dev/null | awk -v fs="$FS_NAME" '$1 == fs {print $NF; exit}')
+        if [ -z "$MOUNT_POINT" ]; then
+            MOUNT_POINT=$(mount 2>/dev/null | grep "${FS_NAME}" | awk '{print $3}' | head -1)
+        fi
+        if [ -z "$MOUNT_POINT" ]; then
+            echo "错误: 无法从 df/mount 中找到文件系统 '${FS_NAME}' 的挂载点"
+            exit 1
+        fi
+
+        FULL_PATH="${MOUNT_POINT%/}${USER_PATH%/}"
+        echo "挂载点:   ${MOUNT_POINT}"
+        echo "完整路径: ${FULL_PATH}"
+
+        CMD=(__USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=syncdirstat \
+            --fs_id="${FS_ID}" \
+            --path="${FULL_PATH}")
+        if [[ -n "$RECURSIVE" ]]; then
+            CMD+=(--recursive)
+        fi
+        if [[ -n "$REPAIR" ]]; then
+            CMD+=(--repair)
+        fi
+        echo "执行命令: ${CMD[*]}"
+        "${CMD[@]}"
+        ;;
+
+    summary)
+        if [ $# -lt 3 ]; then
+            echo "错误: summary 需要 <fs_name> <path>"
+            echo "用法: $0 summary <fs_name> <path> [--depth N] [--entry N] [--strict]"
+            exit 1
+        fi
+        FS_NAME="$2"
+        USER_PATH="$3"
+        shift 3
+
+        DEPTH=""
+        ENTRY=""
+        STRICT=""
+        while [[ $# -gt 0 ]]; do
+            case "$1" in
+                --depth)  DEPTH="$2"; shift 2 ;;
+                --entry)  ENTRY="$2"; shift 2 ;;
+                --strict) STRICT="--strict"; shift ;;
+                *)        echo "错误: 未知选项 '$1'"; exit 1 ;;
+            esac
+        done
+
+        echo "正在查询文件系统列表..."
+        FS_LIST=$(__DINGO_PATH__ fs list --mdsaddr __MDS_ADDR__ 2>&1 | tee /dev/tty)
+
+        if [ $? -ne 0 ]; then
+            echo "错误: '__DINGO_PATH__ fs list' 执行失败"
+            exit 1
+        fi
+
+        FS_ID=$(echo "$FS_LIST" | awk -v target="$FS_NAME" '
+        BEGIN { FS="[|]"; found=0 }
+        {
+            if ($0 ~ /^\+/ || NF < 10) next
+            gsub(/^[ \t]+|[ \t]+$/, "", $2)
+            gsub(/^[ \t]+|[ \t]+$/, "", $3)
+            if ($3 == target) {
+                print $2
+                found=1
+                exit
+            }
+        }
+        END {
+            if (!found) exit 1
+        }
+        ')
+
+        if [ -z "$FS_ID" ]; then
+            echo "错误: 未找到名称为 '${FS_NAME}' 的文件系统。"
+            echo "以下是解析出的所有文件系统名称（用于核对）："
+            echo "$FS_LIST" | awk -F'[|]' '
+                $0 !~ /^\+/ && NF>=10 {
+                    gsub(/^[ \t]+|[ \t]+$/, "", $3)
+                    if($3!="") print "  '"'"'" $3 "'"'"'"
+                }
+            '
+            exit 1
+        fi
+
+        echo "找到 FSID = ${FS_ID}"
+
+        MOUNT_POINT=$(df -h 2>/dev/null | awk -v fs="$FS_NAME" '$1 == fs {print $NF; exit}')
+        if [ -z "$MOUNT_POINT" ]; then
+            MOUNT_POINT=$(mount 2>/dev/null | grep "${FS_NAME}" | awk '{print $3}' | head -1)
+        fi
+        if [ -z "$MOUNT_POINT" ]; then
+            echo "错误: 无法从 df/mount 中找到文件系统 '${FS_NAME}' 的挂载点"
+            exit 1
+        fi
+
+        FULL_PATH="${MOUNT_POINT%/}${USER_PATH%/}"
+        echo "挂载点:   ${MOUNT_POINT}"
+        echo "完整路径: ${FULL_PATH}"
+
+        CMD=(__USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=summary \
+            --fs_id="${FS_ID}" \
+            --path="${FULL_PATH}")
+        if [[ -n "$DEPTH" ]]; then
+            CMD+=(--depth "$DEPTH")
+        fi
+        if [[ -n "$ENTRY" ]]; then
+            CMD+=(--entry "$ENTRY")
+        fi
+        if [[ -n "$STRICT" ]]; then
+            CMD+=(--strict)
+        fi
+        echo "执行命令: ${CMD[*]}"
+        "${CMD[@]}"
+        ;;
+
+    *)
+        echo "错误: 未知子命令 '$SUB_CMD'，支持: info, enable, sync, summary"
+        exit 1
+        ;;
+esac
 TOOL_EOF
             ;;
         mountfs)
