@@ -116,20 +116,22 @@ if [[ "$SKIP_BUILD" == "false" ]]; then
     echo "      Image: $IMAGE_NAME"
     echo ""
 
-    # Try pull without proxy first, then with proxy if it fails
-    if $RUNTIME pull "$IMAGE_NAME"; then
-        PULL_SUCCESS=true
-    else
-        echo ""
-        echo "      Pull failed, retrying with proxy settings..."
-        if http_proxy=http://hproxy.it.zetyun.cn:1080 \
-           https_proxy=http://hproxy.it.zetyun.cn:1080 \
-           $RUNTIME pull "$IMAGE_NAME"; then
+    # Try: direct → direct+sudo → proxy → proxy+sudo
+    PULL_CMD="$RUNTIME pull \"$IMAGE_NAME\""
+    PULL_SUCCESS=false
+
+    for attempt in \
+        "$PULL_CMD" \
+        "sudo $PULL_CMD" \
+        "http_proxy=http://hproxy.it.zetyun.cn:1080 https_proxy=http://hproxy.it.zetyun.cn:1080 $PULL_CMD" \
+        "sudo http_proxy=http://hproxy.it.zetyun.cn:1080 https_proxy=http://hproxy.it.zetyun.cn:1080 $PULL_CMD"; do
+        if eval "$attempt"; then
             PULL_SUCCESS=true
-        else
-            PULL_SUCCESS=false
+            break
         fi
-    fi
+        echo ""
+        echo "      Retrying..."
+    done
 
     if [[ "$PULL_SUCCESS" == "true" ]]; then
         echo ""
