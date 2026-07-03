@@ -117,14 +117,14 @@ if [[ "$SKIP_BUILD" == "false" ]]; then
     echo ""
 
     # Try pull without proxy first, then with proxy if it fails
-    if $RUNTIME pull "$IMAGE_NAME" 2>/dev/null; then
+    if $RUNTIME pull "$IMAGE_NAME"; then
         PULL_SUCCESS=true
     else
         echo ""
         echo "      Pull failed, retrying with proxy settings..."
         if http_proxy=http://hproxy.it.zetyun.cn:1080 \
            https_proxy=http://hproxy.it.zetyun.cn:1080 \
-           $RUNTIME pull "$IMAGE_NAME" 2>/dev/null; then
+           $RUNTIME pull "$IMAGE_NAME"; then
             PULL_SUCCESS=true
         else
             PULL_SUCCESS=false
