@@ -127,14 +127,17 @@ _is_fuse_blocked() {
 
 # Resolve mount mapping for FUSE mounts that Docker daemon can't access.
 # Output: host_path container_target container_mount_path
-#   FUSE case: /mnt /mnt <full host path>  (caller uses :shared propagation)
+#   FUSE case: <fs_root> <fs_root> <full host path>  (caller uses :shared propagation)
 #   Normal:    <host_path> /data /data
 resolve_mount_target() {
     local mount_path="$1"
 
     if _is_fuse_blocked "$mount_path"; then
-        # Use /mnt with shared mount propagation so FUSE is visible inside container
-        echo "/mnt" "/mnt" "$mount_path"
+        # Find the filesystem mount point to use as shared bind-mount root
+        local fs_root
+        fs_root=$(df --output=target "$mount_path" 2>/dev/null | tail -1)
+        [[ -z "$fs_root" ]] && fs_root="/mnt"
+        echo "$fs_root" "$fs_root" "$mount_path"
     else
         echo "$mount_path" "/data" "/data"
     fi
@@ -674,8 +677,8 @@ cmd_daily() {
     if [[ -n "$mount" ]]; then
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
         local daily_vol_flag=""
-        if [[ "$container_target" == "/mnt" ]]; then
-            sudo mount --make-rshared /mnt 2>/dev/null || true
+        if [[ "$container_target" != "/data" ]]; then
+            sudo mount --make-rshared "$container_target" 2>/dev/null || true
             daily_vol_flag=":shared"
         fi
         docker_cmd+=("-v" "${host_mount}:${container_target}${daily_vol_flag}")
@@ -877,8 +880,8 @@ cmd_smoke() {
 
     # When FUSE is detected (container_target=/mnt), use shared mount propagation
     local vol_flag=""
-    if [[ "$container_target" == "/mnt" ]]; then
-        sudo mount --make-rshared /mnt 2>/dev/null || true
+    if [[ "$container_target" != "/data" ]]; then
+        sudo mount --make-rshared "$container_target" 2>/dev/null || true
         vol_flag=":shared"
     fi
 
@@ -1420,8 +1423,8 @@ run_testsuite() {
     fi
 
     local vol_flag=""
-    if [[ "$container_target" == "/mnt" ]]; then
-        sudo mount --make-rshared /mnt 2>/dev/null || true
+    if [[ "$container_target" != "/data" ]]; then
+        sudo mount --make-rshared "$container_target" 2>/dev/null || true
         vol_flag=":shared"
     fi
 
