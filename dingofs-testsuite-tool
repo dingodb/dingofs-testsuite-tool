@@ -127,21 +127,16 @@ _is_fuse_blocked() {
 
 # Resolve mount mapping for FUSE mounts that Docker daemon can't access.
 # Output: host_path container_target container_mount_path
-#   host_path          - bind-mount source (parent dir for FUSE, original path otherwise)
-#   container_target   - bind-mount target (always /data)
-#   container_mount_path - entrypoint -m value (/data or /data/subdir for FUSE)
+#   FUSE case: /mnt /mnt <full host path>  (caller uses :shared propagation)
+#   Normal:    <host_path> /data /data
 resolve_mount_target() {
     local mount_path="$1"
-    local container_base="${2:-/data}"
 
     if _is_fuse_blocked "$mount_path"; then
-        local subdir
-        subdir=$(basename "$mount_path")
-        local parent_dir
-        parent_dir=$(dirname "$mount_path")
-        echo "$parent_dir" "$container_base" "${container_base}/${subdir}"
+        # Use /mnt with shared mount propagation so FUSE is visible inside container
+        echo "/mnt" "/mnt" "$mount_path"
     else
-        echo "$mount_path" "$container_base" "$container_base"
+        echo "$mount_path" "/data" "/data"
     fi
 }
 
@@ -678,7 +673,12 @@ cmd_daily() {
     # Add --user if testdir is set (for FUSE access)
     if [[ -n "$mount" ]]; then
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
-        docker_cmd+=("-v" "${host_mount}:${container_target}")
+        local daily_vol_flag=""
+        if [[ "$container_target" == "/mnt" ]]; then
+            sudo mount --make-rshared /mnt 2>/dev/null || true
+            daily_vol_flag=":shared"
+        fi
+        docker_cmd+=("-v" "${host_mount}:${container_target}${daily_vol_flag}")
     fi
 
     docker_cmd+=("-v" "${output}:/output")
@@ -875,10 +875,17 @@ cmd_smoke() {
         rm_flag=""
     fi
 
+    # When FUSE is detected (container_target=/mnt), use shared mount propagation
+    local vol_flag=""
+    if [[ "$container_target" == "/mnt" ]]; then
+        sudo mount --make-rshared /mnt 2>/dev/null || true
+        vol_flag=":shared"
+    fi
+
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
         --user $(stat -c '%u:%g' "$mount")
-        -v "${host_mount}:${container_target}"
+        -v "${host_mount}:${container_target}${vol_flag}"
         -v "${output}:/output"
     )
 
@@ -1047,7 +1054,12 @@ cmd_debug() {
             # FUSE mount: use shell cd to avoid runc mkdir on FUSE path
             debug_extra_args=("-c" "cd $container_mount; exec /bin/bash")
         fi
-        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" $user_flag "-v" "${host_mount}:${container_target}")
+        local vol_flag=""
+        if [[ "$container_target" == "/mnt" ]]; then
+            sudo mount --make-rshared /mnt 2>/dev/null || true
+            vol_flag=":shared"
+        fi
+        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" $user_flag "-v" "${host_mount}:${container_target}${vol_flag}")
     else
         local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
     fi
@@ -1306,11 +1318,16 @@ run_testsuite() {
         if [[ -n "$debug" ]]; then
             mlperf_rm_flag=""
         fi
+        local vol_flag=""
+        if [[ "$container_target" == "/mnt" ]]; then
+            sudo mount --make-rshared /mnt 2>/dev/null || true
+            vol_flag=":shared"
+        fi
         local docker_cmd=(
             $runtime run -it $mlperf_rm_flag --privileged --net=host
             --user $(stat -c '%u:%g' "$mount")
             --shm-size=8g
-            -v "${host_mount}:${container_target}"
+            -v "${host_mount}:${container_target}${vol_flag}"
             -v "${output}:/output"
             -e "MODELS=${scenario}"
             -e "NUM_ACCELERATORS=${gpu_count}"
@@ -1402,11 +1419,17 @@ run_testsuite() {
         fi
     fi
 
+    local vol_flag=""
+    if [[ "$container_target" == "/mnt" ]]; then
+        sudo mount --make-rshared /mnt 2>/dev/null || true
+        vol_flag=":shared"
+    fi
+
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
         --user $(stat -c '%u:%g' "$mount")
         "${ltp_extra_flags[@]}"
-        -v "${host_mount}:${container_target}"
+        -v "${host_mount}:${container_target}${vol_flag}"
         -v "${output}:/output"
     )
 
@@ -1883,6 +1906,21 @@ _run_setup_env() {
         if [[ -n "${SSH_AUTH_SOCK:-}" ]] && [[ -S "$SSH_AUTH_SOCK" ]]; then
             docker_args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e "SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
         fi
+        # Mount updated test_env_setup.py if available locally (fixes for image's stale version)
+        local local_test_script=""
+        # Try repo_dir first, then git toplevel from script dir, then common paths
+        for candidate in \
+            "$integration_test_dir/tests/test_env_setup.py" \
+            "$(cd "$(dirname "$0")" && git rev-parse --show-toplevel 2>/dev/null)/dingofs-integration-test/tests/test_env_setup.py"; do
+            if [[ -f "$candidate" ]]; then
+                local_test_script="$candidate"
+                break
+            fi
+        done
+        if [[ -n "$local_test_script" ]]; then
+            docker_args+=(-v "$local_test_script:/dingofs-integration-test/tests/test_env_setup.py:ro")
+        fi
+
         # Mount custom env yaml into container if exists
         if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
             docker_args+=(-v "$config_custom/${setup_env}.yaml:/dingofs-integration-test/conf/env/${setup_env}.yaml:ro")
@@ -1979,16 +2017,40 @@ cmd_setup_env() {
         return 1
     fi
 
-    _run_setup_env "$setup_env" || return $?
+    # Capture output to parse DINGOFS_TEMP_MOUNTDIR (tee for real-time display)
+    local setup_log _setup_rc
+    setup_log=$(mktemp)
+    _run_setup_env "$setup_env" 2>&1 | tee "$setup_log" || true
+    _setup_rc=${PIPESTATUS[0]}
 
-    local mount
-    mount=$(load_config testdir)
-    echo ""
-    echo "=============================================="
-    echo "Environment setup complete!"
-    echo "=============================================="
-    echo ""
-    echo "Mount point (testdir): $mount"
+    if [[ $_setup_rc -ne 0 ]]; then
+        rm -f "$setup_log"
+        return $_setup_rc
+    fi
+
+    # Parse mount dir from output and update testdir config
+    local mount_path
+    mount_path=$(grep -oP 'export DINGOFS_TEMP_MOUNTDIR=\K.*' "$setup_log" | tail -1)
+    rm -f "$setup_log"
+
+    if [[ -n "$mount_path" ]]; then
+        save_config testdir "$mount_path"
+        echo ""
+        echo "=============================================="
+        echo "Environment setup complete!"
+        echo "=============================================="
+        echo ""
+        echo "Testdir updated: $mount_path"
+    else
+        local mount
+        mount=$(load_config testdir)
+        echo ""
+        echo "=============================================="
+        echo "Environment setup complete!"
+        echo "=============================================="
+        echo ""
+        echo "Mount point (testdir): $mount"
+    fi
 }
 
 cmd_cleanup_env() {
@@ -2319,12 +2381,12 @@ if [ $# -lt 2 ]; then
     echo "  info    <fs_name> <path> [--recursive] [--raw] [--strict]  查询目录统计信息"
     echo "  enable  <fs_name> <stat>                                     启用/禁用目录统计"
     echo "  sync    <fs_name> <path> [--recursive] [--repair]           同步目录统计"
-    echo "  summary <fs_name> <path> [--depth N] [--entry N] [--strict] 目录统计摘要"
+    echo "  summary <fs_name> <path> [--depth N] [--entries N] [--strict] 目录统计摘要"
     echo "示例: $0 info trash-test-1 /"
     echo "示例: $0 info trash-test-1 /subdir --recursive"
     echo "示例: $0 enable trash-test-1 true"
     echo "示例: $0 sync trash-test-1 / --recursive"
-    echo "示例: $0 summary trash-test-1 / --depth 10 --entry 10"
+    echo "示例: $0 summary trash-test-1 / --depth 10 --entries 10"
     exit 1
 fi
 
@@ -2532,7 +2594,7 @@ case "$SUB_CMD" in
     summary)
         if [ $# -lt 3 ]; then
             echo "错误: summary 需要 <fs_name> <path>"
-            echo "用法: $0 summary <fs_name> <path> [--depth N] [--entry N] [--strict]"
+            echo "用法: $0 summary <fs_name> <path> [--depth N] [--entries N] [--strict]"
             exit 1
         fi
         FS_NAME="$2"
@@ -2540,12 +2602,12 @@ case "$SUB_CMD" in
         shift 3
 
         DEPTH=""
-        ENTRY=""
+        ENTRIES=""
         STRICT=""
         while [[ $# -gt 0 ]]; do
             case "$1" in
                 --depth)  DEPTH="$2"; shift 2 ;;
-                --entry)  ENTRY="$2"; shift 2 ;;
+                --entries)  ENTRIES="$2"; shift 2 ;;
                 --strict) STRICT="--strict"; shift ;;
                 *)        echo "错误: 未知选项 '$1'"; exit 1 ;;
             esac
@@ -2611,8 +2673,8 @@ case "$SUB_CMD" in
         if [[ -n "$DEPTH" ]]; then
             CMD+=(--depth "$DEPTH")
         fi
-        if [[ -n "$ENTRY" ]]; then
-            CMD+=(--entry "$ENTRY")
+        if [[ -n "$ENTRIES" ]]; then
+            CMD+=(--entries "$ENTRIES")
         fi
         if [[ -n "$STRICT" ]]; then
             CMD+=(--strict)
