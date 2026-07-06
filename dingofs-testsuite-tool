@@ -135,8 +135,8 @@ resolve_mount_target() {
     if _is_fuse_blocked "$mount_path"; then
         # Find the filesystem mount point to use as shared bind-mount root
         local fs_root
-        fs_root=$(df --output=target "$mount_path" 2>/dev/null | tail -1)
-        [[ -z "$fs_root" ]] && fs_root="/mnt"
+        fs_root=$(stat -c '%m' "$mount_path" 2>/dev/null)
+        [[ -z "$fs_root" || "$fs_root" == "/" ]] && fs_root="/mnt"
         echo "$fs_root" "$fs_root" "$mount_path"
     else
         echo "$mount_path" "/data" "/data"
