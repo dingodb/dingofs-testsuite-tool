@@ -115,10 +115,8 @@ list_docker_images() {
 # Also catches stale/disconnected mounts where stat fails entirely.
 _is_fuse_blocked() {
     local path="$1"
-    local fstype
-    fstype=$(stat -f -c '%T' "$path" 2>/dev/null || echo "")
-    # FUSE filesystem, or stat failed entirely (stale mount)
-    if [[ "$fstype" == "fuseblk" ]] || [[ -z "$fstype" ]]; then
+    # If path exists but root cannot read it, treat as blocked (FUSE or otherwise)
+    if [[ -d "$path" ]]; then
         ! sudo test -r "$path" 2>/dev/null
         return $?
     fi
@@ -127,22 +125,28 @@ _is_fuse_blocked() {
 
 # Resolve mount mapping for FUSE mounts that Docker daemon can't access.
 # Output: host_path container_target container_mount_path
-#   FUSE case: <fs_root> <fs_root> <full host path>  (caller uses :shared propagation)
+#   FUSE case: <fuse_root> /data /data/<relative_subpath>
 #   Normal:    <host_path> /data /data
 resolve_mount_target() {
     local mount_path="$1"
 
     if _is_fuse_blocked "$mount_path"; then
-        # Walk up to first non-FUSE ancestor, then find its filesystem mount point
+        # Walk up to first ancestor that root CAN read (the FUSE mount point itself)
         local ancestor="$mount_path"
         while [[ "$ancestor" != "/" ]] && _is_fuse_blocked "$ancestor"; do
             ancestor=$(dirname "$ancestor")
         done
-        local fs_root
-        fs_root=$(stat -c '%m' "$ancestor" 2>/dev/null)
-        [[ -z "$fs_root" || "$fs_root" == "/" ]] && fs_root="/mnt"
-        echo "[DEBUG] ancestor=$ancestor fs_root=$fs_root mount_path=$mount_path" >&2
-        echo "$fs_root" "$fs_root" "$mount_path"
+        # Calculate path relative to the FUSE root for inside the container
+        local rel_path="${mount_path#$ancestor}"
+        rel_path="${rel_path#/}"
+        local container_path
+        if [[ -n "$rel_path" ]]; then
+            container_path="/data/$rel_path"
+        else
+            container_path="/data"
+        fi
+        echo "[DEBUG] ancestor=$ancestor rel_path=$rel_path container_path=$container_path" >&2
+        echo "$ancestor" "/data" "$container_path"
     else
         echo "$mount_path" "/data" "/data"
     fi
