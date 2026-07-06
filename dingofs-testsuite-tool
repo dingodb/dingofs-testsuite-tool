@@ -878,10 +878,14 @@ cmd_smoke() {
         rm_flag=""
     fi
 
-    # When FUSE is detected (container_target=/mnt), use shared mount propagation
+    # When FUSE is detected, use shared mount propagation
     local vol_flag=""
     if [[ "$container_target" != "/data" ]]; then
-        sudo mount --make-rshared "$container_target" 2>/dev/null || true
+        if sudo mount --make-rshared "$container_target" 2>&1; then
+            echo "[FUSE] make-rshared $container_target OK"
+        else
+            echo "[FUSE] make-rshared $container_target failed (ignored)"
+        fi
         vol_flag=":shared"
     fi
 
@@ -1517,7 +1521,7 @@ run_testsuite() {
     fi
 
     echo "Running testsuite with image: $image"
-    echo "Mount: $mount -> $container_mount"
+    echo "Mount: $mount -> $container_mount  (vol: ${host_mount}:${container_target}${vol_flag:-})"
     echo "Output: $output -> /output"
     echo "Tool: $tool"
     if [[ -n "$scenario" ]]; then
