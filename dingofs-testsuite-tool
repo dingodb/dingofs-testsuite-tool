@@ -133,10 +133,15 @@ resolve_mount_target() {
     local mount_path="$1"
 
     if _is_fuse_blocked "$mount_path"; then
-        # Find the filesystem mount point to use as shared bind-mount root
+        # Walk up to first non-FUSE ancestor, then find its filesystem mount point
+        local ancestor="$mount_path"
+        while [[ "$ancestor" != "/" ]] && _is_fuse_blocked "$ancestor"; do
+            ancestor=$(dirname "$ancestor")
+        done
         local fs_root
-        fs_root=$(stat -c '%m' "$mount_path" 2>/dev/null)
+        fs_root=$(stat -c '%m' "$ancestor" 2>/dev/null)
         [[ -z "$fs_root" || "$fs_root" == "/" ]] && fs_root="/mnt"
+        echo "[DEBUG] ancestor=$ancestor fs_root=$fs_root mount_path=$mount_path" >&2
         echo "$fs_root" "$fs_root" "$mount_path"
     else
         echo "$mount_path" "/data" "/data"
