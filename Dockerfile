@@ -68,15 +68,9 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
 # Create Python 3.12 venv
 RUN python3.12 -m venv /opt/mlpstorage-env
 
-# Clone repos (shallow clones to save space)
-RUN git clone --depth 1 --branch v2.0 \
-        https://github.com/mlcommons/storage.git /opt/mlpstorage-src \
-    && git clone --depth 1 --branch mlperf_storage_v2.0 \
-        https://github.com/argonne-lcf/dlio_benchmark.git /opt/dlio-src
-
-# Install lightweight runtime dependencies
-RUN /opt/mlpstorage-env/bin/pip install --upgrade pip \
-    && /opt/mlpstorage-env/bin/pip install \
+# Install all pip deps before git clone (cached even when repos update)
+RUN /opt/mlpstorage-env/bin/pip install --upgrade pip --no-cache-dir \
+    && /opt/mlpstorage-env/bin/pip install --no-cache-dir \
         numpy \
         pandas \
         "h5py>=3.11.0" \
@@ -86,18 +80,19 @@ RUN /opt/mlpstorage-env/bin/pip install --upgrade pip \
         "Pillow>=9.3.0" \
         PyYAML \
         "psutil>=5.9" \
-        pyarrow
-
-# Install CPU-only PyTorch + torchvision (~200MB vs ~2.5GB CUDA)
-RUN /opt/mlpstorage-env/bin/pip install \
+        pyarrow \
         torch torchvision \
-        --index-url https://download.pytorch.org/whl/cpu
-
-# Install CPU TensorFlow + tfrecord (~400MB vs 1+GB GPU)
-RUN /opt/mlpstorage-env/bin/pip install tensorflow-cpu tfrecord \
+        --index-url https://download.pytorch.org/whl/cpu \
+    && /opt/mlpstorage-env/bin/pip install --no-cache-dir tensorflow-cpu tfrecord \
     && printf '#!/opt/mlpstorage-env/bin/python\nfrom tfrecord.tools.tfrecord2idx import main\nmain()\n' \
        > /opt/mlpstorage-env/bin/tfrecord2idx \
     && chmod +x /opt/mlpstorage-env/bin/tfrecord2idx
+
+# Clone repos (shallow clones to save space)
+RUN git clone --depth 1 --branch v2.0 \
+        https://github.com/mlcommons/storage.git /opt/mlpstorage-src \
+    && git clone --depth 1 --branch mlperf_storage_v2.0 \
+        https://github.com/argonne-lcf/dlio_benchmark.git /opt/dlio-src
 
 # Patch dlio_benchmark for optional dependency guards
 RUN sed -i \
@@ -111,8 +106,8 @@ RUN sed -i \
       /opt/dlio-src/dlio_benchmark/framework/tf_framework.py
 
 # Install dlio-benchmark and mlpstorage without pulling their deps
-RUN /opt/mlpstorage-env/bin/pip install --no-deps /opt/dlio-src \
-    && /opt/mlpstorage-env/bin/pip install --no-deps /opt/mlpstorage-src \
+RUN /opt/mlpstorage-env/bin/pip install --no-cache-dir --no-deps /opt/dlio-src \
+    && /opt/mlpstorage-env/bin/pip install --no-cache-dir --no-deps /opt/mlpstorage-src \
     && rm -rf /opt/dlio-src/.git /opt/mlpstorage-src/.git
 
 # Stage 2: Final image
@@ -181,22 +176,22 @@ COPY --from=mlperf-builder --chmod=755 /opt/mlpstorage-env /opt/mlpstorage-env
 COPY --from=mlperf-builder --chmod=755 /opt/mlpstorage-src /opt/mlpstorage-src
 COPY --from=mlperf-builder --chmod=755 /opt/dlio-src /opt/dlio-src
 
-# Layer 7: copy project files with permissions
+# Layer 7: install python deps (cached unless requirements.txt changes)
+COPY dingofs-integration-test/requirements.txt /tmp/req.txt
+RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/req.txt && \
+    pip3 cache purge && \
+    rm -f /tmp/req.txt
+
+# Layer 8: copy project files (frequently-changing files go AFTER pip)
 COPY --chmod=755 scripts/ /scripts/
 COPY --chmod=755 scenarios/ /scenarios/
 COPY pjdtest/ /pjdtest/
 COPY --chmod=755 dingo /usr/local/bin/dingo
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
-
-# Layer 8: install python deps first (cached unless requirements.txt changes)
-COPY dingofs-integration-test/requirements.txt /tmp/req.txt
-RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/req.txt && \
-    pip3 cache purge && \
-    rm -f /tmp/req.txt
 COPY dingofs-integration-test /dingofs-integration-test
 
-# Layer 9: build pjdtest, set remaining permissions
+# Layer 9: build pjdtest, set permissions
 RUN chmod +x /scripts/generate_report.py /scripts/notify.sh \
         /usr/local/bin/dingo /usr/local/bin/run_model.sh /entrypoint.sh && \
     cd /pjdtest && \

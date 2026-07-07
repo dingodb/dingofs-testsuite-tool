@@ -688,7 +688,7 @@ cmd_daily() {
         local daily_vol_flag=""
         if [[ "$container_target" != "/data" ]]; then
             sudo mount --make-rshared "$container_target" 2>/dev/null || true
-            daily_vol_flag=":shared"
+            daily_vol_flag=":rshared"
         fi
         docker_cmd+=("-v" "${host_mount}:${container_target}${daily_vol_flag}")
     fi
@@ -895,7 +895,7 @@ cmd_smoke() {
         else
             echo "[FUSE] make-rshared $container_target failed (ignored)"
         fi
-        vol_flag=":shared"
+        vol_flag=":rshared"
     fi
 
     local docker_cmd=(
@@ -1073,7 +1073,7 @@ cmd_debug() {
         local vol_flag=""
         if [[ "$container_target" == "/mnt" ]]; then
             sudo mount --make-rshared /mnt 2>/dev/null || true
-            vol_flag=":shared"
+            vol_flag=":rshared"
         fi
         local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" $user_flag "-v" "${host_mount}:${container_target}${vol_flag}")
     else
@@ -1337,7 +1337,7 @@ run_testsuite() {
         local vol_flag=""
         if [[ "$container_target" == "/mnt" ]]; then
             sudo mount --make-rshared /mnt 2>/dev/null || true
-            vol_flag=":shared"
+            vol_flag=":rshared"
         fi
         local docker_cmd=(
             $runtime run -it $mlperf_rm_flag --privileged --net=host
@@ -1438,7 +1438,7 @@ run_testsuite() {
     local vol_flag=""
     if [[ "$container_target" != "/data" ]]; then
         sudo mount --make-rshared "$container_target" 2>/dev/null || true
-        vol_flag=":shared"
+        vol_flag=":rshared"
     fi
 
     local docker_cmd=(
@@ -1668,7 +1668,7 @@ cmd_cluster_update() {
                 shift 2
                 ;;
             --help|-h)
-                echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+                echo "Usage: dtt cluster update <cluster_id> <user> [<image_tag>] [-f <topology_file>]"
                 echo ""
                 echo "Update a DingoFS cluster to the latest image."
                 echo ""
@@ -1676,12 +1676,15 @@ cmd_cluster_update() {
                 echo "  cluster_id   Cluster ID (e.g. 29)"
                 echo "  user         Deploy user, used to locate topology file"
                 echo "               (e.g. root → /root/dingofs/deploy/...)"
+                echo "  image_tag    (Optional) Specific image tag to deploy"
+                echo "               If omitted, fetches the latest tag from Docker Hub"
                 echo ""
                 echo "Options:"
                 echo "  -f, --file   Override topology YAML file path"
                 echo ""
                 echo "Examples:"
                 echo "  dtt cluster update 29 root"
+                echo "  dtt cluster update 29 root 8120cfb"
                 echo "  dtt cluster update 29 dingofs"
                 echo "  dtt cluster update 29 root -f /custom/topology.yaml"
                 return 0
@@ -1698,18 +1701,21 @@ cmd_cluster_update() {
 
     local cluster_id="$1"
     local deploy_user="$2"
+    local image_tag="$3"
 
     if [[ -z "$cluster_id" ]]; then
         echo "Error: Cluster ID required"
-        echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+        echo "Usage: dtt cluster update <cluster_id> <user> [<image_tag>] [-f <topology_file>]"
         echo "Example: dtt cluster update 29 root"
+        echo "         dtt cluster update 29 root 8120cfb"
         return 1
     fi
 
     if [[ -z "$deploy_user" ]]; then
         echo "Error: Deploy user required"
-        echo "Usage: dtt cluster update <cluster_id> <user> [-f <topology_file>]"
+        echo "Usage: dtt cluster update <cluster_id> <user> [<image_tag>] [-f <topology_file>]"
         echo "Example: dtt cluster update 29 root"
+        echo "         dtt cluster update 29 root 8120cfb"
         return 1
     fi
 
@@ -1783,26 +1789,37 @@ cmd_cluster_update() {
     local backup_file="${topology_file}.$(date +%Y%m%d_%H%M%S).bak"
     local did_backup=false
 
+    # If user specified an image tag, use it directly (no retry needed)
+    if [[ -n "$image_tag" ]]; then
+        max_attempts=1
+    fi
+
     while [[ $attempt -le $max_attempts ]]; do
-        local image_tag
         local tag_label
-        if [[ $attempt -eq 1 ]]; then
+        if [[ -n "$image_tag" ]]; then
+            # User-specified tag, no label needed
+            tag_label="specified"
+        elif [[ $attempt -eq 1 ]]; then
             tag_label="latest"
         else
             tag_label="previous"
         fi
 
-        echo "[1/6] Fetching ${tag_label} image tag (attempt $attempt/$max_attempts)..."
-        local result_index
-        if [[ $attempt -eq 1 ]]; then
-            result_index=0
+        if [[ -n "$image_tag" ]]; then
+            echo "[1/6] Using specified image tag: $image_tag"
         else
-            result_index=2
-        fi
-        image_tag=$(curl -fsSL "https://hub.docker.com/v2/repositories/dingodatabase/dingofs/tags/?page_size=3&ordering=last_updated" | jq -r ".results[${result_index}].name")
-        if [[ -z "$image_tag" || "$image_tag" == "null" ]]; then
-            echo "Error: Failed to get image tag from Docker Hub"
-            return 1
+            echo "[1/6] Fetching ${tag_label} image tag (attempt $attempt/$max_attempts)..."
+            local result_index
+            if [[ $attempt -eq 1 ]]; then
+                result_index=0
+            else
+                result_index=2
+            fi
+            image_tag=$(curl -fsSL "https://hub.docker.com/v2/repositories/dingodatabase/dingofs/tags/?page_size=3&ordering=last_updated" | jq -r ".results[${result_index}].name")
+            if [[ -z "$image_tag" || "$image_tag" == "null" ]]; then
+                echo "Error: Failed to get image tag from Docker Hub"
+                return 1
+            fi
         fi
         echo "      Image tag: $image_tag"
 
@@ -1913,7 +1930,7 @@ _run_setup_env() {
             --entrypoint ""
             -e "DINGOFS_TESTSUITE_CONFIG_DIR=$CONFIG_DIR"
             -v "$CONFIG_DIR:$CONFIG_DIR"
-            -v /mnt:/mnt:shared
+            -v /mnt:/mnt:rshared
         )
         # Pass SSH credentials for remote host access
         if [[ -d "$HOME/.ssh" ]]; then
@@ -1993,7 +2010,7 @@ env_cleanup('$cleanup_env')
             --entrypoint ""
             -e "DINGOFS_TESTSUITE_CONFIG_DIR=$CONFIG_DIR"
             -v "$CONFIG_DIR:$CONFIG_DIR"
-            -v /mnt:/mnt:shared
+            -v /mnt:/mnt:rshared
         )
         if [[ -d "$HOME/.ssh" ]]; then
             docker_args+=(-v "$HOME/.ssh:/root/.ssh:ro")
