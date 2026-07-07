@@ -81,8 +81,9 @@ RUN /opt/mlpstorage-env/bin/pip install --upgrade pip --no-cache-dir \
         PyYAML \
         "psutil>=5.9" \
         pyarrow \
+    && /opt/mlpstorage-env/bin/pip install --no-cache-dir \
         torch torchvision \
-        --index-url https://download.pytorch.org/whl/cpu \
+        --extra-index-url https://download.pytorch.org/whl/cpu \
     && /opt/mlpstorage-env/bin/pip install --no-cache-dir tensorflow-cpu tfrecord \
     && printf '#!/opt/mlpstorage-env/bin/python\nfrom tfrecord.tools.tfrecord2idx import main\nmain()\n' \
        > /opt/mlpstorage-env/bin/tfrecord2idx \

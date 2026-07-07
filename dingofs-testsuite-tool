@@ -2810,8 +2810,8 @@ _docker_cp() {
         return 0
     fi
 
-    # 容器存在但无权限访问时，用 sudo 重试
-    if echo "$output" | grep -q "does not exist"; then
+    # 权限不足或容器/路径不存在时，用 sudo 重试
+    if echo "$output" | grep -qE "does not exist|permission denied"; then
         echo "  直接访问失败，尝试 sudo ..."
         sudo docker cp "$src" "$dst"
         return $?
