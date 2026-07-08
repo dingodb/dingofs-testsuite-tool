@@ -111,45 +111,23 @@ list_docker_images() {
 }
 
 
-# Check if a path is on FUSE and inaccessible to root (Docker daemon).
-# Also catches stale/disconnected mounts where stat fails entirely.
-_is_fuse_blocked() {
-    local path="$1"
-    # If path exists but root cannot read it, treat as blocked (FUSE or otherwise)
-    if [[ -d "$path" ]]; then
-        ! sudo test -r "$path" 2>/dev/null
-        return $?
+# Detect rootless container runtime — user namespace remapping makes --user harmful.
+_is_rootless() {
+    local runtime
+    runtime=$(load_config runtime)
+    if [[ "$runtime" == "podman" ]]; then
+        podman info --format '{{.Host.Security.Rootless}}' 2>/dev/null | grep -q true
+    elif [[ "$runtime" == "docker" ]]; then
+        docker info 2>/dev/null | grep 'rootless:' | grep -q true
+    else
+        return 1
     fi
-    return 1
 }
 
-# Resolve mount mapping for FUSE mounts that Docker daemon can't access.
+# Resolve mount mapping for bind-mounting testdir into container.
 # Output: host_path container_target container_mount_path
-#   FUSE case: <fuse_root> /data /data/<relative_subpath>
-#   Normal:    <host_path> /data /data
 resolve_mount_target() {
-    local mount_path="$1"
-
-    if _is_fuse_blocked "$mount_path"; then
-        # Walk up to first ancestor that root CAN read (the FUSE mount point itself)
-        local ancestor="$mount_path"
-        while [[ "$ancestor" != "/" ]] && _is_fuse_blocked "$ancestor"; do
-            ancestor=$(dirname "$ancestor")
-        done
-        # Calculate path relative to the FUSE root for inside the container
-        local rel_path="${mount_path#$ancestor}"
-        rel_path="${rel_path#/}"
-        local container_path
-        if [[ -n "$rel_path" ]]; then
-            container_path="/data/$rel_path"
-        else
-            container_path="/data"
-        fi
-        echo "[DEBUG] ancestor=$ancestor rel_path=$rel_path container_path=$container_path" >&2
-        echo "$ancestor" "/data" "$container_path"
-    else
-        echo "$mount_path" "/data" "/data"
-    fi
+    echo "$1" "/data" "/data"
 }
 
 show_help() {
@@ -682,15 +660,12 @@ cmd_daily() {
         --entrypoint /bin/bash
     )
 
-    # Add --user if testdir is set (for FUSE access)
+    # Add --user if testdir is set (skip for rootless podman)
     if [[ -n "$mount" ]]; then
-        docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
-        local daily_vol_flag=""
-        if [[ "$container_target" != "/data" ]]; then
-            sudo mount --make-rshared "$container_target" 2>/dev/null || true
-            daily_vol_flag=":rshared"
+        if ! _is_rootless; then
+            docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
         fi
-        docker_cmd+=("-v" "${host_mount}:${container_target}${daily_vol_flag}")
+        docker_cmd+=("-v" "${host_mount}:${container_target}")
     fi
 
     docker_cmd+=("-v" "${output}:/output")
@@ -887,23 +862,14 @@ cmd_smoke() {
         rm_flag=""
     fi
 
-    # When FUSE is detected, use shared mount propagation
-    local vol_flag=""
-    if [[ "$container_target" != "/data" ]]; then
-        if sudo mount --make-rshared "$container_target" 2>&1; then
-            echo "[FUSE] make-rshared $container_target OK"
-        else
-            echo "[FUSE] make-rshared $container_target failed (ignored)"
-        fi
-        vol_flag=":rshared"
-    fi
-
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
-        --user $(stat -c '%u:%g' "$mount")
-        -v "${host_mount}:${container_target}${vol_flag}"
+        -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
+    if ! _is_rootless; then
+        docker_cmd=("${docker_cmd[@]:0:6}" "--user" "$(stat -c '%u:%g' "$mount")" "${docker_cmd[@]:6}")
+    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
@@ -1061,21 +1027,14 @@ cmd_debug() {
     echo "Type 'exit' to leave the container"
     echo ""
 
-    local debug_extra_args=()
     if [[ -n "$testdir" ]]; then
         local host_mount container_target container_mount
         read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$testdir")"
-        local user_flag="--user $(stat -c '%u:%g' "$testdir")"
-        if [[ "$container_mount" != "/data" ]]; then
-            # FUSE mount: use shell cd to avoid runc mkdir on FUSE path
-            debug_extra_args=("-c" "cd $container_mount; exec /bin/bash")
+        local user_flag=""
+        if ! _is_rootless; then
+            user_flag="--user $(stat -c '%u:%g' "$testdir")"
         fi
-        local vol_flag=""
-        if [[ "$container_target" == "/mnt" ]]; then
-            sudo mount --make-rshared /mnt 2>/dev/null || true
-            vol_flag=":rshared"
-        fi
-        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" $user_flag "-v" "${host_mount}:${container_target}${vol_flag}")
+        local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash" $user_flag "-v" "${host_mount}:${container_target}")
     else
         local docker_cmd=("$runtime" "run" "-it" "--rm" "--privileged" "--net=host" "--entrypoint" "/bin/bash")
     fi
@@ -1114,7 +1073,7 @@ cmd_debug() {
         docker_cmd+=("-e" "MDSADDR=$mdsaddr")
     fi
 
-    docker_cmd+=("$image" "${debug_extra_args[@]}")
+    docker_cmd+=("$image")
 
     "${docker_cmd[@]}"
 }
@@ -1189,6 +1148,10 @@ run_testsuite() {
                 ;;
             --bs_size)
                 bs_size="$2"
+                shift 2
+                ;;
+            --test-times)
+                test_times="$2"
                 shift 2
                 ;;
             --scale)
@@ -1334,16 +1297,10 @@ run_testsuite() {
         if [[ -n "$debug" ]]; then
             mlperf_rm_flag=""
         fi
-        local vol_flag=""
-        if [[ "$container_target" == "/mnt" ]]; then
-            sudo mount --make-rshared /mnt 2>/dev/null || true
-            vol_flag=":rshared"
-        fi
         local docker_cmd=(
             $runtime run -it $mlperf_rm_flag --privileged --net=host
-            --user $(stat -c '%u:%g' "$mount")
             --shm-size=8g
-            -v "${host_mount}:${container_target}${vol_flag}"
+            -v "${host_mount}:${container_target}"
             -v "${output}:/output"
             -e "MODELS=${scenario}"
             -e "NUM_ACCELERATORS=${gpu_count}"
@@ -1351,6 +1308,9 @@ run_testsuite() {
             -e "LOOPS=1"
             -e "SUBMISSION_MODE=closed"
         )
+        if ! _is_rootless; then
+            docker_cmd=("${docker_cmd[@]:0:6}" "--user" "$(stat -c '%u:%g' "$mount")" "${docker_cmd[@]:6}")
+        fi
 
         # Set SCALE: --file_count takes precedence over --scale (CLI-06)
         if [[ -n "$file_count" ]]; then
@@ -1435,19 +1395,15 @@ run_testsuite() {
         fi
     fi
 
-    local vol_flag=""
-    if [[ "$container_target" != "/data" ]]; then
-        sudo mount --make-rshared "$container_target" 2>/dev/null || true
-        vol_flag=":rshared"
-    fi
-
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
-        --user $(stat -c '%u:%g' "$mount")
         "${ltp_extra_flags[@]}"
-        -v "${host_mount}:${container_target}${vol_flag}"
+        -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
+    if ! _is_rootless; then
+        docker_cmd=("${docker_cmd[@]:0:6}" "--user" "$(stat -c '%u:%g' "$mount")" "${docker_cmd[@]:6}")
+    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
@@ -1502,6 +1458,11 @@ run_testsuite() {
         docker_cmd+=("-e" "BS_SIZE=$bs_size")
     fi
 
+    # Pass test_times if specified (for fio perf)
+    if [[ -n "$test_times" ]]; then
+        docker_cmd+=("-e" "TEST_TIMES=$test_times")
+    fi
+
     # Build entrypoint command
     local entrypoint_cmd=(
         /entrypoint.sh
@@ -1530,7 +1491,7 @@ run_testsuite() {
     fi
 
     echo "Running testsuite with image: $image"
-    echo "Mount: $mount -> $container_mount  (vol: ${host_mount}:${container_target}${vol_flag:-})"
+    echo "Mount: $mount -> $container_mount  (vol: ${host_mount}:${container_target})"
     echo "Output: $output -> /output"
     echo "Tool: $tool"
     if [[ -n "$scenario" ]]; then

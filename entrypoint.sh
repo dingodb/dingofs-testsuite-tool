@@ -519,8 +519,8 @@ scenario_exists() {
                 fio_scenarios_dir="/scenarios/fio/bs_small"
             fi
 
-            # Accept "all" to run all scenarios
-            if [[ "$scenario" == "all" ]]; then
+            # Accept "all" or "perf" to run all or performance scenarios
+            if [[ "$scenario" == "all" ]] || [[ "$scenario" == "perf" ]]; then
                 return 0
             fi
             # Accept "custom" if any .fio files exist in /custom/
@@ -598,6 +598,10 @@ get_scenario_paths() {
                         paths+=("$file")
                     done < <(ls "${SCENARIOS_DIR}/${type}"_*.fio 2>/dev/null | sort)
                 done
+            # Perf scenario: run fio performance scripts
+            elif [[ "$scenario" == "perf" ]]; then
+                paths+=("/scenarios/fio/performance/fio_write.sh")
+                paths+=("/scenarios/fio/performance/fio_read.sh")
             # Custom scenario: run all .fio files in /custom/
             elif [[ "$scenario" == "custom" ]]; then
                 while IFS= read -r file; do
@@ -1020,23 +1024,42 @@ echo ""
         # Create output directory for this scenario
         mkdir -p "$scenario_output"
 
-        # Build fio command
-        local fio_cmd=("$FIO_BIN" "$config" "--output-format=json")
+        # Perf scenario: prepare script in /tmp, execute from mount dir
+        if [[ "$SCENARIO" == "perf" ]]; then
+            local perf_script_name
+            perf_script_name=$(basename "$config")
+            local perf_log_dir="$OUTPUT/fio_${RUN_TIMESTAMP}/perf"
+            mkdir -p "$perf_log_dir"
+            cp "$config" "/tmp/$perf_script_name"
+            sed -i "s|^LOG_DIR=.*|LOG_DIR=\"$perf_log_dir\"|" "/tmp/$perf_script_name"
+            sed -i "s|^TEST_TIMES=.*|TEST_TIMES=${TEST_TIMES:-3}|" "/tmp/$perf_script_name"
+            echo "Perf script: $perf_script_name"
+            echo "  LOG_DIR: $perf_log_dir"
+            echo "  TEST_TIMES: ${TEST_TIMES:-3}"
+            echo "Executing: cd $MOUNT && bash /tmp/$perf_script_name"
+            (
+                cd "$MOUNT" && bash "/tmp/$perf_script_name" 2>&1 | tee "$scenario_output/perf.log"
+            )
+            local fio_exit=${PIPESTATUS[0]}
+        else
+            # Build fio command
+            local fio_cmd=("$FIO_BIN" "$config" "--output-format=json")
 
-        # Override directory if MOUNT is specified
-        if [[ -d "$MOUNT" ]]; then
-            fio_cmd+=("--directory=$MOUNT")
+            # Override directory if MOUNT is specified
+            if [[ -d "$MOUNT" ]]; then
+                fio_cmd+=("--directory=$MOUNT")
+            fi
+
+            echo "Executing: ${fio_cmd[*]}"
+
+            # Run fio and capture output - allow Ctrl+C to interrupt
+            # Use subshell to handle signals properly
+            (
+                trap 'kill -INT $$' INT TERM
+                "${fio_cmd[@]}" 2>&1 | tee "$scenario_output/fio.raw" > "$scenario_output/fio.json"
+            )
+            local fio_exit=${PIPESTATUS[0]}
         fi
-
-        echo "Executing: ${fio_cmd[*]}"
-
-        # Run fio and capture output - allow Ctrl+C to interrupt
-        # Use subshell to handle signals properly
-        (
-            trap 'kill -INT $$' INT TERM
-            "${fio_cmd[@]}" 2>&1 | tee "$scenario_output/fio.raw" > "$scenario_output/fio.json"
-        )
-        local fio_exit=${PIPESTATUS[0]}
 
         if [[ $fio_exit -ne 0 ]]; then
             echo "Warning: Scenario '$scenario_name' exited with code $fio_exit"
