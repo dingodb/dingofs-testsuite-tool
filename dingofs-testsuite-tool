@@ -725,6 +725,7 @@ cmd_daily() {
         mount_subdir --env env_${env}_mount_subdir \
         trash --env env_${env}_trash \
         dirstat --env env_${env}_dirstat \
+        hot_upgrade --env env_${env}_hotupgrade_multi \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
     fi
