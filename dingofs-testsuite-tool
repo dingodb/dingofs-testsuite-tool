@@ -866,12 +866,14 @@ cmd_smoke() {
 
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
+    )
+    if ! _is_rootless; then
+        docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
+    fi
+    docker_cmd+=(
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
-    if ! _is_rootless; then
-        docker_cmd=("${docker_cmd[@]:0:6}" "--user" "$(stat -c '%u:%g' "$mount")" "${docker_cmd[@]:6}")
-    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
@@ -1301,6 +1303,11 @@ run_testsuite() {
         fi
         local docker_cmd=(
             $runtime run -it $mlperf_rm_flag --privileged --net=host
+        )
+        if ! _is_rootless; then
+            docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
+        fi
+        docker_cmd+=(
             --shm-size=8g
             -v "${host_mount}:${container_target}"
             -v "${output}:/output"
@@ -1310,9 +1317,6 @@ run_testsuite() {
             -e "LOOPS=1"
             -e "SUBMISSION_MODE=closed"
         )
-        if ! _is_rootless; then
-            docker_cmd=("${docker_cmd[@]:0:6}" "--user" "$(stat -c '%u:%g' "$mount")" "${docker_cmd[@]:6}")
-        fi
 
         # Set SCALE: --file_count takes precedence over --scale (CLI-06)
         if [[ -n "$file_count" ]]; then
@@ -1399,13 +1403,15 @@ run_testsuite() {
 
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
+    )
+    if ! _is_rootless; then
+        docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
+    fi
+    docker_cmd+=(
         "${ltp_extra_flags[@]}"
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
-    if ! _is_rootless; then
-        docker_cmd=("${docker_cmd[@]:0:6}" "--user" "$(stat -c '%u:%g' "$mount")" "${docker_cmd[@]:6}")
-    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
