@@ -2148,10 +2148,10 @@ if [[ "$2" == "s3" ]] || [[ "$2" == "rados" ]]; then
             --cmd=createfs \
             --fs_name="${FS_NAME}" \
             --fs_partition_type=parent_hash \
-            --s3_endpoint=http://172.30.14.126:9198 \
-            --s3_ak=lu7k2R6r9KhfGxUcA08N \
-            --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
-            --s3_bucketname=dingofs
+            --s3_endpoint=http://10.220.32.43:8082 \
+            --s3_ak=BHFE6CXTJY4QGQ3T94OJ \
+            --s3_sk=UsTvm61UXqGgwqeStRwyEqHqc3DfXMK8QwN9jVck \
+            --s3_bucketname=dingofs-dgy
     fi
 else
     # 完整形式：传三个 flag
@@ -2180,10 +2180,10 @@ else
             --cmd=createfs \
             --fs_name="${FS_NAME}" \
             --fs_partition_type=parent_hash \
-            --s3_endpoint=http://172.30.14.126:9198 \
-            --s3_ak=lu7k2R6r9KhfGxUcA08N \
-            --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
-            --s3_bucketname=dingofs \
+            --s3_endpoint=http://10.220.32.43:8082 \
+            --s3_ak=BHFE6CXTJY4QGQ3T94OJ \
+            --s3_sk=UsTvm61UXqGgwqeStRwyEqHqc3DfXMK8QwN9jVck \
+            --s3_bucketname=dingofs-dgy \
             --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
             --trash_days="${TRASH_DAYS}" \
             --enable_dir_stats="${ENABLE_DIR_STATS}"
