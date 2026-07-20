@@ -2242,12 +2242,16 @@ TOOL_EOF
             cat <<'TOOL_EOF'
 #!/bin/bash
 
+FILTER="$1"
+
 listfs | grep '"fsName"' | while IFS= read -r line; do
     fsname=$(echo "$line" | sed -n 's/.*"fsName":\s*"\([^"]*\)".*/\1/p')
 
     if [ -n "$fsname" ]; then
         if [[ "$fsname" == *DELETE* ]]; then
             echo "Skipping (contains DELETE): $fsname"
+        elif [[ -n "$FILTER" ]] && [[ "$fsname" != *"$FILTER"* ]]; then
+            echo "Skipping (no match): $fsname"
         else
             echo "Deleting fs: $fsname"
             deletefs "$fsname"
