@@ -2191,6 +2191,37 @@ else
 fi
 TOOL_EOF
             ;;
+        createcache)
+            cat <<'TOOL_EOF'
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+    echo "用法: $0 <cachename> <cachesize_mb>"
+    echo "示例: $0 mlperf_cache 102400"
+    exit 1
+fi
+
+CACHE_NAME="$1"
+CACHE_SIZE_MB="$2"
+CACHE_ID=$(uuidgen)
+LISTEN_PORT=$((10000 + RANDOM % 10001))
+MDS_PRIMARY="__MDS_ADDR__"
+LISTEN_IP="${MDS_PRIMARY%:*}"
+
+LD_PRELOAD=/lib64/libjemalloc.so.2 numactl --cpunodebind=0 --membind=0 \
+    __DINGO_PATH__ cache start \
+    --id "$CACHE_ID" \
+    --cache_dir /mnt/cache1/remote_cache \
+    --cache_size_mb "$CACHE_SIZE_MB" \
+    --group_name "$CACHE_NAME" \
+    --listen_ip "$LISTEN_IP" \
+    --listen_port "$LISTEN_PORT" \
+    --log_dir /mnt/disk0/dingofs-autotest/remote_cache_log \
+    --mds_addrs __MDS_ADDRS__ \
+    --iodepth 1024 \
+    --daemonize
+TOOL_EOF
+            ;;
         deletefs)
             cat <<'TOOL_EOF'
 #!/bin/bash
@@ -2939,6 +2970,7 @@ cmd_deploy_bin_tool() {
     local deployed=0
     local tools=(
         mdscreatefs
+        createcache
         deletefs
         deletefsall
         dirstat
@@ -2959,6 +2991,7 @@ cmd_deploy_bin_tool() {
     for toolname in "${tools[@]}"; do
         _embedded_tool_content "$toolname" | \
             $SUDO sed \
+                -e "s|__MDS_ADDRS__|$mds_addr|g" \
                 -e "s|__MDS_ADDR__|$mds_primary|g" \
                 -e "s|__DINGO_PATH__|$dingo_path|g" \
                 -e "s|__USER_HOME__|$user_home|g" \
