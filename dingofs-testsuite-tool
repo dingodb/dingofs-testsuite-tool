@@ -2765,16 +2765,19 @@ TOOL_EOF
 #!/bin/bash
 
 # 检查参数个数
-if [ $# -ne 2 ]; then
-    echo "用法: $0 <fsname> <父目录>"
-    echo "  fsname : 文件系统名，也作为挂载点目录名"
-    echo " 父目录 : 挂载点的父目录，挂载点将创建为 <父目录>/<fsname>"
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "用法: $0 <fsname> <父目录> [cachename]"
+    echo "  fsname   : 文件系统名，也作为挂载点目录名"
+    echo "  父目录   : 挂载点的父目录，挂载点将创建为 <父目录>/<fsname>"
+    echo "  cachename: 可选，缓存组名（使用远程缓存）"
     echo "示例: $0 trash-test-1 /mnt/disk0/dingofs-autotest/client"
+    echo "示例: $0 trash-test-1 /mnt/disk0/dingofs-autotest/client mlperf_cache_group"
     exit 1
 fi
 
 FS_NAME="$1"
 MOUNT_PARENT="$2"
+CACHE_NAME="${3:-}"
 MOUNT_FOLDER="${MOUNT_PARENT}/${FS_NAME}"
 BASE_DIR=$(dirname "$MOUNT_PARENT")
 
@@ -2784,23 +2787,45 @@ mkdir -p "$MOUNT_FOLDER"
 # 生成 10000~20000 之间的随机端口
 PORT=$((RANDOM % 10001 + 10000))
 export LD_PRELOAD=/lib64/libjemalloc.so.2
+
 # 执行挂载命令
-CMD=(
-numactl --cpunodebind=0 --membind=0 \
-__DINGO_PATH__ fs mount \
-"mds://__MDS_ADDR__/${FS_NAME}" \
-"${MOUNT_FOLDER}" \
---cache_dir "${BASE_DIR}/local_cache/${FS_NAME}" \
---cache_store disk \
---fuse_max_threads 512 \
---log_dir "${BASE_DIR}/client_log/${FS_NAME}" \
---log_v 0 \
---vfs_dummy_server_port "${PORT}" \
---vfs_read_buffer_total_mb 8000 \
---vfs_write_buffer_total_mb 65536 \
---vfs_read_executor_thread 32 \
---daemonize true
-)
+if [[ -n "$CACHE_NAME" ]]; then
+    # 远程缓存模式
+    CMD=(
+    numactl --cpunodebind=0 --membind=0 \
+    __DINGO_PATH__ fs mount \
+    "mds://__MDS_ADDR__/${FS_NAME}" \
+    "${MOUNT_FOLDER}" \
+    --cache_dir "${BASE_DIR}/remote_cache/${FS_NAME}" \
+    --cache_store none \
+    --cache_group "${CACHE_NAME}" \
+    --fuse_max_threads 512 \
+    --log_dir "${BASE_DIR}/client_log/${FS_NAME}" \
+    --log_v 0 \
+    --vfs_dummy_server_port "${PORT}" \
+    --vfs_read_buffer_total_mb 8000 \
+    --vfs_write_buffer_total_mb 65536 \
+    --vfs_read_executor_thread 32 \
+    --daemonize true
+    )
+else
+    CMD=(
+    numactl --cpunodebind=0 --membind=0 \
+    __DINGO_PATH__ fs mount \
+    "mds://__MDS_ADDR__/${FS_NAME}" \
+    "${MOUNT_FOLDER}" \
+    --cache_dir "${BASE_DIR}/local_cache/${FS_NAME}" \
+    --cache_store disk \
+    --fuse_max_threads 512 \
+    --log_dir "${BASE_DIR}/client_log/${FS_NAME}" \
+    --log_v 0 \
+    --vfs_dummy_server_port "${PORT}" \
+    --vfs_read_buffer_total_mb 8000 \
+    --vfs_write_buffer_total_mb 65536 \
+    --vfs_read_executor_thread 32 \
+    --daemonize true
+    )
+fi
 
 # 打印即将执行的命令（用空格连接数组元素并显示）
 echo "即将执行命令："
