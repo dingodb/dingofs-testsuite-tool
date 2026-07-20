@@ -189,7 +189,7 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  MDS地址取第一个作为主MDS
 
 已部署的运维工具（位于 ~/bin/）:
-  createfs <fsname> <trash_days> [immediate_trash_quota] [enable_dir_stats]
+  createfs <fsname> <trash_days> [immediate_trash_quota] [enable_dir_stats] [store_type]
                                  创建文件系统
   deletefs <fsname>              删除指定文件系统
   deletefsall                    删除所有文件系统（跳过含DELETE的）
