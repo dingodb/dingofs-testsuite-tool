@@ -189,7 +189,8 @@ DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
                                  MDS地址取第一个作为主MDS
 
 已部署的运维工具（位于 ~/bin/）:
-  createfs <fsname> <trash_days> [immediate_trash_quota] [enable_dir_stats] [store_type]
+  createfs <fsname> [trash_days] [immediate_trash_quota] [enable_dir_stats] [store_type]
+                                 创建文件系统（默认: 1/true/true/rados）
                                  创建文件系统
   deletefs <fsname>              删除指定文件系统
   deletefsall                    删除所有文件系统（跳过含DELETE的）
@@ -2110,51 +2111,84 @@ _embedded_tool_content() {
             cat <<'TOOL_EOF'
 #!/bin/bash
 
-# 检查参数个数（2~5个）
-if [ $# -lt 2 ] || [ $# -gt 5 ]; then
-    echo "用法: $0 <fs_name> <trash_days> [immediate_trash_quota] [enable_dir_stats] [store_type]"
-    echo "  immediate_trash_quota 可选，默认值为 true"
-    echo "  enable_dir_stats      可选，默认值为 true"
-    echo "  store_type            可选，s3 或 rados，默认为 s3"
-    echo "示例: $0 trash-test-1 1                         # 全部默认(s3)"
-    echo "示例: $0 trash-test-1 1 false                   # 关闭即时配额"
-    echo "示例: $0 trash-test-1 1 true false rados        # rados后端"
+# 检查参数个数（1~5个）
+if [ $# -lt 1 ] || [ $# -gt 5 ]; then
+    echo "用法: $0 <fs_name> [trash_days] [immediate_trash_quota] [enable_dir_stats] [store_type]"
+    echo "  简短形式: $0 <fs_name> s3|rados        # 不传那三个参数"
+    echo "  trash_days             可选，默认值为 1"
+    echo "  immediate_trash_quota  可选，默认值为 true"
+    echo "  enable_dir_stats       可选，默认值为 true"
+    echo "  store_type             可选，s3 或 rados，默认为 rados"
+    echo "示例: $0 trash-test-1                              # 全部默认(rados)"
+    echo "示例: $0 trash-test-1 rados                        # 简短形式(rados)"
+    echo "示例: $0 trash-test-1 7 false                       # 自定义参数"
+    echo "示例: $0 trash-test-1 1 true false s3               # s3后端"
     exit 1
 fi
 
 FS_NAME="$1"
-TRASH_DAYS="$2"
-IMMEDIATE_TRASH_QUOTA="${3:-true}"
-ENABLE_DIR_STATS="${4:-true}"
-STORE_TYPE="${5:-s3}"
 
-if [[ "$STORE_TYPE" == "rados" ]]; then
-    __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
-        --mds_addr=__MDS_ADDR__ \
-        --cmd=createfs \
-        --fs_name="${FS_NAME}" \
-        --fs_partition_type=parent_hash \
-        --rados_user_name=client.rados-rgw \
-        --rados_key=AQBGFYZpdkZjJxAAkxPZQdLt8vFTgMc7QbrhZg== \
-        --rados_mon_host=100.64.0.21:6789,100.64.0.22:6789,100.64.0.23:6789 \
-        --rados_pool_name=dingofs-rados \
-        --rados_cluster_name=5eb61dc2-036f-11f1-96ae-6891d06cb3a4 \
-        --trash_days="${TRASH_DAYS}" \
-        --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
-        --enable_dir_stats="${ENABLE_DIR_STATS}"
+set -x
+# 简短形式：第二个参数是 s3/rados，不传三个 flag
+if [[ "$2" == "s3" ]] || [[ "$2" == "rados" ]]; then
+    STORE_TYPE="$2"
+    if [[ "$STORE_TYPE" == "rados" ]]; then
+        __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=createfs \
+            --fs_name="${FS_NAME}" \
+            --fs_partition_type=parent_hash \
+            --rados_user_name=client.rados-rgw \
+            --rados_key=AQBGFYZpdkZjJxAAkxPZQdLt8vFTgMc7QbrhZg== \
+            --rados_mon_host=100.64.0.21:6789,100.64.0.22:6789,100.64.0.23:6789 \
+            --rados_pool_name=dingofs-rados \
+            --rados_cluster_name=5eb61dc2-036f-11f1-96ae-6891d06cb3a4
+    else
+        __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=createfs \
+            --fs_name="${FS_NAME}" \
+            --fs_partition_type=parent_hash \
+            --s3_endpoint=http://172.30.14.126:9198 \
+            --s3_ak=lu7k2R6r9KhfGxUcA08N \
+            --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
+            --s3_bucketname=dingofs
+    fi
 else
-    __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
-        --mds_addr=__MDS_ADDR__ \
-        --cmd=createfs \
-        --fs_name="${FS_NAME}" \
-        --fs_partition_type=parent_hash \
-        --s3_endpoint=http://172.30.14.126:9198 \
-        --s3_ak=lu7k2R6r9KhfGxUcA08N \
-        --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
-        --s3_bucketname=dingofs \
-        --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
-        --trash_days="${TRASH_DAYS}" \
-        --enable_dir_stats="${ENABLE_DIR_STATS}"
+    # 完整形式：传三个 flag
+    TRASH_DAYS="${2:-1}"
+    IMMEDIATE_TRASH_QUOTA="${3:-true}"
+    ENABLE_DIR_STATS="${4:-true}"
+    STORE_TYPE="${5:-rados}"
+
+    if [[ "$STORE_TYPE" == "rados" ]]; then
+        __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=createfs \
+            --fs_name="${FS_NAME}" \
+            --fs_partition_type=parent_hash \
+            --rados_user_name=client.rados-rgw \
+            --rados_key=AQBGFYZpdkZjJxAAkxPZQdLt8vFTgMc7QbrhZg== \
+            --rados_mon_host=100.64.0.21:6789,100.64.0.22:6789,100.64.0.23:6789 \
+            --rados_pool_name=dingofs-rados \
+            --rados_cluster_name=5eb61dc2-036f-11f1-96ae-6891d06cb3a4 \
+            --trash_days="${TRASH_DAYS}" \
+            --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
+            --enable_dir_stats="${ENABLE_DIR_STATS}"
+    else
+        __USER_HOME__/.dingo/components/dingo-mds-client/main/dingo-mds-client \
+            --mds_addr=__MDS_ADDR__ \
+            --cmd=createfs \
+            --fs_name="${FS_NAME}" \
+            --fs_partition_type=parent_hash \
+            --s3_endpoint=http://172.30.14.126:9198 \
+            --s3_ak=lu7k2R6r9KhfGxUcA08N \
+            --s3_sk=dYVeLyZa8eaLgMi3KxUFwFxaZOEaWCxmDfW9H9tr \
+            --s3_bucketname=dingofs \
+            --immediate_trash_quota="${IMMEDIATE_TRASH_QUOTA}" \
+            --trash_days="${TRASH_DAYS}" \
+            --enable_dir_stats="${ENABLE_DIR_STATS}"
+    fi
 fi
 TOOL_EOF
             ;;
