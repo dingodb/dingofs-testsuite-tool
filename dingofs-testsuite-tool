@@ -726,6 +726,8 @@ cmd_daily() {
         trash --env env_${env}_trash \
         dirstat --env env_${env}_dirstat \
         hot_upgrade --env env_${env}_hotupgrade_multi \
+        xattr --env env_${env}_xattr \
+        warmup --env env_${env}_warmup \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
     fi
@@ -2195,14 +2197,17 @@ TOOL_EOF
             cat <<'TOOL_EOF'
 #!/bin/bash
 
-if [ $# -ne 2 ]; then
-    echo "用法: $0 <cachename> <cachesize_mb>"
+if [ $# -lt 2 ] || [ $# -gt 3 ]; then
+    echo "用法: $0 <cachename> <cachesize_mb> [cache_eviction]"
+    echo "  cache_eviction  可选，默认值为 lru"
     echo "示例: $0 mlperf_cache 102400"
+    echo "示例: $0 mlperf_cache 102400 2random"
     exit 1
 fi
 
 CACHE_NAME="$1"
 CACHE_SIZE_MB="$2"
+CACHE_EVICTION="${3:-lru}"
 CACHE_ID=$(uuidgen)
 LISTEN_PORT=$((10000 + RANDOM % 10001))
 MDS_PRIMARY="__MDS_ADDR__"
@@ -2213,6 +2218,7 @@ LD_PRELOAD=/lib64/libjemalloc.so.2 numactl --cpunodebind=0 --membind=0 \
     --id "$CACHE_ID" \
     --cache_dir /mnt/cache1/remote_cache \
     --cache_size_mb "$CACHE_SIZE_MB" \
+    --cache_eviction "$CACHE_EVICTION" \
     --group_name "$CACHE_NAME" \
     --listen_ip "$LISTEN_IP" \
     --listen_port "$LISTEN_PORT" \
@@ -2297,13 +2303,13 @@ TOOL_EOF
         listcache)
             cat <<'TOOL_EOF'
 #!/bin/bash
-__DINGO_PATH__ cache member list --mdsaddr __MDS_ADDR__
+__DINGO_PATH__ cache member list --mdsaddr __MDS_ADDRS__
 TOOL_EOF
             ;;
         listgroup)
             cat <<'TOOL_EOF'
 #!/bin/bash
-__DINGO_PATH__ cache group list --mdsaddr __MDS_ADDR__
+__DINGO_PATH__ cache group list --mdsaddr __MDS_ADDRS__
 TOOL_EOF
             ;;
         edittrashdays)
