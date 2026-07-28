@@ -728,6 +728,8 @@ cmd_daily() {
         hot_upgrade --env env_${env}_hotupgrade_multi \
         xattr --env env_${env}_xattr \
         warmup --env env_${env}_warmup \
+        client --env env_40_dingofs \
+        cache_node --env env_40_dingofs \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
     fi
