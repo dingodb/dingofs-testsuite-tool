@@ -718,8 +718,6 @@ cmd_daily() {
         --reruns 5 --email ${email_to}"
     else
         local py_cmd="cd /dingofs-integration-test && python3 run_tests.py \
-        client --env env_${env}_smoke --run-level smoke \
-        cache_node --env env_${env}_smoke --run-level smoke \
         quota --env env_${env}_quota \
         basic_file_operation --env env_${env}_smoke \
         mount_subdir --env env_${env}_mount_subdir \
@@ -730,6 +728,7 @@ cmd_daily() {
         warmup --env env_${env}_warmup \
         client --env env_40_dingofs \
         cache_node --env env_40_dingofs \
+        mds_manage --env env_${env}_mds_manage \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
     fi
