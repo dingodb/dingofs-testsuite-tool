@@ -714,6 +714,7 @@ cmd_daily() {
     if [[ -n "$debug" ]]; then
         local py_cmd="cd /dingofs-integration-test && python3 run_tests.py \
         client --env env_${env}_smoke --run-level smoke \
+        --log_path /output \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
     else
@@ -729,6 +730,7 @@ cmd_daily() {
         client --env env_40_dingofs \
         cache_node --env env_40_dingofs \
         mds_manage --env env_${env}_mds_manage \
+        --log_path /output \
         --commit_info_file_path ${commit_info_file} \
         --reruns 5 --email ${email_to}"
     fi
