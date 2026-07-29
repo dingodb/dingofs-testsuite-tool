@@ -133,222 +133,289 @@ resolve_mount_target() {
 show_help() {
     cat << EOF
 dingofs-Testsuite-tools (dtt)
-============================
+=============================
 
-DingoFS 存储性能测试工具 - 通过 Docker 运行测试套件
+DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测试和集群管理
 
 用法:
   dtt <命令> [选项]
-  dtt smoke [选项]               # 冒烟测试快捷命令
-  dtt <命令> [选项]          # 快捷命令
+  dtt -t <工具> -s <场景> [选项]
 
 命令:
-  cluster <子命令>   管理DingoFS集群
-  config <子命令>    管理配置
-  deploy <子命令>    部署工具（bin_tool等）
-  debug              在测试容器中启动交互式Shell
-  --setup-env <名>   创建文件系统并挂载，更新testdir配置
+  config <子命令>    管理配置（testdir, output, image 等）
+  smoke [选项]       冒烟测试（快速验证基本功能）
+  daily [选项]       每日集成测试（11 个模块，生成 Allure 报告）
+  cluster <子命令>   管理 DingoFS 集群（update / status）
+  deploy <子命令>    部署运维工具到目标机器
+  debug              在测试容器中启动交互式 Shell
+  --setup-env <名>   创建文件系统并挂载，更新 testdir 配置
   --cleanup-env <名> 卸载并清理文件系统
-  -t <工具> --help   显示特定工具的帮助
+  help               显示此帮助信息
 
-工具:
-  fio       - 灵活I/O测试工具 (存储性能测试)
-  vdbench   - Oracle存储测试工具
-  mdtest    - MPI文件系统元数据测试
-  pjdtest   - POSIX文件系统测试套件
-  ltp       - Linux测试项目 (内核测试套件)
-  int       - DingoFS集成测试 (自动化框架)
-  mlperf    - MLPerf Storage 存储基准测试
-  smoke     - 冒烟测试 (pjdtest + mdtest + ltp + int_client + int_cache_node + int_quota)
-  daily     - 每日集成测试 (x basic_file_operation)
-  cluster   - 更新DingoFS集群
-  deploy    - 部署运维工具到目标机器
+测试工具 (-t):
+  fio       Flexible I/O 存储性能测试
+  vdbench   Oracle 存储性能测试工具
+  mdtest    MPI 文件系统元数据测试
+  pjdtest   POSIX 文件系统一致性测试
+  ltp       Linux Test Project 内核测试套件
+  int       DingoFS 集成测试（单模块）
+  mlperf    MLPerf Storage 基准测试
+
+======================================================================
+                        测试工具详细说明
+======================================================================
+
+=== FIO — 存储 I/O 性能测试 ===
+
+  场景:
+    seq_read      顺序读（24 个子场景）
+    seq_write     顺序写（24 个子场景）
+    rand_read     随机读（24 个子场景）
+    rand_write    随机写（24 个子场景）
+    all           运行以上所有场景
+    custom        从 custom 目录加载自定义 .fio 文件
+
+  单个场景命名: <模式>_<direct>_<块大小>_<并发数>
+    例: rand_read_0d_128k_1j
+    direct: 0d (buffered), 1d (direct I/O)
+    block size: 128k, 1m, 4m
+    numjobs: 1j, 8j, 16j, 32j
+
+  示例:
+    dtt -t fio -s seq_write
+    dtt -t fio -s all --bs_size small      # 小块测试 128B-8K
+    dtt -t fio -s custom                   # 自定义场景
+
+=== VDBENCH — Oracle 存储性能测试 ===
+
+  场景: seq_rd, seq_wr, rand_rd, rand_wr, custom
+
+  示例:
+    dtt -t vdbench -s seq_rd
+    dtt -t vdbench -s custom
+
+=== MDTEST — 元数据性能测试 ===
+
+  场景:
+    mdtest_z0_n100   扁平目录 (3200 files)
+    mdtest_z5_b4_I1  多分支树 (32736 items)
+    mdtest_z6_b3_I1  中等深度树 (34976 items)
+    mdtest_z9_b2_I1  深层二叉树 (32736 items)
+    mdtest / all     运行以上所有（默认）
+
+  示例:
+    dtt -t mdtest -n 16                    # 默认 16 进程
+    dtt -t mdtest -s mdtest_z0_n100 -n 8
+
+=== PJDTEST — POSIX 文件系统测试 ===
+
+  示例:
+    dtt -t pjdtest -s pjdtest
+
+=== LTP — Linux 内核测试套件 ===
+
+  (需要 --privileged)
+
+  场景: ltp, ltp_fs, ltp_dio, ltp_mm
+
+  示例:
+    dtt -t ltp -s ltp
+    dtt -t ltp -s ltp_dio
+
+=== INT — DingoFS 集成测试 ===
+
+  通过 run_tests.py 运行单个模块测试。先用 config set int_env 设置环境。
+
+  可用模块: quota, client, cache_node, fault, mount_subdir,
+            basic_file_operation, metadata_consistency, trash,
+            dirstat, hot_upgrade, warmup, xattr
+
+  示例:
+    dtt config set int_env env_126_smoke
+    dtt -t int -s quota
+    dtt -t int -s dirstat
+
+=== MLPERF — MLPerf Storage 基准测试 ===
+
+  场景: resnet50, unet3d, cosmoflow, checkpointing, all
+
+  专用参数:
+    --scale        测试规模: small / medium / large (默认: small)
+    --gpu_count    并发 GPU 数量 (默认: 1)
+    --file_count   自定义测试文件数量
+
+  示例:
+    dtt -t mlperf -s all
+    dtt -t mlperf -s resnet50
+    dtt -t mlperf -s unet3d --scale medium --gpu_count 4
+    dtt -t mlperf -s all --file_count 500
+    dtt -t mlperf --help               # 显示详细帮助
+
+======================================================================
+                         命令详细说明
+======================================================================
+
+=== daily — 每日集成测试 ===
+
+  在容器内执行 run_tests.py，依次运行 11 个模块，每个失败用例重试 5 次，
+  完成后生成 Allure 报告并发送通知。
+
+  模块列表 (默认 env=126):
+    quota               env_126_quota
+    basic_file_operation  env_126_smoke
+    mount_subdir        env_126_mount_subdir
+    trash               env_126_trash
+    dirstat             env_126_dirstat
+    hot_upgrade         env_126_hotupgrade_multi
+    xattr               env_126_xattr
+    warmup              env_126_warmup
+    client              env_40_dingofs
+    cache_node          env_40_dingofs
+    mds_manage          env_126_mds_manage
+
+  选项:
+    --env <编号>        环境编号 (默认: 126)
+    --email <地址>      邮件收件人，逗号分隔多个
+    --wechat            启用企业微信通知
+    --daily             每日模式（报告存入 daily 历史目录）
+    --report-port <端口> Allure 报告 HTTP 服务端口
+    --report-path <路径> Allure 报告及日志输出路径
+    --debug             调试模式（仅跑 client 模块，保留容器）
+
+  示例:
+    dtt daily
+    dtt daily --email daigy@zetyun.com --wechat
+    dtt daily --daily --report-port 8889
+    dtt daily --report-path /mnt/disk5/daigy/tmp/output
+    dtt daily --debug
+
+  报告访问:
+    http://<宿主机IP>:<report-port>/allure-daily-report-latest/index.html
+
+=== smoke — 冒烟测试 ===
+
+  dtt smoke [--wechat] [--email] [--exclude <工具列表>]
+
+  示例:
+    dtt smoke
+    dtt smoke --exclude int
+    dtt smoke --exclude pjdtest,mdtest
+
+=== cluster — 集群管理 ===
+
+  dtt cluster update <cluster_id> <user> [image_tag] [-f <topology_file>]
+      更新集群到最新 DingoFS 镜像。
+      流程: 获取 tag → 更新 topology → commit → stop → clean → deploy
+      若 latest 拉取失败(630001)，自动回退到 previous 镜像重试。
+
+  dtt cluster status <cluster_id> <user>
+      查看集群状态。
+
+  示例:
+    dtt cluster update 29 root
+    dtt cluster update 29 root 8120cfb
+    dtt cluster update 29 root -f /custom/topology.yaml
+    dtt cluster status 29 root
+
+=== deploy — 部署运维工具 ===
+
+  dtt deploy bin_tool --user <用户> --mds <地址> --dingo-path <路径>
+      将 18 个运维脚本部署到目标用户 ~/bin/ 目录。
+
+  示例:
+    dtt deploy bin_tool --user dingofs --mds 100.64.0.5:16920 --dingo-path /usr/local/bin/dingo
+
+  部署后使用: export PATH="/home/<用户>/bin:\$PATH"
+
+  部署的工具列表（18 个）:
+
+    文件系统管理:
+      mdscreatefs <fs_name> [trash_days] [quota] [dir_stats] [store_type]
+      deletefs <fsname>
+      deletefsall [filter]
+      listfs
+      mountfs <fsname> <父目录> [cachename]
+      umountall <目录>
+
+    缓存管理:
+      createcache <cachename> <cachesize_mb> [cache_eviction]
+      deletecache [filter]
+      listcache
+      listgroup
+      killcache
+
+    配额管理:
+      quotaget <fsname> [path]
+      quotaset <fsname> <path> [capacity] [inodes]
+
+    目录统计:
+      dirstat info <fs_name> <path> [--recursive] [--raw] [--strict]
+      dirstat enable <fs_name> <true|false>
+      dirstat sync <fs_name> <path> [--recursive] [--repair]
+      dirstat summary <fs_name> <path> [--depth N] [--entries N] [--strict]
+
+    回收站:
+      edittrashdays <fsname> <trash_days>
+      restoretrash <fs_name> <hours_bucket> <put_back>
+
+    运维工具:
+      killclient <fsname>
+      updatebin <容器ID>
+
+======================================================================
+                         配置与环境
+======================================================================
 
 配置子命令:
-  dtt config set testdir <目录>    设置测试目录 (挂载点)
+  dtt config set testdir <目录>    设置测试目录（挂载点）
   dtt config set output <目录>     设置输出目录
-  dtt config set image <镜像名>    设置Docker镜像
-  dtt config set mdsaddr <地址>   设置MDS地址 (例如: 172.30.14.126:6900)
-  dtt config set webhook_url <url> 设置企业微信webhook地址
-  dtt config set email <地址>      设置邮件通知地址 (默认: daigy@zetyun.com)
-  dtt config set runtime <运行时>  设置容器运行时 (docker 或 podman, 默认: docker)
-  dtt config set int_env <环境名>   设置集成测试环境名 (默认: env_126_smoke)
-  dtt config set custom <目录>     设置自定义场景目录 (挂载到容器 /custom)
-  dtt config set repo <目录>       设置仓库根目录 (用于定位 dingofs-integration-test)
+  dtt config set image <镜像名>    设置 Docker 镜像
+  dtt config set mdsaddr <地址>   设置 MDS 地址
+  dtt config set webhook_url <url> 设置企业微信 webhook 地址
+  dtt config set email <地址>      设置邮件通知地址
+  dtt config set runtime <运行时>  设置容器运行时 (docker/podman, 默认: docker)
+  dtt config set int_env <环境名>  设置集成测试环境名 (默认: env_126_smoke)
+  dtt config set custom <目录>     设置自定义场景目录
+  dtt config set repo <目录>       设置仓库根目录
   dtt config show                 显示当前配置
 
-集群命令:
-  dtt cluster update <集群ID> <用户> [-f <拓扑文件>]
-                                 更新指定集群到最新DingoFS镜像
-  dtt cluster status <集群ID> <用户>
-                                 查看集群状态
-
-部署命令:
-  dtt deploy bin_tool --user <用户> --mds <地址> --dingo-path <路径>
-                                 部署运维工具到目标用户bin目录
-                                 MDS地址取第一个作为主MDS
-
-已部署的运维工具（位于 ~/bin/）:
-  mdscreatefs <fsname> [trash_days] [immediate_trash_quota] [enable_dir_stats] [store_type]
-                                 创建文件系统（默认: 1/true/true/rados）
-  deletefs <fsname>              删除指定文件系统
-  deletefsall                    删除所有文件系统（跳过含DELETE的）
-  dirstat info <fsname> <path>       查询目录统计信息
-  dirstat enable <fsname> <stat>   启用/禁用目录统计
-  dirstat sync <fsname> <path>     同步目录统计
-  edittrashdays <fsname> <days>  修改文件系统回收站天数
-  killclient                     强制终止所有dingo-client进程
-  listfs                         列出所有文件系统
-  mountfs <fsname> <父目录>       挂载文件系统到 <父目录>/<fsname>
-  quotaget <fsname> [path]       查询文件系统配额
-  quotaset <fsname> <path> [capacity] [inodes]
-                                 设置文件系统配额
-  restoretrash <fsname> <hours> [put_back]
-                                 恢复回收站文件
-  umountall <目录>                卸载目录下所有子目录挂载点
-  updatebin <容器ID>              从容器更新dingo二进制文件
-
 环境命令:
-  dtt --setup-env <环境名>       创建文件系统并挂载，更新testdir配置
-                                 环境名对应 dingofs-integration-test/conf/env/<name>.yaml
-                                 若设置 custom 目录，优先使用 custom/<name>.yaml
-  dtt --cleanup-env <环境名>     卸载并清理文件系统
-  dtt --setup-env <环境名> --cleanup
-                                 先创建再清理（用于测试后清理）
+  dtt --setup-env <环境名>         创建文件系统并挂载
+  dtt --cleanup-env <环境名>       卸载并清理文件系统
+  dtt --setup-env <环境名> --cleanup  先创建再清理
 
-测试命令:
-  dtt -t <工具> -s <场景> [-n <进程数>] [选项]
-                          运行测试套件
-                          (如未指定则使用配置中的testdir/output)
+======================================================================
+                        通用选项与示例
+======================================================================
 
-选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke
-  -s, --scenario <名称>   测试场景名称，custom=所有自定义场景，<名称>=指定场景
-  -n, --np <数字>         mdtest的MPI进程数 (默认: 16)
-  -m, --mount <目录>      覆盖测试目录 (从配置读取)
-  -o, --output <目录>     覆盖输出目录 (从配置读取)
-  --bs_size <类型>        fio块大小类型: normal (128K/1M/4M), small (128B/256B/512B/1K/2K/4K/8K)
-                          默认: normal
-  --wechat                 启用企业微信通知
-  --email                  启用邮件通知
-  --exclude <工具列表>     排除指定冒烟工具 (逗号分隔, 如: int / pjdtest,mdtest)
-  --scale <规模>          mlperf测试规模: small (32 files/5 epochs), medium (256 files/10 epochs), large (1024 files/20 epochs)
-                          默认: small
-  --file_count <数量>     mlperf自定义生成测试文件数量
-                          优先级高于 --scale（同时指定时以 --file_count 为准）
-  --gpu_count <数量>      mlperf并发GPU数量 (默认: 1)
-  --debug                 调试模式，容器执行完毕后保留不删除
-
-示例:
-  # 首次设置: 配置参数
-  dtt config set testdir /mnt/test
-  dtt config set output /tmp/results
-  dtt config set image localhost/dingofs-testsuite-tools:latest
-
-  # 显示当前配置
-  dtt config show
-
-  # 运行 fio 顺序写测试 (使用配置中的testdir/output)
-  dtt -t fio -s seq_write
-
-  # 运行所有 fio 顺序读场景
-  dtt -t fio -s seq_read
-
-  # 运行所有 fio 场景 (使用小块大小 128B-8K)
-  dtt -t fio -s all --bs_size small
-
-  # 运行所有 mdtest 场景
-  dtt -t mdtest -s all
-
-  # 运行所有 pjdtest 测试
-  dtt -t pjdtest -s all
-
-  # 运行所有 ltp 测试
-  dtt -t ltp -s all
-
-  # 部署运维工具到目标机器
-  dtt deploy bin_tool --user dingofs --mds 100.64.0.5:16920 --dingo-path /usr/local/bin/dingo
-
-  # 创建测试环境（仅 setup，不运行测试）
-  dtt --setup-env env_29_bug
-
-  # 进入调试Shell
-  dtt debug
-
-  # 显示特定工具帮助
-  dtt -t fio --help
-  dtt -t mdtest --help
-  dtt -t ltp --help
-  dtt -t mlperf --help
-
-  # 运行所有 mlperf storage 基准测试 (自动设置 --shm-size=8g 和 -it)
-  dtt -t mlperf -s all
-
-  # 运行指定 mlperf 场景
-  dtt -t mlperf -s resnet50
-
-  # 使用 medium 测试规模
-  dtt -t mlperf -s unet3d --scale medium
-
-  # 自定义生成 500 个测试文件
-  dtt -t mlperf -s cosmoflow --file_count 500
-
-  # 使用 4 个 GPU 并行测试
-  dtt -t mlperf -s resnet50 --gpu_count 4
-
-  # 显示 mlperf 详细帮助
-  dtt -t mlperf --help
+通用选项:
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf
+  -s, --scenario <名称>   测试场景
+  -n, --np <数字>         mdtest MPI 进程数 (默认: 16)
+  -m, --mount <目录>      覆盖测试目录
+  -o, --output <目录>     覆盖输出目录
+  --bs_size <类型>        fio 块大小类型: normal / small
+  --test_times <次数>     fio perf 重复次数
+  --wechat                启用企业微信通知
+  --email                 启用邮件通知
+  --debug                 调试模式，保留容器不删除
 
 自定义场景:
-  # 配置自定义场景目录
   dtt config set custom ~/my_scenarios
+  # 文件命名: <名称>.<后缀>  (.fio / .vdbench / .mdtest)
+  dtt -t fio -s custom          # 运行 /custom/ 下所有 .fio
+  dtt -t fio -s test1           # → /custom/test1.fio
 
-  # 自定义场景文件命名: <名称>.<工具后缀>
-  # fio: .fio    vdbench: .vdbench    mdtest: .mdtest
-  # 示例:
-  #   ~/my_scenarios/test1.fio
-  #   ~/my_scenarios/bench.vdbench
-  #   ~/my_scenarios/perf.mdtest
-
-  # 运行所有自定义场景（对应工具后缀的全部文件）
-  dtt -t fio -s custom
-  dtt -t vdbench -s custom
-  dtt -t mdtest -s custom
-
-  # 运行指定名称的自定义场景
-  dtt -t fio -s test1        # → /custom/test1.fio
-  dtt -t vdbench -s bench    # → /custom/bench.vdbench
-  dtt -t mdtest -s perf      # → /custom/perf.mdtest
-
-  # 运行冒烟测试（串行执行全部6个工具）
-  dtt smoke
-
-  # 冒烟测试并发送微信通知
-  dtt smoke --wechat
-
-  # 冒烟测试并发送邮件通知
-  dtt smoke --email
-
-  # 排除集成测试（只跑 pjdtest, mdtest, ltp）
-  dtt smoke --exclude int
-
-  # 排除 pjdtest 和 mdtest（只跑 ltp 和 int）
-  dtt smoke --exclude pjdtest,mdtest
-
-通知示例:
-  # 启用微信通知
-  dtt -t pjdtest -s all --wechat
-
-  # 启用邮件通知
-  dtt -t pjdtest -s all --email
-
-  # 同时启用微信和邮件通知
-  dtt -t pjdtest -s all --wechat --email
+通知:
+  dtt -t fio -s all --wechat
+  dtt -t fio -s all --email
+  dtt -t fio -s all --wechat --email
 
 注意:
   - 配置保存在 ~/.dingofs_testsuite/
-  - 如果未提供 -m/-o，则使用 'config set' 的值
-  - 如果配置值未设置，系统会提示设置
+  - 如果未提供 -m/-o，则使用 config 中配置的值
+  - 快捷命令: dtt 是 dingofs-testsuite-tool 的别名
+  - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
 
 EOF
 }

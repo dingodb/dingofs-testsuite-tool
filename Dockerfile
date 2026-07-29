@@ -171,19 +171,25 @@ RUN mkdir -p /opt/vdbench && \
     chmod +x /opt/vdbench/vdbench && \
     rm -f /tmp/vdbench.zip
 
-# Layer 3-6: copy heavy directories from builders (--chmod avoids duplicate layer)
+# Layer 3: install allure CLI for report generation
+RUN wget -q https://github.com/allure-framework/allure2/releases/download/2.32.0/allure-2.32.0.tgz -O /tmp/allure.tgz && \
+    tar -xzf /tmp/allure.tgz -C /opt/ && \
+    ln -s /opt/allure-2.32.0/bin/allure /usr/local/bin/allure && \
+    rm -f /tmp/allure.tgz
+
+# Layer 4-7: copy heavy directories from builders (--chmod avoids duplicate layer)
 COPY --from=ltp-builder --chmod=755 /opt/ltp /opt/ltp
 COPY --from=mlperf-builder --chmod=755 /opt/mlpstorage-env /opt/mlpstorage-env
 COPY --from=mlperf-builder --chmod=755 /opt/mlpstorage-src /opt/mlpstorage-src
 COPY --from=mlperf-builder --chmod=755 /opt/dlio-src /opt/dlio-src
 
-# Layer 7: install python deps (cached unless requirements.txt changes)
+# Layer 8: install python deps (cached unless requirements.txt changes)
 COPY dingofs-integration-test/requirements.txt /tmp/req.txt
 RUN pip3 install --no-cache-dir --break-system-packages -r /tmp/req.txt && \
     pip3 cache purge && \
     rm -f /tmp/req.txt
 
-# Layer 8: copy project files (frequently-changing files go AFTER pip)
+# Layer 9: copy project files (frequently-changing files go AFTER pip)
 COPY --chmod=755 scripts/ /scripts/
 COPY --chmod=755 scenarios/ /scenarios/
 COPY pjdtest/ /pjdtest/
@@ -192,7 +198,7 @@ COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 COPY dingofs-integration-test /dingofs-integration-test
 
-# Layer 9: build pjdtest, set permissions
+# Layer 10: build pjdtest, set permissions
 RUN chmod +x /scripts/generate_report.py /scripts/notify.sh \
         /usr/local/bin/dingo /usr/local/bin/run_model.sh /entrypoint.sh && \
     cd /pjdtest && \

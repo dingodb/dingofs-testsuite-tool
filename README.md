@@ -1,6 +1,6 @@
 # DingoFS 存储性能测试工具
 
-DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、mdtest、ltp、mlperf登多种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
+DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbench、mdtest、pjdtest、ltp、mlperf 等多种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
 
 ## 快速开始 (dingofs-testsuite-tool)
 
@@ -18,7 +18,7 @@ dingofs-testsuite-tool config show
 # 3. 运行测试（无需指定 -m -o，使用配置的值）
 dingofs-testsuite-tool -t fio -s seq_write
 dingofs-testsuite-tool -t mdtest -s mdtest
-dingofs-testsuite-tool -t vdbench -s vdbench
+dingofs-testsuite-tool -t vdbench -s seq_rd
 dingofs-testsuite-tool -t pjdtest -s pjdtest
 
 # 4. 进入镜像调试
@@ -35,14 +35,633 @@ dingofs-testsuite-tool help
 | `config set testdir <dir>` | 设置测试目录（挂载点） |
 | `config set output <dir>` | 设置输出目录 |
 | `config set image <name>` | 设置 Docker 镜像 |
+| `config set custom <dir>` | 设置自定义场景目录 |
 | `config show` | 显示当前配置 |
-| `-t -s [-n]` | 运行测试（testdir/output 从配置读取） |
+| `-t <tool> -s <scenario>` | 运行指定工具和场景 |
+| `daily [选项]` | 每日集成测试（10+ 模块） |
+| `smoke [选项]` | 冒烟测试 |
 | `debug` | 进入镜像交互式调试 |
 | `help` | 显示帮助信息 |
 
 > 快捷命令：`dtt` 是 `dingofs-testsuite-tool` 的别名，两者功能相同。
 
-> 如尚未安装 dingofs-testsuite-tool，也可直接使用 docker run 命令（见下文）。
+## 测试工具总览
+
+`dtt -t` 支持以下 7 种测试工具：
+
+| 工具 | 说明 | 必填参数 | 可选参数 |
+|------|------|---------|---------|
+| `fio` | Flexible I/O 存储性能测试 | `-s <场景>` | `--bs_size` |
+| `vdbench` | Oracle 存储性能测试 | `-s <场景>` | — |
+| `mdtest` | MPI 文件系统元数据测试 | `-n <进程数>` | `-s <场景>`（默认 all） |
+| `pjdtest` | POSIX 文件系统一致性测试 | `-s <场景>` | — |
+| `ltp` | Linux Test Project 内核测试 | `-s <场景>` | — |
+| `int` | DingoFS 集成测试 | `-s <场景>` | — |
+| `mlperf` | MLPerf Storage 基准测试 | `-s <场景>` | `--scale`, `--gpu_count`, `--file_count` |
+
+### 通用可选参数
+
+| 参数 | 说明 |
+|------|------|
+| `--debug` | 调试模式，保留容器不删除 |
+| `--wechat` | 启用企业微信通知 |
+| `--email <地址>` | 邮件通知地址 |
+| `--bs_size <类型>` | fio 块大小类型: normal (128K/1M/4M), small (128B-8K) |
+| `--test_times <次数>` | fio perf 重复次数 |
+
+---
+
+## 1. FIO — 存储 I/O 性能测试
+
+FIO (Flexible I/O Tester) 是最常用的存储性能基准测试工具，支持多种 I/O 模式、块大小和并发配置。
+
+### 场景
+
+| 场景 | 说明 |
+|------|------|
+| `seq_read` | 顺序读（24 个子场景） |
+| `seq_write` | 顺序写（24 个子场景） |
+| `rand_read` | 随机读（24 个子场景） |
+| `rand_write` | 随机写（24 个子场景） |
+| `all` | 运行以上所有场景 |
+| `custom` | 从 `config custom` 目录加载自定义 `.fio` 文件 |
+
+### 场景命名规则
+
+单个场景命名格式: `<模式>_<direct>_<块大小>_<并发数>`，例如 `rand_read_0d_128k_1j`。
+
+| 参数 | 值 |
+|------|-----|
+| direct | 0d (buffered), 1d (direct I/O) |
+| block size | 128k, 1m, 4m |
+| numjobs | 1j, 8j, 16j, 32j |
+| iodepth | 1 (固定) |
+| size | 8G per job |
+
+### 使用示例
+
+```bash
+# 运行顺序写（使用 dtt 配置的 testdir/output）
+dtt -t fio -s seq_write
+
+# 运行所有 fio 场景（使用小块大小 128B-8K）
+dtt -t fio -s all --bs_size small
+
+# 运行单个场景
+dtt -t fio -s rand_read_0d_128k_1j
+
+# 自定义场景（从 ~/my_scenarios/ 加载）
+dtt config set custom ~/my_scenarios
+dtt -t fio -s my_test       # → /custom/my_test.fio
+
+# 直接 docker 运行
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_write -m /data -o /data
+```
+
+---
+
+## 2. VDBENCH — Oracle 存储性能测试
+
+VDBench 是 Oracle 的存储性能测试工具，支持多种 I/O 模式和配置。
+
+### 场景
+
+| 场景 | 说明 |
+|------|------|
+| `seq_rd` | 顺序读 (.par 参数文件) |
+| `seq_wr` | 顺序写 |
+| `rand_rd` | 随机读 |
+| `rand_wr` | 随机写 |
+| `custom` | 从 `config custom` 目录加载自定义 `.vdbench` 文件 |
+
+### 使用示例
+
+```bash
+# 运行顺序读
+dtt -t vdbench -s seq_rd
+
+# 运行随机写
+dtt -t vdbench -s rand_wr
+
+# 自定义场景
+dtt -t vdbench -s custom
+
+# 直接 docker 运行
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t vdbench -s seq_rd -m /data -o /data
+```
+
+---
+
+## 3. MDTEST — 元数据性能测试
+
+MDTEST 是 MPI 并行文件系统元数据性能测试工具，用于测量文件和目录的创建、删除、stat 等元数据操作的性能。
+
+### 场景
+
+| 场景 | 说明 |
+|------|------|
+| `mdtest_z0_n100` | z=0, n=100 (扁平目录, 3200 files) |
+| `mdtest_z5_b4_I1` | z=5, b=4, I=1 (多分支树, 32736 items) |
+| `mdtest_z6_b3_I1` | z=6, b=3, I=1 (中等深度树, 34976 items) |
+| `mdtest_z9_b2_I1` | z=9, b=2, I=1 (深层二叉树, 32736 items) |
+| `mdtest` / `all` | 运行以上所有 4 个场景（默认） |
+
+### 使用示例
+
+```bash
+# 运行所有场景（16 进程，默认）
+dtt -t mdtest -n 16
+
+# 运行所有场景（自定义进程数）
+dtt -t mdtest -s all -n 32
+
+# 运行单个场景
+dtt -t mdtest -s mdtest_z0_n100 -n 8
+
+# 直接 docker 运行
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data -n 16
+```
+
+---
+
+## 4. PJDTEST — POSIX 文件系统测试
+
+PJDTEST 是 POSIX 文件系统一致性测试套件，用于验证文件系统对 POSIX 标准的兼容性。
+
+### 使用示例
+
+```bash
+# 运行 pjdtest
+dtt -t pjdtest -s pjdtest
+
+# 直接 docker 运行
+docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s pjdtest -m /data -o /data
+```
+
+---
+
+## 5. LTP — Linux Test Project
+
+LTP (Linux Test Project) 是 Linux 内核测试套件，用于验证内核和系统调用的正确性、稳定性和可靠性。
+
+**注意**: LTP 需要 `--privileged`，部分测试需要 `/dev/kmsg` 等内核接口。容器内运行 LTP 时部分测试会失败，这是预期行为。LTP 设计用于在裸机上运行以获得完整测试结果。
+
+### 场景
+
+| 场景 | 说明 | 对应测试套件 |
+|------|------|-------------|
+| `ltp` | 默认文件系统测试 | fs |
+| `ltp_fs` | 文件系统测试 | fs |
+| `ltp_dio` | Direct I/O 测试 | dio |
+| `ltp_mm` | 内存管理测试 | mm |
+
+### 使用示例
+
+```bash
+# 运行 LTP 文件系统测试
+dtt -t ltp -s ltp
+
+# 运行 Direct I/O 测试
+dtt -t ltp -s ltp_dio
+
+# 直接 docker 运行
+docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
+```
+
+---
+
+## 6. INT — DingoFS 集成测试
+
+通过集成测试框架 `run_tests.py` 运行单个模块的测试用例。使用 `config set int_env` 指定环境名，然后通过 `-s` 指定模块名。
+
+### 使用示例
+
+```bash
+# 先配置集成测试环境
+dtt config set int_env env_126_smoke
+
+# 运行 quota 模块测试
+dtt -t int -s quota
+
+# 运行 dirstat 模块测试
+dtt -t int -s dirstat
+
+# 可用的模块：quota, client, cache_node, fault, mount_subdir,
+#             basic_file_operation, metadata_consistency, trash,
+#             dirstat, hot_upgrade, warmup, xattr
+```
+
+---
+
+## 7. MLPERF — MLPerf Storage 基准测试
+
+MLPerf Storage 是 ML 训练场景的存储基准测试，模拟真实 ML 工作负载的 I/O 模式。
+
+### 场景
+
+| 场景 | 说明 |
+|------|------|
+| `resnet50` | ResNet-50 图像分类模型 |
+| `unet3d` | 3D U-Net 医学图像分割模型 |
+| `cosmoflow` | CosmoFlow 宇宙学模拟模型 |
+| `checkpointing` | 检查点读写测试 |
+| `all` | 运行以上所有场景 |
+
+### 专用参数
+
+| 参数 | 说明 | 可选值 |
+|------|------|-------|
+| `--scale <规模>` | 测试规模 | small (32 files/5 epochs), medium (256 files/10 epochs), large (1024 files/20 epochs) |
+| `--gpu_count <数量>` | 并发 GPU 数量 | 正整数（默认: 1） |
+| `--file_count <数量>` | 自定义生成测试文件数量 | 正整数 |
+
+### 使用示例
+
+```bash
+# 运行所有 mlperf 场景（默认 small/1 GPU）
+dtt -t mlperf -s all
+
+# 运行指定场景
+dtt -t mlperf -s resnet50
+
+# 指定规模和 GPU 数量
+dtt -t mlperf -s unet3d --scale medium --gpu_count 4
+
+# 自定义文件数量
+dtt -t mlperf -s cosmoflow --file_count 500
+
+# 运行 checkpointing
+dtt -t mlperf -s checkpointing --scale small
+
+# 显示 mlperf 详细帮助
+dtt -t mlperf --help
+```
+
+### 注意事项
+
+- mlperf 已集成到 dtt 主镜像中，与其他工具共用同一个容器
+- 自动设置 `--shm-size=8g` 和 `-it` 模式
+- 测试结果保存在 output 目录的 `mlperf_<timestamp>/` 子目录中
+
+---
+
+## daily — 每日集成测试
+
+`dtt daily` 在容器内执行 `run_tests.py`，依次运行 11 个测试模块，每个失败用例重试 5 次，完成后生成 Allure 报告并发送邮件/微信通知。
+
+### 模块列表
+
+| # | 模块 | 环境（默认 env=126） |
+|---|------|----------------------|
+| 1 | `quota` | `env_126_quota` |
+| 2 | `basic_file_operation` | `env_126_smoke` |
+| 3 | `mount_subdir` | `env_126_mount_subdir` |
+| 4 | `trash` | `env_126_trash` |
+| 5 | `dirstat` | `env_126_dirstat` |
+| 6 | `hot_upgrade` | `env_126_hotupgrade_multi` |
+| 7 | `xattr` | `env_126_xattr` |
+| 8 | `warmup` | `env_126_warmup` |
+| 9 | `client` | `env_40_dingofs` |
+| 10 | `cache_node` | `env_40_dingofs` |
+| 11 | `mds_manage` | `env_126_mds_manage` |
+
+> 调试模式 (`--debug`) 仅运行 `client` 模块。
+
+### 使用示例
+
+```bash
+# 默认环境 126，不发送通知
+dtt daily
+
+# 发送邮件和微信通知
+dtt daily --email daigy@zetyun.com --wechat
+
+# 每日模式：报告存入 daily 历史目录，指定报告端口
+dtt daily --daily --report-port 8889
+
+# 指定报告输出路径
+dtt daily --report-path /mnt/disk5/daigy/tmp/output
+
+# 调试模式（仅跑 client 模块，保留容器）
+dtt daily --debug
+
+# 多个邮件收件人
+dtt daily --email daigy@zetyun.com,sunxiao@zetyun.com --wechat
+```
+
+### 选项
+
+| 选项 | 说明 |
+|------|------|
+| `--env <编号>` | 环境编号（默认: 126） |
+| `--email <地址>` | 邮件收件人，逗号分隔多个 |
+| `--wechat` | 启用企业微信通知 |
+| `--daily` | 每日模式（Allure 报告存入 `allure-daily-report-*`） |
+| `--report-port <端口>` | Allure 报告 HTTP 服务端口 |
+| `--report-path <路径>` | Allure 报告及日志输出路径 |
+| `--debug` | 调试模式（仅跑 client，保留容器） |
+
+### 报告访问
+
+测试完成后，通过 HTTP 访问 Allure 报告：
+
+```
+http://<宿主机IP>:<report-port>/allure-daily-report-latest/index.html
+```
+
+日志文件保存在 output 目录下（通过 `dtt config set output` 配置）。
+
+---
+
+## smoke — 冒烟测试
+
+快速验证基本功能是否正常。
+
+```bash
+# 运行完整冒烟测试
+dtt smoke
+
+# 排除指定工具
+dtt smoke --exclude int
+dtt smoke --exclude pjdtest,mdtest
+```
+
+---
+
+## deploy — 部署运维工具
+
+`dtt deploy bin_tool` 将内嵌的运维脚本部署到目标用户的 `~/bin/` 目录，方便在集群节点上直接使用。
+
+### 用法
+
+```bash
+dtt deploy bin_tool --user <用户> --mds <MDS地址> --dingo-path <dingo路径>
+```
+
+### 参数
+
+| 参数 | 说明 |
+|------|------|
+| `--user <用户>` | 目标用户（必填），脚本部署到 `/home/<用户>/bin/` |
+| `--mds <地址>` | MDS 地址（必填），支持逗号分隔多个 |
+| `--dingo-path <路径>` | dingo 二进制路径（必填） |
+
+### 示例
+
+```bash
+dtt deploy bin_tool --user dingofs --mds 100.64.0.5:16920 --dingo-path /usr/local/bin/dingo
+```
+
+### 部署的工具列表（18 个）
+
+部署后需将工具目录加入 PATH：`export PATH="/home/<用户>/bin:$PATH"`
+
+---
+
+#### 文件系统管理
+
+**`mdscreatefs`** — 创建文件系统（支持 rados/s3 存储后端，回收站参数）
+
+```bash
+mdscreatefs <fs_name> [trash_days] [immediate_trash_quota] [enable_dir_stats] [store_type]
+mdscreatefs trash-test-1                              # 全部默认 (rados, trash_days=1)
+mdscreatefs trash-test-1 7 false                       # trash_days=7, quota=false
+mdscreatefs trash-test-1 1 true false s3               # S3 后端, 关闭 dir_stats
+```
+
+**`deletefs`** — 删除指定文件系统
+
+```bash
+deletefs <fsname>
+deletefs trash-test-1
+```
+
+**`deletefsall`** — 删除所有文件系统（支持按名称过滤）
+
+```bash
+deletefsall [filter]
+deletefsall                                # 删除全部
+deletefsall trash                          # 只删除名称含 "trash" 的
+```
+
+**`listfs`** — 列出所有文件系统（名称 + 状态 + ID）
+
+```bash
+listfs
+```
+
+**`mountfs`** — 挂载文件系统到客户端目录
+
+```bash
+mountfs <fsname> <父目录> [cachename]
+mountfs trash-test-1 /mnt/disk0/dingofs-autotest/client              # 无缓存挂载
+mountfs trash-test-1 /mnt/disk0/dingofs-autotest/client mlperf_cache  # 指定缓存组
+```
+
+**`umountall`** — 卸载指定目录下的所有 DingoFS 挂载
+
+```bash
+umountall <目录>
+umountall /mnt/disk0/dingofs-autotest/client
+```
+
+---
+
+#### 缓存管理
+
+**`createcache`** — 创建远程缓存节点组
+
+```bash
+createcache <cachename> <cachesize_mb> [cache_eviction]
+createcache mlperf_cache 102400                        # 100GB 缓存
+createcache mlperf_cache 102400 2random                # 2-random 驱逐策略
+```
+
+**`deletecache`** — 删除所有远程缓存节点组（按名称前缀过滤）
+
+```bash
+deletecache [filter]
+deletecache                                # 删除全部
+deletecache mlperf                         # 只删除名称含 "mlperf" 的
+```
+
+**`listcache`** — 列出所有远程缓存节点组
+
+```bash
+listcache
+```
+
+**`listgroup`** — 列出所有集群组信息
+
+```bash
+listgroup
+```
+
+**`killcache`** — 终止所有远程缓存节点进程
+
+```bash
+killcache
+```
+
+---
+
+#### 配额管理
+
+**`quotaget`** — 查询文件系统/目录配额
+
+```bash
+quotaget <fsname> [path]
+quotaget trash-test-1          # 列出所有配额
+quotaget trash-test-1 /        # 查询根目录配额
+```
+
+**`quotaset`** — 设置文件系统/目录配额
+
+```bash
+quotaset <fsname> <path> [capacity] [inodes]
+quotaset trash-test-1 /                # 默认: capacity=10GiB, inodes=10
+quotaset trash-test-1 / 5GiB           # capacity=5GiB, inodes=10
+quotaset trash-test-1 / 5GiB 200       # capacity=5GiB, inodes=200
+```
+
+---
+
+#### 目录统计（dirstat）
+
+**`dirstat`** — 目录统计信息管理（info / enable / sync / summary）
+
+```bash
+# 查询目录统计
+dirstat info <fs_name> <path> [--recursive] [--raw] [--strict]
+dirstat info trash-test-1 /                          # 查询根目录
+dirstat info trash-test-1 /subdir --recursive        # 递归查询
+
+# 启用/禁用目录统计
+dirstat enable <fs_name> <true|false>
+dirstat enable trash-test-1 true
+
+# 同步统计信息
+dirstat sync <fs_name> <path> [--recursive] [--repair]
+dirstat sync trash-test-1 / --recursive
+
+# 汇总输出
+dirstat summary <fs_name> <path> [--depth N] [--entries N] [--strict]
+```
+
+---
+
+#### 回收站
+
+**`edittrashdays`** — 修改文件系统回收站保留天数
+
+```bash
+edittrashdays <fsname> <trash_days>
+edittrashdays trash-test-1 7
+```
+
+**`restoretrash`** — 从回收站恢复文件（按小时 bucket）
+
+```bash
+restoretrash <fs_name> <hours_bucket> <put_back>
+restoretrash test1 2026-06-17-02 false
+```
+
+---
+
+#### 运维工具
+
+**`killclient`** — 终止指定文件系统对应的客户端进程
+
+```bash
+killclient <fsname>
+killclient trash-test-1
+```
+
+**`updatebin`** — 从容器中更新 dingo 二进制文件到当前节点
+
+```bash
+updatebin <容器ID>
+updatebin c14c794c5bbf
+```
+
+---
+
+## cluster — 集群管理
+
+`dtt cluster` 管理 DingoFS 集群的更新和状态查询。
+
+### 用法
+
+```bash
+dtt cluster <update|status> <参数...>
+```
+
+### 子命令
+
+| 子命令 | 说明 |
+|--------|------|
+| `status` | 查看集群状态 |
+| `update` | 更新集群到最新 DingoFS 镜像 |
+
+---
+
+### cluster status — 查看集群状态
+
+```bash
+dtt cluster status <cluster_id> <user>
+```
+
+| 参数 | 说明 |
+|------|------|
+| `cluster_id` | 集群 ID（当前仅支持 29） |
+| `user` | 部署用户（root 或其他） |
+
+```bash
+dtt cluster status 29 root
+```
+
+---
+
+### cluster update — 更新集群
+
+从 Docker Hub 拉取最新（或指定）镜像，更新 topology 配置，提交配置，执行 cluster stop → clean → deploy 完成滚动更新。
+
+```bash
+dtt cluster update <cluster_id> <user> [image_tag] [-f <topology_file>]
+```
+
+| 参数 | 说明 |
+|------|------|
+| `cluster_id` | 集群 ID（当前仅支持 29） |
+| `user` | 部署用户，用于定位 topology 文件路径 |
+| `image_tag` | （可选）指定镜像 tag，不传则自动获取 latest |
+| `-f, --file` | （可选）覆盖 topology YAML 文件路径 |
+
+**更新流程（6 步）：**
+
+1. 获取镜像 tag（自动获取 latest 或使用指定的 tag）
+2. 备份 topology YAML，更新 `container_image`
+3. 提交集群配置 (`config commit`)
+4. 停止所有服务 (`cluster stop`)
+5. 清理旧数据 (`cluster clean`)
+6. 部署新服务 (`cluster deploy`)
+
+> 如果 latest 镜像拉取失败（630001 错误），自动回退到 previous 镜像重试一次。
+
+**使用示例：**
+
+```bash
+# 更新到最新镜像（自动获取 tag）
+dtt cluster update 29 root
+
+# 指定镜像 tag
+dtt cluster update 29 root 8120cfb
+
+# 指定 topology 文件
+dtt cluster update 29 root -f /custom/topology.yaml
+```
+
+---
 
 ## 安装
 
@@ -75,7 +694,9 @@ dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
 ./uninstall.sh --keep-image  # 卸载但保留镜像
 ```
 
-# 需要代理的网络环境
+## 需要代理的网络环境
+
+```bash
 docker build -t dingofs-testsuite-tools \
   --build-arg http_proxy=http://10.220.69.222:1088 \
   --build-arg https_proxy=http://10.220.69.222:1088 \
@@ -107,178 +728,23 @@ docker run --rm -it dingofs-testsuite-tools /bin/bash
 ```bash
 # 查看所有选项和示例
 docker run --rm dingofs-testsuite-tools --help
+
+# 查看特定工具帮助
+dtt -t mlperf --help
+dtt -t fio --help
 ```
 
 ## 选项说明
 
 | 选项 | 说明 |
 |------|------|
-| `-t, --tool` | 测试工具: fio, vdbench, mdtest |
+| `-t, --tool` | 测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf |
 | `-s, --scenario` | 测试场景 |
 | `-m, --mount` | 被测存储的挂载点 (例如: /mnt/test) |
 | `-o, --output` | 测试结果输出目录 (例如: /output) |
 | `-n, --np` | mdtest MPI 进程数 (默认: 16) |
-| `--mode` | 运行模式: one-shot (默认) 或 long-running |
 
-> **注意**: `-o` 指定的是容器内路径，需要通过 `-v` 将容器内目录映射到本机路径。
-
-## 测试工具
-
-| 工具 | 说明 |
-|------|------|
-| fio | Flexible I/O tester (存储性能测试) |
-| vdbench | Oracle storage testsuite |
-| mdtest | MPI filesystem metadata test |
-| pjdtest | POSIX 文件系统测试套件 |
-| ltp | Linux Test Project (内核测试套件) |
-
-## 运行模式
-
-| 模式 | 说明 |
-|------|------|
-| one-shot | 容器启动 → 运行测试 → 测试完成后容器退出 (默认) |
-| long-running | 容器启动 → 运行测试 → 容器保持运行，可用 docker exec 执行更多测试 |
-
-## FIO 场景 (4 种类型，每种 24 个子场景)
-
-| 场景 | 说明 |
-|------|------|
-| rand_read | Random read (24 variants: 2 direct × 3 block size × 4 numjobs) |
-| rand_write | Random write |
-| seq_read | Sequential read |
-| seq_write | Sequential write |
-
-### FIO 参数说明
-
-| 参数 | 值 |
-|------|-----|
-| direct | 0 (buffered), 1 (direct I/O) |
-| block size | 128k, 1m, 4m |
-| numjobs | 1, 8, 16, 32 |
-| iodepth | 1 (fixed) |
-| size | 8G per job |
-
-## MDTEST 场景 (4 种类型，可配置并行任务数)
-
-| 场景 | 说明 |
-|------|------|
-| mdtest_z0_n100 | z=0, n=100 (扁平目录, 3200 files) |
-| mdtest_z5_b4_I1 | z=5, b=4, I=1 (多分支树, 32736 items) |
-| mdtest_z6_b3_I1 | z=6, b=3, I=1 (中等深度树, 34976 items) |
-| mdtest_z9_b2_I1 | z=9, b=2, I=1 (深层二叉树, 32736 items) |
-| mdtest | 运行以上所有 4 个场景 |
-
-> **默认进程数**: 16，可用 `-n` 或 `--np` 参数调整
-
-## PJDTEST
-
-pjdtest 是 POSIX 文件系统测试套件，用于验证文件系统对 POSIX 标准的兼容性。
-
-```bash
-# 运行 pjdtest 测试
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s pjdtest -m /data -o /data
-```
-
-## LTP
-
-LTP (Linux Test Project) 是 Linux 内核测试套件，用于验证内核和系统调用的正确性、稳定性和可靠性。
-
-**注意**: LTP 测试需要 `--privileged` 标志运行，以访问 `/dev/kmsg` 等设备。
-
-### LTP 场景
-
-| 场景 | 说明 | 对应测试套件 |
-|------|------|-------------|
-| ltp | 默认运行文件系统测试 | fs |
-| ltp_fs | 文件系统测试 | fs |
-| ltp_dio | Direct I/O 测试 | dio |
-| ltp_mm | 内存管理测试 | mm |
-
-### 运行 LTP 测试
-
-```bash
-# 运行 LTP 文件系统测试 (需要 --privileged)
-docker run --rm --privileged -v /mnt/disk0/daigy/tmp/:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
-
-# 运行特定 LTP 测试场景
-docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp_fs -m /data -o /data
-```
-
-### LTP 测试限制
-
-在容器中运行 LTP 时，部分测试会失败或报错（如 `/dev/kmsg`、`/proc/sys` 等内核接口），这是预期行为。LTP 设计用于在裸机上运行以获得完整测试结果。
-
-## 使用示例
-
-### FIO 测试
-
-```bash
-# 运行所有 rand_read 场景 (24 tests)
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data
-
-# 运行所有 seq_write 场景 (24 tests)
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s seq_write -m /data -o /data
-
-# 运行单个特定场景
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read_0d_128k_1j -m /data -o /data
-```
-
-### VDBENCH 测试
-
-```bash
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t vdbench -s seq_rd -m /data -o /data
-```
-
-### MDTEST 测试
-
-```bash
-# 运行所有 4 个 mdtest 场景并汇总
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data
-
-# 运行单个 mdtest 场景
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest_z0_n100 -m /data -o /data
-
-# 自定义进程数测试 (默认 16)
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t mdtest -s mdtest -m /data -o /data -n 32
-```
-
-### PJDTEST 测试
-
-```bash
-# 运行 pjdtest 测试
-docker run --rm -v /tmp/test:/data dingofs-testsuite-tools -t pjdtest -s pjdtest -m /data -o /data
-```
-
-### LTP 测试
-
-```bash
-# 运行 LTP 文件系统测试 (需要 --privileged)
-docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -s ltp -m /data -o /data
-```
-
-### 长期运行模式
-
-```bash
-# 启动长期运行容器
-docker run --detach -v /tmp/test:/data dingofs-testsuite-tools -t fio -s rand_read -m /data -o /data --mode long-running
-
-# 在运行中的容器内执行更多测试
-docker exec <container_id> entrypoint.sh -t fio -s seq_write -m /data -o /data
-```
-
-### 分离挂载点和输出目录
-
-如果需要将测试结果保存到与挂载点不同的路径，可以分别挂载：
-
-```bash
-# -m 指定被测存储的挂载点
-# -o 指定结果输出目录（需要额外挂载）
-docker run --rm \
-  -v /mnt/disk1/test:/data \
-  -v /tmp/results:/output \
-  dingofs-testsuite-tools \
-  -t fio -s seq_read -m /data -o /output
-```
+---
 
 ## 输出说明
 
@@ -291,12 +757,12 @@ docker run --rm \
 | mdtest.raw | mdtest 原始输出 |
 | pjdtest_YYYYMMDD_HHMMSS | pjdtest 测试结果 |
 | ltp_YYYYMMDD_HHMMSS.log | LTP 测试日志 |
-| report.html | HTML 可视化报告 |
-| summary.md | Markdown 格式摘要 |
+| allure-report-latest/ | Allure HTML 报告（集成测试） |
+| index.html | 报告索引页 |
 | running_result.log | 测试执行结果汇总 |
 
 ## 镜像信息
 
 - **基础镜像**: ubuntu:24.04
-- **工具版本**: fio (最新稳定版), vdbench 50406, mdtest (IOR 套件)
+- **工具版本**: fio (最新稳定版), vdbench 50406, mdtest (IOR 套件), allure 2.32.0
 - **支持平台**: x86_64, ARM64
