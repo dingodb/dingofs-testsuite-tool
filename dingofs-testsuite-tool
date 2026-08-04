@@ -23,7 +23,6 @@ RUNTIME_FILE="$CONFIG_DIR/runtime"
 INTENV_FILE="$CONFIG_DIR/int_env"
 CUSTOM_FILE="$CONFIG_DIR/custom"
 REPO_FILE="$CONFIG_DIR/repo"
-SCRATCH_DIR_FILE="$CONFIG_DIR/scratch_dir"
 XFSTEST_MDS_TEMPLATE_FILE="$CONFIG_DIR/xfstest_mds_template"
 
 # Default image
@@ -57,7 +56,6 @@ load_config() {
         int_env)   file="$INTENV_FILE"       default="env_126_smoke" ;;
         custom)      file="$CUSTOM_FILE"        default="" ;;
         repo)        file="$REPO_FILE"           default="" ;;
-        scratch_dir)              file="$SCRATCH_DIR_FILE"               default="" ;;
         xfstest_mds_template)    file="$XFSTEST_MDS_TEMPLATE_FILE"     default="" ;;
     esac
     if [[ -f "$file" ]]; then
@@ -101,9 +99,6 @@ save_config() {
             ;;
         repo)
             echo "$value" > "$REPO_FILE"
-            ;;
-        scratch_dir)
-            echo "$value" > "$SCRATCH_DIR_FILE"
             ;;
         xfstest_mds_template)
             echo "$value" > "$XFSTEST_MDS_TEMPLATE_FILE"
@@ -436,7 +431,6 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   dtt config set email <地址>      设置邮件通知地址
   dtt config set runtime <运行时>  设置容器运行时 (docker/podman, 默认: docker)
   dtt config set int_env <环境名>  设置集成测试环境名 (默认: env_126_smoke)
-  dtt config set scratch_dir <目录>  设置 xfstest scratch 挂载点
   dtt config set custom <目录>     设置自定义场景目录
   dtt config set repo <目录>       设置仓库根目录
   dtt config show                 显示当前配置
@@ -1163,7 +1157,7 @@ cmd_config() {
             if [[ -z "$key" ]] || [[ -z "$value" ]]; then
                 echo "Error: key and value required"
                 echo "Usage: dingofs-testsuite-tool config set <key> <value>"
-                echo "Keys: testdir(test_dir), output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo, scratch_dir"
+                echo "Keys: testdir(test_dir), output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo, xfstest_mds_template"
                 return 1
             fi
 
@@ -1171,13 +1165,13 @@ cmd_config() {
                 test_dir)  # alias for testdir
                     key="testdir"
                     ;&
-                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom|repo|scratch_dir|xfstest_mds_template)
+                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom|repo|xfstest_mds_template)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir(test_dir), output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo, scratch_dir"
+                    echo "Valid keys: testdir(test_dir), output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo, xfstest_mds_template"
                     return 1
                     ;;
             esac
@@ -1193,10 +1187,8 @@ cmd_config() {
             local runtime=$(load_config runtime)
             local int_env=$(load_config int_env)
             local custom=$(load_config custom)
-            local scratch_dir=$(load_config scratch_dir)
             local xfstest_mds=$(load_config xfstest_mds_template)
             echo "  test_dir:              ${td:-not set}"
-            echo "  scratch_dir:           ${scratch_dir:-not set}"
             echo "  xfstest_mds_template:  ${xfstest_mds:-not set}"
             echo "  output:      ${out:-not set}"
             echo "  image:       ${img:-not set}"
@@ -1384,10 +1376,6 @@ run_testsuite() {
                 gpu_count="$2"
                 shift 2
                 ;;
-            --scratch-mnt)
-                scratch_mnt="$2"
-                shift 2
-                ;;
             --dingo-client)
                 dingo_client="$2"
                 shift 2
@@ -1440,9 +1428,6 @@ run_testsuite() {
     # Use config values if not provided via command line
     mount="${mount:-$config_testdir}"
     output="${output:-$config_output}"
-    # xfstest: scratch mount defaults to config value
-    local config_scratch_dir=$(load_config scratch_dir)
-    scratch_mnt="${scratch_mnt:-$config_scratch_dir}"
 
     # --- setup-env: create filesystem and mount ---
     if [[ -n "$setup_env" ]]; then
