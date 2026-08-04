@@ -31,6 +31,7 @@ VDBENCH_BIN="/opt/vdbench/vdbench"
 VDBENCH_DIR="/opt/vdbench"
 MDTEST_BIN="/usr/local/bin/mdtest"
 INTEGRATION_DIR="/dingofs-integration-test"
+XFSTESTS_DIR="/xfstests-dev"
 
 # Scenario directories
 SCENARIOS_DIR="/scenarios"
@@ -65,9 +66,10 @@ Usage:
   docker run dingofs-testsuite-tools -t <tool> -s <scenario> -m <mount> -o <output>
 
 Options:
-  -t, --tool      测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke
+  -t, --tool      测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, smoke
   -s, --scenario  测试场景
   -m, --mount     被测存储的挂载点 (例如: /mnt/test)
+  --scratch-mnt   xfstest scratch 挂载点 (默认: /scratch)
   -o, --output    测试结果输出目录 (例如: /output)
   -n, --np        mdtest MPI 进程数 (默认: 16)
   --bs_size       fio块大小类型: normal (128K/1M/4K), small (128B/256B/512B/1K/2K/4K/8K)
@@ -84,6 +86,7 @@ Tools:
   ltp       - Linux Test Project (内核测试套件)
   int       - DingoFS integration test (自动化框架)
   mlperf    - MLPerf Storage 存储基准测试
+  xfstest   - xfstests 文件系统回归测试套件
   smoke     - 冒烟测试 (串行运行 pjdtest + mdtest + ltp)
 
 运行模式:
@@ -132,6 +135,12 @@ LTP:
   ltp_fs     - 文件系统测试 (fs)
   ltp_dio    - Direct I/O 测试 (dio)
   ltp_mm     - 内存管理测试 (mm)
+
+xfstest 场景:
+  auto / all  - 运行自动检测的文件系统测试组
+  quick       - 快速冒烟测试
+  generic/NNN - 运行指定编号的 generic 测试
+  <group>/NNN - 运行指定测试组中的测试
 
 注意: LTP 需要 --privileged 运行以访问 /dev/kmsg 等设备
 
@@ -364,6 +373,35 @@ LTP Linux 测试项目
 EOF
 }
 
+show_xfstest_help() {
+    cat << 'EOF'
+xfstests — 文件系统回归测试 (DingoFS)
+
+用法:
+  docker run ... -t xfstest -s <场景>
+
+场景:
+  auto / all       运行自动检测的文件系统测试组 (默认)
+  quick            快速冒烟测试
+  generic/NNN      运行指定编号的 generic 测试
+  <group>/NNN      运行指定测试组中的测试
+
+模式:
+  本地模式 (默认)  零依赖，自动创建文件系统
+  MDS 模式         连接到集群，需设置 DINGOFS_META_URL_TEMPLATE 环境变量
+
+结果保存在 /output/xfstest_<timestamp>/:
+  check.log    完整执行日志
+  generic/     各测试用例输出 (.out 预期, .bad 差异)
+
+注意:
+  - 容器需 --privileged + --cap-add=SYS_ADMIN
+  - MDS 模式需先在集群创建 xftest 和 xfscratch 文件系统
+  - 以 root 运行（需要 mount 权限）
+  - 通过 mount.fuse.dingofs helper 自动管理文件系统挂载
+EOF
+}
+
 show_int_help() {
     cat << EOF
 INT 集成测试 (DingoFS Automation Framework)
@@ -437,9 +475,9 @@ validate_params() {
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
-        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int)."
+        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int, xfstest)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke)$ ]]; then
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke|xfstest)$ ]]; then
         echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke"
         error=1
     fi
@@ -573,6 +611,12 @@ scenario_exists() {
             # mlperf scenarios: resnet50, unet3d, cosmoflow, checkpointing, all
             [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(resnet50|unet3d|cosmoflow|checkpointing)$ ]]
             ;;
+        xfstest)
+            # xfstest scenarios: all(auto), quick, generic/NNN, custom
+            [[ "$scenario" == "all" ]] || [[ "$scenario" == "auto" ]] || \
+            [[ "$scenario" == "quick" ]] || [[ "$scenario" == "custom" ]] || \
+            [[ "$scenario" =~ ^generic/[0-9]+$ ]] || [[ "$scenario" =~ ^[a-z]+/[0-9]+$ ]]
+            ;;
         *)
             return 1
             ;;
@@ -685,7 +729,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -707,6 +751,7 @@ parse_args() {
                         ltp) show_ltp_help; exit 0 ;;
                         int|integration) show_int_help; exit 0 ;;
                         mlperf) show_mlperf_help; exit 0 ;;
+                        xfstest) show_xfstest_help; exit 0 ;;
                         smoke) show_smoke_help; exit 0 ;;
                         *) echo "Unknown tool: $TOOL"; exit 1 ;;
                     esac
@@ -719,6 +764,10 @@ parse_args() {
                 ;;
             -m|--mount)
                 MOUNT="$2"
+                shift 2
+                ;;
+            --scratch-mnt)
+                SCRATCH_MNT="$2"
                 shift 2
                 ;;
             -o|--output)
@@ -939,6 +988,9 @@ dispatch_tool() {
             ;;
         mlperf)
             mlperf_run
+            ;;
+        xfstest)
+            xfstest_run
             ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
@@ -1900,6 +1952,75 @@ mlperf_run() {
 
     echo ""
     return $overall_exit
+}
+
+# ==============================================================================
+# xfstest Runner
+# ==============================================================================
+
+xfstest_run() {
+    local xfstest_start_time=$(date +"%Y-%m-%d %H:%M:%S")
+    local xfstest_root="${XFSTESTS_ROOT:-/xfstests-root}"
+
+    echo "Running xfstest"
+    echo "  xfstests tree: $XFSTESTS_DIR"
+    echo "  Root dir:      $xfstest_root"
+    echo "  Mode:          ${DINGOFS_META_URL_TEMPLATE:+MDS}${DINGOFS_META_URL_TEMPLATE:-local file}"
+    echo "  Scenario:      ${SCENARIO:-auto}"
+    echo "  Output:        $OUTPUT"
+
+    # Create output directory
+    mkdir -p "$OUTPUT"
+    local xfstest_output="$OUTPUT/xfstest_${RUN_TIMESTAMP}"
+    mkdir -p "$xfstest_output"
+
+    # Re-run setup.sh if MDS mode is requested (updates META_URL_TEMPLATE)
+    if [[ -n "${DINGOFS_META_URL_TEMPLATE:-}" ]]; then
+        echo "Reconfiguring for MDS mode: $DINGOFS_META_URL_TEMPLATE"
+        DINGOFS_CLIENT_BIN="${DINGOFS_CLIENT_BIN:-/usr/local/bin/dingo-client}" \
+        DINGOFS_META_URL_TEMPLATE="$DINGOFS_META_URL_TEMPLATE" \
+        bash "$XFSTESTS_DIR/setup.sh" "$XFSTESTS_DIR" "$xfstest_root"
+    fi
+
+    # Verify local.config exists
+    if [[ ! -f "$XFSTESTS_DIR/local.config" ]]; then
+        echo "ERROR: local.config not found. Run setup.sh first."
+        return 1
+    fi
+
+    echo "local.config:"
+    grep -E '^export TEST_DIR|^export SCRATCH_MNT|^export FSTYP' "$XFSTESTS_DIR/local.config"
+
+    # Determine test selector
+    local test_selector="${SCENARIO:-auto}"
+    case "$test_selector" in
+        all|auto)
+            test_selector="-g auto"
+            ;;
+        quick)
+            test_selector="-g quick"
+            ;;
+    esac
+
+    echo "Executing: cd $XFSTESTS_DIR && ./check $test_selector"
+
+    cd "$XFSTESTS_DIR"
+    ./check $test_selector 2>&1 | tee "$xfstest_output/check.log"
+    local xfstest_exit=$?
+
+    # Copy results to output
+    if [[ -d "$XFSTESTS_DIR/results" ]]; then
+        cp -r "$XFSTESTS_DIR/results"/* "$xfstest_output/" 2>/dev/null || true
+        echo "Results copied to: $xfstest_output"
+    fi
+
+    if [[ $xfstest_exit -ne 0 ]]; then
+        echo "Warning: xfstest exited with code $xfstest_exit"
+    else
+        echo "xfstest completed successfully."
+    fi
+
+    log_result "xfstest" "$test_selector" "$xfstest_exit" "$xfstest_start_time" "$xfstest_output"
 }
 
 # ==============================================================================

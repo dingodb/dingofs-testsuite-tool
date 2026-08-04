@@ -23,6 +23,8 @@ RUNTIME_FILE="$CONFIG_DIR/runtime"
 INTENV_FILE="$CONFIG_DIR/int_env"
 CUSTOM_FILE="$CONFIG_DIR/custom"
 REPO_FILE="$CONFIG_DIR/repo"
+SCRATCH_DIR_FILE="$CONFIG_DIR/scratch_dir"
+XFSTEST_MDS_TEMPLATE_FILE="$CONFIG_DIR/xfstest_mds_template"
 
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
@@ -53,8 +55,10 @@ load_config() {
         email)     file="$EMAIL_FILE"        default="$DEFAULT_EMAIL" ;;
         runtime)   file="$RUNTIME_FILE"      default="docker" ;;
         int_env)   file="$INTENV_FILE"       default="env_126_smoke" ;;
-        custom)    file="$CUSTOM_FILE"       default="" ;;
-        repo)      file="$REPO_FILE"         default="" ;;
+        custom)      file="$CUSTOM_FILE"        default="" ;;
+        repo)        file="$REPO_FILE"           default="" ;;
+        scratch_dir)              file="$SCRATCH_DIR_FILE"               default="" ;;
+        xfstest_mds_template)    file="$XFSTEST_MDS_TEMPLATE_FILE"     default="" ;;
     esac
     if [[ -f "$file" ]]; then
         local val
@@ -97,6 +101,12 @@ save_config() {
             ;;
         repo)
             echo "$value" > "$REPO_FILE"
+            ;;
+        scratch_dir)
+            echo "$value" > "$SCRATCH_DIR_FILE"
+            ;;
+        xfstest_mds_template)
+            echo "$value" > "$XFSTEST_MDS_TEMPLATE_FILE"
             ;;
     esac
 }
@@ -160,6 +170,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   ltp       Linux Test Project 内核测试套件
   int       DingoFS 集成测试（单模块）
   mlperf    MLPerf Storage 基准测试
+  xfstest   xfstests 文件系统回归测试
 
 ======================================================================
                         测试工具详细说明
@@ -250,6 +261,56 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
     dtt -t mlperf -s unet3d --scale medium --gpu_count 4
     dtt -t mlperf -s all --file_count 500
     dtt -t mlperf --help               # 显示详细帮助
+
+=== XFSTESTS — 文件系统回归测试 ===
+
+  xfstests 是 Linux 文件系统回归测试套件。容器内通过 mount helper
+  自动挂载 DingoFS，无需预先挂载。默认使用本地文件后端，开箱即用。
+
+  支持两种模式:
+    - 本地模式 (默认)       零依赖，自动创建文件系统
+    - MDS 模式              连接到 DingoFS 集群
+
+  模式配置:
+    dtt config set xfstest_mds_template 'mds://IP:PORT/{fsname}'
+      配置后启用 MDS 模式，容器会重建 local.config。
+      需要先在集群上创建 xftest 和 xfscratch 两个文件系统:
+        dingo fs create xftest --mdsaddr <MDS> ...
+        dingo fs create xfscratch --mdsaddr <MDS> ...
+      不配置此模板则使用本地模式（默认）。
+
+  测试组 (DingoFS 主要使用 generic):
+    generic    POSIX 通用测试 (1599 个, 主要测试组)    ext4    Ext4 专项
+    xfs        XFS 专项 (不适用 FUSE)                  f2fs    F2FS 专项
+    btrfs      Btrfs 专项 (不适用 FUSE)                overlay Overlay
+    selftest   自检测试 (16 个)                        perf    性能测试
+    (* 带"不适用 FUSE"的组 DingoFS 无法运行)
+
+  场景:
+    auto / all     运行 auto 组 (文件系统自检测试, 默认)
+    quick          快速冒烟测试 (~10 分钟)
+    generic/NNN    运行指定 generic 测试 (如 generic/001)
+    <group>/NNN    运行指定测试组中的测试
+    -g <group>     运行指定测试组 (如: -g quick)
+    -e generic/NNN 排除指定测试
+
+  结果保存在 output/xfstest_<timestamp>/:
+    check.log       完整测试日志
+    generic/        各测试用例输出 (.out 预期, .bad 差异)
+
+  指定外部 dingo-client (可选):
+    dtt -t xfstest -s generic/001 --dingo-client /path/to/dingo-client
+
+  示例:
+    # 本地模式
+    dtt -t xfstest -s auto                # 运行全部
+    dtt -t xfstest -s quick               # 快速冒烟
+    dtt -t xfstest -s generic/001         # 单个测试
+    dtt -t xfstest -s generic/001 --dingo-client ./build/bin/dingo-client
+
+    # MDS 模式
+    dtt config set xfstest_mds_template 'mds://172.30.14.126:6900/{fsname}'
+    dtt -t xfstest -s generic/001
 
 ======================================================================
                          命令详细说明
@@ -375,6 +436,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   dtt config set email <地址>      设置邮件通知地址
   dtt config set runtime <运行时>  设置容器运行时 (docker/podman, 默认: docker)
   dtt config set int_env <环境名>  设置集成测试环境名 (默认: env_126_smoke)
+  dtt config set scratch_dir <目录>  设置 xfstest scratch 挂载点
   dtt config set custom <目录>     设置自定义场景目录
   dtt config set repo <目录>       设置仓库根目录
   dtt config show                 显示当前配置
@@ -389,7 +451,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 ======================================================================
 
 通用选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest
   -s, --scenario <名称>   测试场景
   -n, --np <数字>         mdtest MPI 进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录
@@ -416,6 +478,79 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   - 如果未提供 -m/-o，则使用 config 中配置的值
   - 快捷命令: dtt 是 dingofs-testsuite-tool 的别名
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
+
+EOF
+}
+
+show_xfstest_help() {
+    cat << 'EOF'
+xfstests — 文件系统回归测试
+==========================
+
+xfstests 是 Linux 文件系统回归测试套件。容器内通过 mount helper 自动挂载
+DingoFS，无需预先挂载。默认使用本地文件后端，开箱即用。
+
+用法:
+  dtt -t xfstest [-s <场景>]
+
+场景:
+  auto / all       运行 auto 组 (文件系统自检测试)
+  quick            快速冒烟测试 (~10 分钟)
+  generic/NNN      运行指定 generic 测试 (如 generic/001)
+  <group>/NNN      运行指定测试组中的测试
+
+测试组 (最常用: generic):
+  generic    通用 POSIX 文件系统测试 (1599 个用例, 主要测试组)
+  xfs        XFS 专项测试 (1623 个, 不适用 FUSE)
+  btrfs      Btrfs 专项测试 (700 个, 不适用 FUSE)
+  ext4       Ext4 专项测试 (145 个, 不适用 FUSE)
+  overlay    Overlay 测试 (212 个)
+  f2fs       F2FS 专项测试 (50 个, 不适用 FUSE)
+  selftest   自检测试 (16 个)
+  ceph       Ceph 专项测试 (12 个)
+  perf       性能测试 (2 个)
+  nfs/cifs/ocfs2/tmpfs/udf  各专项测试 (<10 个)
+
+支持两种模式:
+
+  本地模式 (默认):
+    零依赖，自动创建文件系统，数据存储在容器内。直接运行即可。
+    dtt -t xfstest -s generic/001
+
+  MDS 模式:
+    连接到 DingoFS 集群。需要先创建文件系统并配置模板:
+      # 1. 在集群上创建文件系统
+      dingo fs create xftest --mdsaddr <MDS> ...
+      dingo fs create xfscratch --mdsaddr <MDS> ...
+
+      # 2. 配置 MDS 模板
+      dtt config set xfstest_mds_template 'mds://<MDS_ADDR>/{fsname}'
+
+      # 3. 运行测试
+      dtt -t xfstest -s generic/001
+
+  指定外部 dingo-client (可选):
+    dtt -t xfstest -s generic/001 --dingo-client /path/to/dingo-client
+    挂载外部二进制到容器，覆盖镜像内置版本。
+
+示例:
+  dtt -t xfstest -s auto                  # 运行 auto 组
+  dtt -t xfstest -s quick                 # 快速冒烟
+  dtt -t xfstest -s generic/001            # 单个 generic 测试
+  dtt -t xfstest -s generic/013            # 多个测试用逗号或-e
+  dtt -t xfstest -s generic/001 --dingo-client ./build/bin/dingo-client
+
+结果:
+  结果保存在 output/xfstest_<timestamp>/:
+    check.log    完整执行日志
+    generic/     各测试用例输出 (.out 预期, .bad 差异)
+
+注意:
+  - 默认使用本地文件模式运行
+  - MDS 模式需要配置 xfstest_mds_template
+  - 测试以 root 运行（需要 mount 权限）
+  - DingoFS 主要测试 generic 组 (POSIX 兼容性)
+  等价原生命令: cd /xfstests-dev && ./check generic/001
 
 EOF
 }
@@ -1028,18 +1163,21 @@ cmd_config() {
             if [[ -z "$key" ]] || [[ -z "$value" ]]; then
                 echo "Error: key and value required"
                 echo "Usage: dingofs-testsuite-tool config set <key> <value>"
-                echo "Keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo"
+                echo "Keys: testdir(test_dir), output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo, scratch_dir"
                 return 1
             fi
 
             case "$key" in
-                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom|repo)
+                test_dir)  # alias for testdir
+                    key="testdir"
+                    ;&
+                testdir|output|image|mdsaddr|webhook_url|email|runtime|int_env|custom|repo|scratch_dir|xfstest_mds_template)
                     save_config "$key" "$value"
                     echo "$key set to: $value"
                     ;;
                 *)
                     echo "Error: Unknown config key '$key'"
-                    echo "Valid keys: testdir, output, image, mdsaddr, webhook_url, email, runtime, int_env, custom"
+                    echo "Valid keys: testdir(test_dir), output, image, mdsaddr, webhook_url, email, runtime, int_env, custom, repo, scratch_dir"
                     return 1
                     ;;
             esac
@@ -1055,17 +1193,21 @@ cmd_config() {
             local runtime=$(load_config runtime)
             local int_env=$(load_config int_env)
             local custom=$(load_config custom)
-            echo "  testdir: ${td:-not set}"
-            echo "  output:  ${out:-not set}"
-            echo "  image:   ${img:-not set}"
-            echo "  mdsaddr: ${mds:-not set}"
+            local scratch_dir=$(load_config scratch_dir)
+            local xfstest_mds=$(load_config xfstest_mds_template)
+            echo "  test_dir:              ${td:-not set}"
+            echo "  scratch_dir:           ${scratch_dir:-not set}"
+            echo "  xfstest_mds_template:  ${xfstest_mds:-not set}"
+            echo "  output:      ${out:-not set}"
+            echo "  image:       ${img:-not set}"
+            echo "  mdsaddr:     ${mds:-not set}"
             echo "  webhook_url: ${webhook:-not set}"
-            echo "  email: ${email:-not set}"
-            echo "  runtime: ${runtime:-docker}"
-            echo "  int_env: ${int_env:-env_126_smoke}"
-            echo "  custom:  ${custom:-not set}"
+            echo "  email:       ${email:-not set}"
+            echo "  runtime:     ${runtime:-docker}"
+            echo "  int_env:     ${int_env:-env_126_smoke}"
+            echo "  custom:      ${custom:-not set}"
             local repo=$(load_config repo)
-            echo "  repo:    ${repo:-not set}"
+            echo "  repo:        ${repo:-not set}"
             ;;
         *)
             if [[ -z "$subcommand" ]]; then
@@ -1242,6 +1384,14 @@ run_testsuite() {
                 gpu_count="$2"
                 shift 2
                 ;;
+            --scratch-mnt)
+                scratch_mnt="$2"
+                shift 2
+                ;;
+            --dingo-client)
+                dingo_client="$2"
+                shift 2
+                ;;
             --debug)
                 debug="yes"
                 shift
@@ -1262,6 +1412,9 @@ run_testsuite() {
                 if [[ -n "$tool" ]]; then
                     if [[ "$tool" == "mlperf" ]]; then
                         show_mlperf_help
+                        exit 0
+                    elif [[ "$tool" == "xfstest" ]]; then
+                        show_xfstest_help
                         exit 0
                     else
                         run_docker_help "$tool"
@@ -1287,6 +1440,9 @@ run_testsuite() {
     # Use config values if not provided via command line
     mount="${mount:-$config_testdir}"
     output="${output:-$config_output}"
+    # xfstest: scratch mount defaults to config value
+    local config_scratch_dir=$(load_config scratch_dir)
+    scratch_mnt="${scratch_mnt:-$config_scratch_dir}"
 
     # --- setup-env: create filesystem and mount ---
     if [[ -n "$setup_env" ]]; then
@@ -1425,6 +1581,73 @@ run_testsuite() {
         # exec replaces the shell process, so we never reach here
     fi
 
+    # xfstest: xfstests manages its own mounts via dingo-client + mount helper.
+    # No pre-mounted testdir needed; only output is required.
+    if [[ "$tool" == "xfstest" ]]; then
+        if [[ -z "$scenario" ]]; then
+            show_xfstest_help
+            return 0
+        fi
+        if [[ -z "$output" ]]; then
+            echo "Error: Output directory not set."
+            echo "Please run 'dingofs-testsuite-tool config set output <directory>' first."
+            return 1
+        fi
+        mkdir -p "$output"
+
+        local rm_flag="--rm"
+        if [[ -n "$debug" ]]; then
+            rm_flag=""
+        fi
+
+        local docker_cmd=(
+            $runtime run -it $rm_flag --privileged --net=host
+            --cap-add=SYS_ADMIN
+            -v "${output}:/output"
+        )
+
+        # Mount custom scenarios directory if configured
+        if [[ -n "$config_custom" ]]; then
+            mkdir -p "$config_custom"
+            docker_cmd+=("-v" "${config_custom}:/custom")
+        fi
+
+        # Mount external dingo-client if specified
+        if [[ -n "$dingo_client" ]]; then
+            if [[ ! -f "$dingo_client" ]]; then
+                echo "Error: dingo-client not found at '$dingo_client'"
+                return 1
+            fi
+            docker_cmd+=(
+                -v "${dingo_client}:/usr/local/bin/dingo-client:ro"
+                -e "DINGOFS_CLIENT_BIN=/usr/local/bin/dingo-client"
+            )
+            echo "  Using external dingo-client: $dingo_client"
+        fi
+
+        # Pass MDS template for MDS mode
+        local config_mds_template=$(load_config xfstest_mds_template 2>/dev/null || echo "")
+        if [[ -n "$config_mds_template" ]]; then
+            docker_cmd+=("-e" "DINGOFS_META_URL_TEMPLATE=$config_mds_template")
+        fi
+
+        local entrypoint_cmd=(
+            /entrypoint.sh -t xfstest -o /output
+        )
+        entrypoint_cmd+=(-s "${scenario:-auto}")
+
+        echo "Running testsuite with image: $image"
+        echo "  Output: $output -> /output"
+        echo "  Tool: xfstest"
+        echo "  Scenario: ${scenario:-auto}"
+        if [[ -n "$config_mds_template" ]]; then
+            echo "  MDS template: $config_mds_template"
+        fi
+        echo ""
+
+        exec "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"
+    fi
+
     # Validate required parameters
     if [[ -z "$mount" ]]; then
         echo "Error: Test directory not set."
@@ -1439,7 +1662,7 @@ run_testsuite() {
     fi
 
     if [[ -z "$tool" ]]; then
-        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf)"
+        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest)"
         return 1
     fi
 
@@ -1550,7 +1773,6 @@ run_testsuite() {
         -m "$container_mount"
         -o /output
     )
-
     # Add scenario for all tools (mdtest is optional, others required)
     if [[ "$tool" == "mdtest" ]]; then
         # mdtest scenario is optional, default to "all" if not specified

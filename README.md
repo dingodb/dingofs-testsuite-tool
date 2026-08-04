@@ -305,6 +305,90 @@ dtt -t mlperf --help
 
 ---
 
+## 8. XFSTESTS — 文件系统回归测试
+
+xfstests 是 Linux 文件系统回归测试套件。容器内通过 mount helper 自动挂载 DingoFS，无需预先挂载。
+
+### 模式
+
+| 模式 | 说明 | 配置 |
+|------|------|------|
+| 本地模式 | 零依赖，自动创建文件系统，数据存储在容器内 | 默认，无需配置 |
+| MDS 模式 | 连接到 DingoFS 集群，数据存储在远端 | 配置 `xfstest_mds_template` |
+
+### MDS 模式配置
+
+```bash
+# 1. 先在集群上创建两个文件系统（一次性）
+dingo fs create xftest --mdsaddr <MDS_ADDR> ...
+dingo fs create xfscratch --mdsaddr <MDS_ADDR> ...
+
+# 2. 配置 MDS 模板
+dtt config set xfstest_mds_template 'mds://<MDS_ADDR>/{fsname}'
+
+# 3. 运行测试
+dtt -t xfstest -s generic/001
+```
+
+> `{fsname}` 会被自动替换为 `xftest` 或 `xfscratch`。
+
+### 测试组
+
+| 组 | 用例数 | 说明 |
+|----|--------|------|
+| `generic` | 1599 | POSIX 通用文件系统测试（DingoFS 主要测试组） |
+| `xfs` | 1623 | XFS 专项（不适用 FUSE） |
+| `btrfs` | 700 | Btrfs 专项（不适用 FUSE） |
+| `overlay` | 212 | Overlay 文件系统测试 |
+| `ext4` | 145 | Ext4 专项（不适用 FUSE） |
+| `f2fs` | 50 | F2FS 专项（不适用 FUSE） |
+| `selftest` | 16 | 框架自检测试 |
+| `perf` | 2 | 性能测试 |
+| `ceph` | 12 | Ceph 专项 |
+| `nfs/cifs/ocfs2/tmpfs/udf` | <10 | 其他专项 |
+
+### 场景
+
+| 场景 | 说明 |
+|------|------|
+| `auto` / `all` | 运行 auto 组（文件系统自检测试，默认） |
+| `quick` | 快速冒烟测试 |
+| `generic/NNN` | 运行指定编号的 generic 测试 |
+| `<group>/NNN` | 运行指定测试组中的测试 |
+
+### 指定外部 dingo-client
+
+默认使用镜像内置的 dingo-client。如需测试自编译版本：
+
+```bash
+dtt -t xfstest -s generic/001 --dingo-client /path/to/dingo-client
+```
+
+### 使用示例
+
+```bash
+# 本地模式（默认）
+dtt -t xfstest -s auto                    # 运行全部
+dtt -t xfstest -s quick                   # 快速冒烟
+dtt -t xfstest -s generic/001             # 单个测试
+dtt -t xfstest -s generic/001 --dingo-client ./build/bin/dingo-client
+
+# MDS 模式
+dtt config set xfstest_mds_template 'mds://172.30.14.126:6900/{fsname}'
+dtt -t xfstest -s generic/001
+```
+
+### 结果
+
+测试结果保存在 output 目录的 `xfstest_<timestamp>/` 子目录中：
+
+| 文件/目录 | 说明 |
+|-----------|------|
+| `check.log` | 完整测试执行日志 |
+| `generic/` | 各测试用例输出（`.out` 预期、`.bad` 差异） |
+
+---
+
 ## daily — 每日集成测试
 
 `dtt daily` 在容器内执行 `run_tests.py`，依次运行 11 个测试模块，每个失败用例重试 5 次，完成后生成 Allure 报告并发送邮件/微信通知。

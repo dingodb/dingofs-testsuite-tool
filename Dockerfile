@@ -145,6 +145,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
         libtool \
         pkg-config \
         libaio-dev \
+        sudo \
+        uuid-dev \
+        xfsprogs \
+        liburing-dev \
         perl \
         libtimedate-perl \
         vim \
@@ -197,8 +201,13 @@ COPY --chmod=755 dingo /usr/local/bin/dingo
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 COPY dingofs-integration-test /dingofs-integration-test
+COPY --chmod=755 xfstests-dev/ /xfstests-dev/
+COPY --chmod=755 dingofs/build/bin/dingo-client /usr/local/bin/dingo-client
+COPY --chmod=755 dingofs/xfstests/mount.fuse.dingofs /xfstests-dev/mount.fuse.dingofs
+COPY --chmod=755 dingofs/xfstests/setup.sh /xfstests-dev/setup.sh
+COPY --chmod=755 dingofs/xfstests/reset.sh /xfstests-dev/reset.sh
 
-# Layer 10: build pjdtest, set permissions
+# Layer 10: build pjdtest, setup xfstests, set permissions
 RUN chmod +x /scripts/generate_report.py /scripts/notify.sh \
         /usr/local/bin/dingo /usr/local/bin/run_model.sh /entrypoint.sh && \
     cd /pjdtest && \
@@ -210,7 +219,13 @@ RUN chmod +x /scripts/generate_report.py /scripts/notify.sh \
     mkdir -p /opt/ltp/results /opt/ltp/output && \
     chmod 777 /opt/ltp/results /opt/ltp/output && \
     mkdir -p /custom && chmod 777 /custom/ && \
-    chmod -R a+rX /pjdtest /dingofs-integration-test
+    chmod -R a+rwX /pjdtest /dingofs-integration-test /xfstests-dev && \
+    groupadd -f fsgqa && \
+    for u in fsgqa fsgqa2 123456-fsgqa; do \
+        id "$u" >/dev/null 2>&1 || useradd -m -g fsgqa "$u"; \
+    done && \
+    XFSTESTS_ROOT=/xfstests-root DINGOFS_CLIENT_BIN=/usr/local/bin/dingo-client \
+    bash /xfstests-dev/setup.sh /xfstests-dev /xfstests-root
 
 ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]
 
