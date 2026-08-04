@@ -407,7 +407,11 @@ show_int_help() {
 INT 集成测试 (DingoFS Automation Framework)
 ============================================
 
-用法: dtt -t int -s <场景> [-m <挂载点>] [-o <输出目录>]
+前置:
+  dtt config set test_dir <挂载点>
+  dtt config set output <输出目录>
+
+用法: dtt -t int -s <模块> --env <环境名> [--int-report-port <端口>]
 
 测试模块:
   quota                    Quota 配额测试 (默认)
@@ -424,12 +428,28 @@ INT 集成测试 (DingoFS Automation Framework)
   warmup                   预热测试
   xattr                    扩展属性测试
 
-示例:
-  dtt -t int -s quota
-  dtt -t int -s mds_manage --env env_mds_manager_126
-  dtt -t int -s all
+选项:
+  --env <环境名>              测试环境 (必填, 对应 conf/env/<name>.yaml)
+  --int-report-port <端口>    Allure 报告 HTTP 服务端口 (默认: 8800)
 
-注意: --env 指定环境名 (默认: env_126_smoke)
+报告:
+  每次运行后 allure 报告保存到 output/int_allure_report/
+  dtt 自动在宿主机启动 HTTP 服务 (默认端口 8800):
+    http://<宿主机IP>:8800/
+  目录结构:
+    int_allure_report/
+    ├── index.html                  # 报告索引
+    ├── allure-report-latest/       # 最新报告
+    ├── allure-report-history/      # 历史报告
+    └── allure-results/             # 原始结果
+
+示例:
+  dtt -t int -s quota --env env_126_quota
+  dtt -t int -s mds_manage --env env_126_mds_manage
+  dtt -t int -s quota --env env_126_quota --int-report-port 8890
+
+注意:
+  - --env 为必填参数, MDS 地址等配置从 env YAML 中读取
 EOF
 }
 
@@ -1689,6 +1709,62 @@ EOF
         "${cmd[@]}" 2>&1 | tee "$log_file"
     )
     local exit_code=${PIPESTATUS[0]}
+
+    # Accumulate allure reports to persistent int_allure_report directory
+    local int_report_base="$OUTPUT/int_allure_report"
+    local int_report_history="$int_report_base/allure-report-history"
+    local int_report_latest="$int_report_base/allure-report-latest"
+    local int_report_results="$int_report_base/allure-results"
+    local int_history_entry="$int_report_history/allure-report-${RUN_TIMESTAMP}_${module}"
+
+    mkdir -p "$int_report_history" "$int_report_base"
+
+    # Save raw results
+    rm -rf "$int_report_results"
+    if [[ -d "$report_dir" ]]; then
+        cp -r "$report_dir" "$int_report_results"
+    fi
+
+    # Save latest HTML report
+    local allure_html="$int_output/allure-report-latest"
+    if [[ -d "$allure_html" ]] && [[ "$(ls -A "$allure_html" 2>/dev/null)" ]]; then
+        rm -rf "$int_report_latest"
+        cp -r "$allure_html" "$int_report_latest"
+        rm -rf "$int_history_entry"
+        cp -r "$allure_html" "$int_history_entry"
+    fi
+
+    # Generate index.html
+    python3 -c "
+import os
+base = '$int_report_base'
+history_dirs = []
+hdir = os.path.join(base, 'allure-report-history')
+if os.path.isdir(hdir):
+    for d in sorted(os.listdir(hdir), reverse=True):
+        if not d.startswith('allure-report-'):
+            continue
+        dp = os.path.join(hdir, d)
+        if os.path.isdir(dp):
+            history_dirs.append((f'allure-report-history/{d}', d.replace('allure-report-', '')))
+items = []
+latest = os.path.join(base, 'allure-report-latest')
+if os.path.isdir(latest):
+    items.append('    <li><a href=\"allure-report-latest/index.html\">最新报告</a></li>')
+if history_dirs:
+    items.append('  </ul><h2>历史报告</h2><ul>')
+    for rel, label in history_dirs:
+        items.append(f'    <li><a href=\"{rel}/index.html\">{label}</a></li>')
+html = '''<!DOCTYPE html><html><head><meta charset=\"utf-8\"><title>Int Allure Reports</title>
+<style>body{font-family:-apple-system,sans-serif;max-width:600px;margin:40px auto}
+h1{font-size:20px}h2{font-size:16px;margin-top:20px}li{margin:6px 0}
+a{color:#0366d6;text-decoration:none}a:hover{text-decoration:underline}</style></head>
+<body><h1>Integration Test Allure 报告</h1><ul>
+''' + chr(10).join(items) if items else '<li>暂无报告</li>' + '</ul></body></html>'
+with open(os.path.join(base, 'index.html'), 'w') as f:
+    f.write(html)
+"
+    echo "Allure report updated: $int_report_base/"
 
     # Parse test results from the log output.
     # Supports both run_tests.py format ("TEST SUITE SUMMARY") and pytest format.

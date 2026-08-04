@@ -234,21 +234,40 @@ docker run --rm --privileged -v /tmp/test:/data dingofs-testsuite-tools -t ltp -
 
 通过集成测试框架 `run_tests.py` 运行单个模块的测试用例。使用 `config set int_env` 指定环境名，然后通过 `-s` 指定模块名。
 
+### 选项
+
+| 选项 | 说明 |
+|------|------|
+| `--env <环境名>` | 测试环境（**必填**，对应 `conf/env/<name>.yaml`） |
+| `--int-report-port <端口>` | Allure 报告 HTTP 服务端口（默认: 8800） |
+
+### 报告
+
+每次运行后 Allure 报告自动保存到 output/int_allure_report/，结构：
+
+```
+int_allure_report/
+├── index.html                    # 报告索引页
+├── allure-report-latest/         # 最新报告
+├── allure-report-history/        # 历史报告
+└── allure-results/               # 原始结果
+```
+
+完成后自动在指定端口启动 HTTP 服务，可直接访问报告。
+
 ### 使用示例
 
 ```bash
-# 先配置集成测试环境
-dtt config set int_env env_126_smoke
+# 指定环境和模块
+dtt -t int -s quota --env env_126_quota
+dtt -t int -s mds_manage --env env_126_mds_manage
 
-# 运行 quota 模块测试
-dtt -t int -s quota
-
-# 运行 dirstat 模块测试
-dtt -t int -s dirstat
+# 自定义报告端口
+dtt -t int -s quota --env env_126_quota --int-report-port 8890
 
 # 可用的模块：quota, client, cache_node, fault, mount_subdir,
 #             basic_file_operation, metadata_consistency, trash,
-#             dirstat, hot_upgrade, warmup, xattr
+#             dirstat, mds_manage, hot_upgrade, warmup, xattr
 ```
 
 ---

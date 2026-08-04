@@ -230,16 +230,28 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
 === INT — DingoFS 集成测试 ===
 
-  通过 run_tests.py 运行单个模块测试。先用 config set int_env 设置环境。
+  通过 run_tests.py 运行指定模块的集成测试。--env 为必填参数。
+
+  前置:
+    dtt config set test_dir <挂载点>
+    dtt config set output <输出目录>
 
   可用模块: quota, client, cache_node, fault, mount_subdir,
             basic_file_operation, metadata_consistency, trash,
             dirstat, mds_manage, hot_upgrade, warmup, xattr
 
+  选项:
+    --env <环境名>              测试环境 (必填)
+    --int-report-port <端口>    Allure 报告端口 (默认: 8800)
+
+  报告:
+    报告保存到 output/int_allure_report/，自动启动 HTTP 服务
+    访问: http://<宿主机IP>:<端口>/
+
   示例:
-    dtt config set int_env env_126_smoke
-    dtt -t int -s quota
-    dtt -t int -s dirstat
+    dtt -t int -s quota --env env_126_quota
+    dtt -t int -s mds_manage --env env_126_mds_manage
+    dtt -t int -s quota --env env_126_quota --int-report-port 8890
 
 === MLPERF — MLPerf Storage 基准测试 ===
 
@@ -472,6 +484,62 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   - 如果未提供 -m/-o，则使用 config 中配置的值
   - 快捷命令: dtt 是 dingofs-testsuite-tool 的别名
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
+
+EOF
+}
+
+show_int_help() {
+    cat << 'EOF'
+INT 集成测试 (DingoFS Automation Framework)
+==========================================
+
+通过 run_tests.py 运行指定模块的集成测试。
+
+用法:
+  dtt -t int -s <模块> [选项]
+
+测试模块:
+  quota               Quota 配额测试 (默认)
+  client              Client 客户端测试
+  cache_node          Cache Node 缓存节点测试
+  basic_file_operation  基本文件操作测试
+  fault               故障测试
+  mount_subdir        子目录挂载测试
+  metadata_consistency  元数据一致性测试
+  trash               回收站测试
+  dirstat             目录统计测试
+  mds_manage          MDS 管理测试
+  hot_upgrade         热升级测试
+  warmup              预热测试
+  xattr               扩展属性测试
+
+选项:
+  --env <环境名>              测试环境 (必填, 对应 conf/env/<name>.yaml)
+  --int-report-port <端口>    Allure 报告 HTTP 服务端口 (默认: 8800)
+
+报告:
+  每次运行后报告保存到 output/int_allure_report/，目录结构:
+    int_allure_report/
+    ├── index.html                  # 报告索引页
+    ├── allure-report-latest/       # 最新报告
+    ├── allure-report-history/      # 历史报告
+    └── allure-results/             # 原始结果
+  dtt 自动在宿主机启动 HTTP 服务，访问:
+    http://<宿主机IP>:<端口>/
+
+示例:
+  dtt -t int -s quota --env env_126_quota
+  dtt -t int -s mds_manage --env env_126_mds_manage
+  dtt -t int -s quota --env env_126_quota --int-report-port 8890
+
+前置:
+  需要先配置 test_dir 和 output:
+    dtt config set test_dir <挂载点>
+    dtt config set output <输出目录>
+
+注意:
+  - --env 为必填参数, MDS 地址等配置从 env YAML 中读取
+  - FUSE 挂载点需要 allow_root 选项
 
 EOF
 }
@@ -1118,10 +1186,19 @@ cmd_smoke() {
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
 
-    # Integration test environment (--env overrides config)
-    local int_env="${int_env_override:-$(load_config int_env)}"
-    int_env="${int_env:-env_126_smoke}"
-    docker_cmd+=("-e" "INT_ENV=$int_env")
+    # Integration test environment (--env is required for int tool)
+    if [[ "$tool" == "int" ]]; then
+        if [[ -z "$int_env_override" ]]; then
+            echo "Error: --env <环境名> is required for dtt -t int"
+            echo "Example: dtt -t int -s quota --env env_126_quota"
+            return 1
+        fi
+        docker_cmd+=("-e" "INT_ENV=$int_env_override")
+    else
+        local int_env="${int_env_override:-$(load_config int_env)}"
+        int_env="${int_env:-env_126_smoke}"
+        docker_cmd+=("-e" "INT_ENV=$int_env")
+    fi
     echo "  Env:         $int_env"
 
     # Smoke exclude list
@@ -1383,6 +1460,10 @@ run_testsuite() {
                 dingo_client="$2"
                 shift 2
                 ;;
+            --int-report-port)
+                int_report_port="$2"
+                shift 2
+                ;;
             --env)
                 int_env_override="$2"
                 shift 2
@@ -1410,6 +1491,9 @@ run_testsuite() {
                         exit 0
                     elif [[ "$tool" == "xfstest" ]]; then
                         show_xfstest_help
+                        exit 0
+                    elif [[ "$tool" == "int" ]]; then
+                        show_int_help
                         exit 0
                     else
                         run_docker_help "$tool"
@@ -1804,6 +1888,17 @@ run_testsuite() {
     # Execute docker command with entrypoint
     "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"
     local test_exit=$?
+
+    # Start/restart HTTP server for int allure reports (default port 8800)
+    if [[ "$tool" == "int" ]] && [[ -d "$output/int_allure_report" ]]; then
+        local int_port="${int_report_port:-8800}"
+        if pgrep -f "python.*http.server.*${int_port}" >/dev/null 2>&1; then
+            pkill -f "python.*http.server.*${int_port}" 2>/dev/null || true
+            sleep 0.5
+        fi
+        nohup python3 -m http.server ${int_port} --directory "$output/int_allure_report" >/dev/null 2>&1 &
+        echo "  Int report:  http://$(hostname -I | awk '{print $1}'):${int_port}/"
+    fi
 
     # --- cleanup: unmount and delete filesystem ---
     if [[ -n "$do_cleanup" ]] && [[ -n "$setup_env" ]]; then
