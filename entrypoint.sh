@@ -410,22 +410,26 @@ INT 集成测试 (DingoFS Automation Framework)
 用法: dtt -t int -s <场景> [-m <挂载点>] [-o <输出目录>]
 
 测试模块:
-  quota       - Quota 配额测试 (默认)
-  client      - Client 客户端测试
-  cache_node  - Cache Node 缓存节点测试
-  chaos       - Chaos 混沌测试
+  quota                    Quota 配额测试 (默认)
+  client                   Client 客户端测试
+  cache_node               Cache Node 缓存节点测试
+  basic_file_operation     基本文件操作测试
+  fault                    故障测试
+  mount_subdir             子目录挂载测试
+  metadata_consistency     元数据一致性测试
+  trash                    回收站测试
+  dirstat                  目录统计测试
+  mds_manage               MDS 管理测试
+  hot_upgrade              热升级测试
+  warmup                   预热测试
+  xattr                    扩展属性测试
 
 示例:
-  # 运行所有 quota 测试 (默认)
   dtt -t int -s quota
-
-  # 运行 client 测试
-  dtt -t int -s client
-
-  # 运行所有集成测试
+  dtt -t int -s mds_manage --env env_mds_manager_126
   dtt -t int -s all
 
-注意: 需要配置 MDS 地址 (dtt config set mdsaddr)
+注意: --env 指定环境名 (默认: env_126_smoke)
 EOF
 }
 
@@ -604,8 +608,8 @@ scenario_exists() {
             [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(fs|fsx|io|dir|lock|syscalls|smoke)$ ]]
             ;;
         int|integration)
-            # int scenarios: quota, client, cache_node, chaos, all
-            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|chaos)$ ]]
+            # int scenarios: all registered modules in run_tests.py
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr)$ ]]
             ;;
         mlperf)
             # mlperf scenarios: resnet50, unet3d, cosmoflow, checkpointing, all
@@ -1630,12 +1634,22 @@ integration_run() {
     local int_output="$OUTPUT/integration_${RUN_TIMESTAMP}/$SCENARIO"
     local log_file="$int_output/int_${timestamp}.log"
 
-    # Create dynamic environment config in the framework's conf directory
-    local dynamic_env_dir="$INTEGRATION_DIR/conf/env"
-    local dynamic_env_file="$dynamic_env_dir/env_dynamic.yaml"
+    # Run the integration test framework
+    local module="${SCENARIO:-quota}"
+    local allure_dir="$int_output/allure-results"
 
-    mkdir -p "$dynamic_env_dir"
-    cat > "$dynamic_env_file" << EOF
+    cd "$INTEGRATION_DIR"
+
+    # Determine env: --env flag > INT_ENV env var > default dynamic env
+    local test_env="${INT_ENV:-}"
+
+    if [[ -z "$test_env" ]]; then
+        # No explicit env — create dynamic env from MDS address
+        test_env="env_dynamic"
+        local dynamic_env_dir="$INTEGRATION_DIR/conf/env"
+        local dynamic_env_file="$dynamic_env_dir/env_dynamic.yaml"
+        mkdir -p "$dynamic_env_dir"
+        cat > "$dynamic_env_file" << EOF
 env_dynamic:
   mds_addr: ${mdsaddr}
   webhook_url: ''
@@ -1652,94 +1666,57 @@ env_dynamic:
     storage_type: s3
     storage_env: minio
 EOF
+        echo "Using auto-generated dynamic env: env_dynamic"
+    else
+        echo "Using specified env: $test_env"
+    fi
 
-    echo "Using MDS address: $mdsaddr"
-    echo "Dynamic env file: $dynamic_env_file"
-    echo ""
+    echo "MDS address: $mdsaddr"
     echo "Log file: $log_file"
     echo ""
 
-    # Run the integration test framework
-    # Default module is quota if not specified
-    local module="${SCENARIO:-quota}"
-    local pytest_file="tests/test_${module}_pytest.py"
-    local allure_dir="$int_output/allure-results"
-
-    cd "$INTEGRATION_DIR"
-
-    # Run tests with pytest
-    # Use subshell to allow Ctrl+C to interrupt
+    # Run tests with run_tests.py (supports env YAML with full cluster config)
+    local report_dir="${int_output}/allure-results"
+    mkdir -p "$report_dir"
+    local cmd=(
+        python3 run_tests.py "$module" --env "$test_env"
+        --report-path "$int_output" --report-dir "$report_dir"
+        --reruns 5 --email ""
+    )
+    echo "Executing: ${cmd[*]}"
     (
         trap 'kill -INT $$' INT TERM
-        pytest "$pytest_file" --env=env_126_docker_base \
-            --alluredir="$allure_dir" -v -s --mdsaddr="$mdsaddr" --reruns 5 2>&1 | tee "$log_file"
+        "${cmd[@]}" 2>&1 | tee "$log_file"
     )
     local exit_code=${PIPESTATUS[0]}
 
-    # Parse test results from the log output
-    # Format: "============= 4 failed, 90 passed, 23 rerun in 1412.22s (0:23:32) =============="
+    # Parse test results from the log output.
+    # Supports both run_tests.py format ("TEST SUITE SUMMARY") and pytest format.
     local int_passed=0
     local int_failed=0
     local int_total=0
-    local int_rerun=0
-    local failed_tests=""
 
-    # Extract test statistics from pytest summary line
-    # Format examples:
-    #   "======= 4 failed, 90 passed, 23 rerun in 1412.22s =======" (with reruns)
-    #   "======= 4 failed, 90 passed in 100.00s =======" (no reruns)
-    #   "======= 90 passed in 100.00s =======" (all pass, no failures)
-    #   "======= 90 passed, 4 failed in 100.00s =======" (passed before failed)
-    local summary_line=""
-    if grep -qE "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file"; then
+    # Try run_tests.py format: "  <module>: N passed, M failed, K skipped"
+    local rt_line
+    rt_line=$(grep -oP '^\s+\S+:\s+\d+\s+passed.*$' "$log_file" | head -1)
+    if [[ -n "$rt_line" ]]; then
+        int_passed=$(echo "$rt_line" | grep -oP '\d+(?= passed)' || echo "0")
+        int_failed=$(echo "$rt_line" | grep -oP '\d+(?= failed)' || echo "0")
+    else
+        # Try pytest format: "======= N failed, M passed in X.XXs ======="
+        local summary_line
         summary_line=$(grep -E "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file" | tail -1)
-    fi
-
-    if [[ -n "$summary_line" ]]; then
-        # Extract failed count: use [^0-9] prefix to ensure word boundary
-        # (prevents greedy .* from splitting multi-digit numbers like 10 -> 0)
-        int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
-        [[ -z "$int_failed" ]] && int_failed=0
-
-        # Extract passed count: handle both "failed, X passed" and "X passed, Y failed" orderings
-        int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
-        if [[ -z "$int_passed" ]]; then
-            # Try alternative ordering: "X passed" before "Y failed"
-            int_passed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p' | head -1)
+        if [[ -n "$summary_line" ]]; then
+            int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
+            [[ -z "$int_failed" ]] && int_failed=0
+            int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
+            if [[ -z "$int_passed" ]]; then
+                int_passed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p' | head -1)
+            fi
+            [[ -z "$int_passed" ]] && int_passed=0
         fi
-        [[ -z "$int_passed" ]] && int_passed=0
-
-        # Extract rerun count (if present)
-        int_rerun=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) rerun.*/\1/p' | head -1)
-        [[ -z "$int_rerun" ]] && int_rerun=0
-
-        # Calculate total (failed + passed)
-        int_total=$((int_passed + int_failed))
     fi
-
-    # Extract failed test names from "short test summary info" section
-    if grep -q "short test summary info" "$log_file"; then
-        local in_short_summary=false
-        while IFS= read -r line; do
-            if [[ "$in_short_summary" == true ]]; then
-                # Skip the separator line (====...====)
-                if [[ "$line" =~ ^=+ ]]; then
-                    continue
-                fi
-                # Skip empty lines
-                [[ -z "$line" ]] && continue
-                # This is a failed test name
-                if [[ -n "$failed_tests" ]]; then
-                    failed_tests="${failed_tests}, ${line}"
-                else
-                    failed_tests="${line}"
-                fi
-            fi
-            if [[ "$line" =~ "short test summary info" ]]; then
-                in_short_summary=true
-            fi
-        done < "$log_file"
-    fi
+    int_total=$((int_passed + int_failed))
 
     echo ""
     echo "=========================================="

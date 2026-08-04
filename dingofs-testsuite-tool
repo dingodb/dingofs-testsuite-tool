@@ -234,7 +234,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
   可用模块: quota, client, cache_node, fault, mount_subdir,
             basic_file_operation, metadata_consistency, trash,
-            dirstat, hot_upgrade, warmup, xattr
+            dirstat, mds_manage, hot_upgrade, warmup, xattr
 
   示例:
     dtt config set int_env env_126_smoke
@@ -1118,8 +1118,11 @@ cmd_smoke() {
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
 
-    # Integration test environment
+    # Integration test environment (--env overrides config)
+    local int_env="${int_env_override:-$(load_config int_env)}"
+    int_env="${int_env:-env_126_smoke}"
     docker_cmd+=("-e" "INT_ENV=$int_env")
+    echo "  Env:         $int_env"
 
     # Smoke exclude list
     if [[ -n "$exclude" ]]; then
@@ -1378,6 +1381,10 @@ run_testsuite() {
                 ;;
             --dingo-client)
                 dingo_client="$2"
+                shift 2
+                ;;
+            --env)
+                int_env_override="$2"
                 shift 2
                 ;;
             --debug)
@@ -1698,6 +1705,11 @@ run_testsuite() {
         mkdir -p "$config_custom"
         docker_cmd+=("-v" "${config_custom}:/custom")
     fi
+
+    # Pass INT_ENV for integration test environment (--env overrides config)
+    local int_env="${int_env_override:-$(load_config int_env)}"
+    int_env="${int_env:-env_126_smoke}"
+    docker_cmd+=("-e" "INT_ENV=$int_env")
 
     # Pass MDSADDR to container as environment variable for dingo CLI
     if [[ -n "$config_mdsaddr" ]]; then
