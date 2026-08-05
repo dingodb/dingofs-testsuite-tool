@@ -1418,14 +1418,12 @@ mdtest_run() {
         fi
         if [[ -f "$sc_raw" ]]; then
             local create_val stat_val read_val remove_val tcreate_val tremove_val
-            # mdtest output format: "File creation : Max Min Mean StdDev"
-            # Mean is the 2nd-to-last field: $(NF-1)
-            create_val=$(grep -i "File creation" "$sc_raw" | awk '{print $(NF-1)}' | head -1 || echo "-")
-            stat_val=$(grep -i "File stat" "$sc_raw" | awk '{print $(NF-1)}' | head -1 || echo "-")
-            read_val=$(grep -i "File read" "$sc_raw" | awk '{print $(NF-1)}' | head -1 || echo "-")
-            remove_val=$(grep -i "File removal" "$sc_raw" | awk '{print $(NF-1)}' | head -1 || echo "-")
-            tcreate_val=$(grep -i "Tree creation" "$sc_raw" | awk '{print $(NF-1)}' | head -1 || echo "-")
-            tremove_val=$(grep -i "Tree removal" "$sc_raw" | awk '{print $(NF-1)}' | head -1 || echo "-")
+            create_val=$(grep -i "File creation" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            stat_val=$(grep -i "File stat" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            read_val=$(grep -i "File read" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            remove_val=$(grep -i "File removal" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            tcreate_val=$(grep -i "Tree creation" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            tremove_val=$(grep -i "Tree removal" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
             metrics_summary+="${scenario_names[$i]}|cmd:${sc_cmd_val}|create:${create_val}|stat:${stat_val}|read:${read_val}|remove:${remove_val}|tcreate:${tcreate_val}|tremove:${tremove_val}\n"
         fi
     done
