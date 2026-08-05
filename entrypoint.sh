@@ -1407,41 +1407,55 @@ mdtest_run() {
         local mdtest_report_dir="$mdtest_base/$SCENARIO"
     fi
 
-    # Now log results for each scenario (combined summary now exists)
+    # Extract performance metrics for notification
+    local metrics_summary=""
     for i in "${!scenario_names[@]}"; do
-        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$mdtest_report_dir"
-
-        # Calculate duration for notification
-        local mdtest_end_time=$(date +%s)
-        local mdtest_start_epoch=$(date -d "${scenario_times[$i]}" +%s 2>/dev/null || echo "$mdtest_end_time")
-        local mdtest_duration=$((mdtest_end_time - mdtest_start_epoch))
-        local mdtest_duration_str=""
-        if [[ $mdtest_duration -ge 60 ]]; then
-            mdtest_duration_str="${mdtest_duration}s ($((${mdtest_duration} / 60))m $((${mdtest_duration} % 60))s)"
-        else
-            mdtest_duration_str="${mdtest_duration}s"
+        local sc_raw="$mdtest_base/${scenario_names[$i]}/mdtest.raw"
+        local sc_cmd="$mdtest_base/${scenario_names[$i]}/mdtest.cmd"
+        local sc_cmd_val=""
+        if [[ -f "$sc_cmd" ]]; then
+            sc_cmd_val=$(head -1 "$sc_cmd" | xargs)
         fi
-
-        if [[ "$SMOKE_MODE" != "1" ]]; then
-            # Send WeChat notification if enabled
-            if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-                local mdtest_status="FAIL"
-                if [[ ${scenario_exits[$i]} -eq 0 ]]; then
-                    mdtest_status="SUCCESS"
-                fi
-                send_wechat_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
-            fi
-
-            # Send Email notification if enabled
-            if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-                local mdtest_status="FAIL"
-                if [[ ${scenario_exits[$i]} -eq 0 ]]; then
-                    mdtest_status="SUCCESS"
-                fi
-                send_email_notification "mdtest" "${scenario_names[$i]}" "$mdtest_status" "$mdtest_duration_str"
-            fi
+        if [[ -f "$sc_raw" ]]; then
+            local create_val stat_val read_val remove_val tcreate_val tremove_val
+            create_val=$(grep -i "File creation" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            stat_val=$(grep -i "File stat" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            read_val=$(grep -i "File read" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            remove_val=$(grep -i "File removal" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            tcreate_val=$(grep -i "Tree creation" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            tremove_val=$(grep -i "Tree removal" "$sc_raw" | awk '{print $(NF-3)}' | head -1 || echo "-")
+            metrics_summary+="${scenario_names[$i]}|cmd:${sc_cmd_val}|create:${create_val}|stat:${stat_val}|read:${read_val}|remove:${remove_val}|tcreate:${tcreate_val}|tremove:${tremove_val}\n"
         fi
     done
+
+    # Now log results for each scenario and collect for single notification
+    local mdtest_overall_status="SUCCESS"
+    local mdtest_total_duration=0
+    for i in "${!scenario_names[@]}"; do
+        log_result "mdtest" "${scenario_names[$i]}" "${scenario_exits[$i]}" "${scenario_times[$i]}" "$mdtest_report_dir"
+        if [[ ${scenario_exits[$i]} -ne 0 ]]; then
+            mdtest_overall_status="FAIL"
+        fi
+        local s_end=$(date +%s)
+        local s_start=$(date -d "${scenario_times[$i]}" +%s 2>/dev/null || echo "$s_end")
+        mdtest_total_duration=$((mdtest_total_duration + s_end - s_start))
+    done
+
+    # Single notification with all scenarios' metrics
+    if [[ "$SMOKE_MODE" != "1" ]]; then
+        local mdtest_duration_str=""
+        if [[ $mdtest_total_duration -ge 60 ]]; then
+            mdtest_duration_str="${mdtest_total_duration}s ($((${mdtest_total_duration} / 60))m $((${mdtest_total_duration} % 60))s)"
+        else
+            mdtest_duration_str="${mdtest_total_duration}s"
+        fi
+        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+            send_wechat_notification "mdtest" "$SCENARIO" "$mdtest_overall_status" "$mdtest_duration_str" "$metrics_summary"
+        fi
+        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+            send_email_notification "mdtest" "$SCENARIO" "$mdtest_overall_status" "$mdtest_duration_str" "$metrics_summary"
+        fi
+    fi
 
     echo ""
     echo "All mdtest scenarios completed."

@@ -564,7 +564,9 @@ def parse_mdtest_summary(text):
                     op_name_parts.append(part)
 
             if len(nums) >= 4:
-                op_name = " ".join(op_name_parts).replace("_", " ")
+                op_name = " ".join(p for p in op_name_parts if p != ":").replace("_", " ")
+                if not op_name:
+                    continue
                 summary["operations"].append({
                     "name": op_name,
                     "max": nums[0],
@@ -743,6 +745,31 @@ def generate_mdtest_combined_markdown(output_dir, scenarios, mount, np=16):
 
         status = "成功" if sc["file_count"] > 0 else "失败"
         lines.append(f"| {sc['name']} | {z} | {b} | {I} | {sc['file_count']} | {status} |")
+
+    # Performance metrics summary table
+    lines.append("")
+    lines.append("## 性能指标汇总 (Mean ops/s)")
+    lines.append("")
+    metrics_headers = ["File creation", "File stat", "File read",
+                       "File removal", "Tree creation", "Tree removal"]
+    header_line = "| 测试场景 | 命令 | " + " | ".join(metrics_headers) + " |"
+    sep_line = "|" + "|".join(["---------"] * (len(metrics_headers) + 2)) + "|"
+    lines.append(header_line)
+    lines.append(sep_line)
+
+    for sc in scenarios:
+        op_map = {}
+        for op in sc.get("operations", []):
+            op_map[op["name"].lower()] = op["mean"]
+
+        cmd_short = (sc.get("cmd", "") or "")[:80]
+        if len(sc.get("cmd", "") or "") > 80:
+            cmd_short += "..."
+        vals = []
+        for m in metrics_headers:
+            v = op_map.get(m.lower(), 0)
+            vals.append(f"{v:.2f}" if v else "-")
+        lines.append(f"| {sc['name']} | `{cmd_short}` | " + " | ".join(vals) + " |")
 
     lines.append("")
     lines.append("---")

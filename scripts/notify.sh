@@ -109,6 +109,29 @@ send_email_notification() {
 
         html_content="${html_content}
 </table>"
+    elif [[ "$details" =~ \|create: ]]; then
+        # mdtest performance metrics — multi-scenario format:
+        # "name|cmd:<cmd>|create:<v>|stat:<v>|read:<v>|remove:<v>|tcreate:<v>|tremove:<v>"
+        html_content="${html_content}
+    <h3>性能指标 (Mean ops/s)</h3>
+    <table border='1' cellpadding='5' cellspacing='0'>
+    <tr><th>场景</th><th>命令</th><th>File creation</th><th>File stat</th><th>File read</th><th>File removal</th><th>Tree creation</th><th>Tree removal</th></tr>"
+        while IFS= read -r mline; do
+            [[ -z "$mline" ]] && continue
+            local sc_name="${mline%%|*}"
+            local rest="${mline#*|}"
+            local cmd_v="${rest#*cmd:}"; cmd_v="${cmd_v%%|*}"
+            local cv="${rest#*create:}"; cv="${cv%%|*}"
+            local sv="${rest#*stat:}"; sv="${sv%%|*}"
+            local rv="${rest#*read:}"; rv="${rv%%|*}"
+            local rmv="${rest#*remove:}"; rmv="${rmv%%|*}"
+            local tcv="${rest#*tcreate:}"; tcv="${tcv%%|*}"
+            local trv="${rest#*tremove:}"; trv="${trv%%|*}"
+            html_content="${html_content}
+    <tr><td>${sc_name}</td><td><small>${cmd_v:0:80}</small></td><td>${cv:-0}</td><td>${sv:-0}</td><td>${rv:-0}</td><td>${rmv:-0}</td><td>${tcv:-0}</td><td>${trv:-0}</td></tr>"
+        done <<< "$(echo -e "$details")"
+        html_content="${html_content}
+    </table>"
     elif [[ -n "$details" ]]; then
         local passed_val=""
         local failed_val=""
@@ -292,10 +315,32 @@ send_wechat_notification() {
 
     # Add details if provided
     if [[ -n "$details" ]]; then
-        content="${content}
+        if [[ "$details" =~ \|create: ]]; then
+            content="${content}
+
+**性能指标 (Mean ops/s):**
+| 场景 | 命令 | File creation | File stat | File read | File removal | Tree creation | Tree removal |
+|------|------|---------------|-----------|-----------|--------------|---------------|--------------|"
+            while IFS= read -r mline; do
+                [[ -z "$mline" ]] && continue
+                local sname="${mline%%|*}"
+                local rest="${mline#*|}"
+                local cmd_v="${rest#*cmd:}"; cmd_v="${cmd_v%%|*}"
+                local cv="${rest#*create:}"; cv="${cv%%|*}"
+                local sv="${rest#*stat:}"; sv="${sv%%|*}"
+                local rv="${rest#*read:}"; rv="${rv%%|*}"
+                local rmv="${rest#*remove:}"; rmv="${rmv%%|*}"
+                local tcv="${rest#*tcreate:}"; tcv="${tcv%%|*}"
+                local trv="${rest#*tremove:}"; trv="${trv%%|*}"
+                content="${content}
+| ${sname} | ${cmd_v:0:50} | ${cv:-0} | ${sv:-0} | ${rv:-0} | ${rmv:-0} | ${tcv:-0} | ${trv:-0} |"
+            done <<< "$(echo -e "$details")"
+        else
+            content="${content}
 
 **Details:**
 ${details}"
+        fi
     fi
 
     # Send to WeChat webhook
