@@ -3600,7 +3600,13 @@ dingofs-testsuite-tool() {
             ;;
         --setup-env)
             shift
-            cmd_setup_env "$@"
+            local setup_env_name="$1"
+            shift
+            cmd_setup_env "$setup_env_name"
+            # If -t follows, run the test
+            if [[ "$1" == "-t" ]] || [[ "$1" == "--tool" ]]; then
+                run_testsuite "$@"
+            fi
             ;;
         --cleanup-env)
             shift
