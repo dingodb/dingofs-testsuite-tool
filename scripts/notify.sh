@@ -21,13 +21,15 @@ log_notify() {
 }
 
 # Send email notification
-# Usage: send_email_notification <tool> <scenario> <status> <duration> [details]
+# Usage: send_email_notification <tool> <scenario> <status> <duration> [details] [test_date] [test_ip]
 send_email_notification() {
     local tool="$1"
     local scenario="$2"
     local status="$3"
     local duration="$4"
     local details="${5:-}"
+    local test_date="${6:-$(date '+%Y-%m-%d %H:%M:%S')}"
+    local test_ip="${7:-$(hostname -I | awk '{print $1}')}"
 
     # Skip if email is not enabled
     if [[ "$EMAIL_ENABLED" != "yes" ]]; then
@@ -50,8 +52,9 @@ send_email_notification() {
 <html>
 <body>
 <h2>DingoFS 自动化测试报告</h2>
+<p><b>测试日期：</b>${test_date}</p>
+<p><b>测试节点IP：</b>${test_ip}</p>
 <table border='1' cellpadding='5' cellspacing='0'>
-<tr><td><b>来源</b></td><td>DingoFS Testsuite Tools</td></tr>
 <tr><td><b>工具</b></td><td>$tool</td></tr>
 <tr><td><b>场景</b></td><td>$scenario</td></tr>
 <tr><td><b>状态</b></td><td>$status</td></tr>
@@ -241,14 +244,15 @@ PYEOF
     fi
 }
 
-# Send WeChat notification
-# Usage: send_wechat_notification <tool> <scenario> <status> <duration> [details]
+# Usage: send_wechat_notification <tool> <scenario> <status> <duration> [details] [test_date] [test_ip]
 send_wechat_notification() {
     local tool="$1"
     local scenario="$2"
     local status="$3"
     local duration="$4"
     local details="${5:-}"
+    local test_date="${6:-$(date '+%Y-%m-%d %H:%M:%S')}"
+    local test_ip="${7:-$(hostname -I | awk '{print $1}')}"
 
     # Skip if WeChat is not enabled
     if [[ "$WECHAT_ENABLED" != "yes" ]]; then
@@ -279,9 +283,8 @@ send_wechat_notification() {
     # Build markdown content
     local content="${emoji} ${status_text}
 
-**Tool:** ${tool}
-**Scenario:** ${scenario}
-**Duration:** ${duration}
+测试日期：${test_date}
+测试节点IP：${test_ip}
 
 | Tool | Scenario | Duration | Status |
 |------|----------|----------|--------|

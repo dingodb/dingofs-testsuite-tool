@@ -1,0 +1,21 @@
+* Stability test scenario — long-running mixed workload
+* elapsed can be adjusted via --duration param
+* Default: 720000 seconds = 12 hours
+*
+port=5571
+data_errors=1
+
+fsd=fsd1,anchor=/data,depth=1,width=15,files=15,sizes=(1k,10,4k,20,16k,20,64k,20,128k,10,512k,10,1m,10),shared=yes
+
+fwd=fwd_small_io_random,fsd=fsd1,threads=16,xfersize=(64,20,128,20,256,20,512,20,1k,20),fileio=random,fileselect=random,rdpct=50
+fwd=fwd_mixed_io_random,fsd=fsd1,threads=12,xfersize=(4k,25,16k,25,64k,25,128k,25),fileio=random,fileselect=random,rdpct=50
+fwd=fwd_large_io_random,fsd=fsd1,threads=8,xfersize=(256k,40,512k,30,1m,30),fileio=random,fileselect=random,rdpct=50
+
+fwd=fwd_small_io_seq_read,fsd=fsd1,threads=16,xfersize=(64,20,128,20,256,20,512,20,1k,20),fileio=sequential,fileselect=sequential,op=read
+fwd=fwd_small_io_seq_write,fsd=fsd1,threads=16,xfersize=(64,20,128,20,256,20,512,20,1k,20),fileio=sequential,fileselect=sequential,op=write
+fwd=fwd_mixed_io_seq_read,fsd=fsd1,threads=12,xfersize=(4k,25,16k,25,64k,25,128k,25),fileio=sequential,fileselect=sequential,op=read
+fwd=fwd_mixed_io_seq_write,fsd=fsd1,threads=12,xfersize=(4k,25,16k,25,64k,25,128k,25),fileio=sequential,fileselect=sequential,op=write
+fwd=fwd_large_io_seq_read,fsd=fsd1,threads=8,xfersize=(256k,40,512k,30,1m,30),fileio=sequential,fileselect=sequential,op=read
+fwd=fwd_large_io_seq_write,fsd=fsd1,threads=8,xfersize=(256k,40,512k,30,1m,30),fileio=sequential,fileselect=sequential,op=write
+
+rd=rd1,fwd=fwd*,fwdrate=max,format=restart,elapsed=__ELAPSED__,interval=1

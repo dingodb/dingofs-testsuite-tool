@@ -166,6 +166,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   int       DingoFS 集成测试（单模块）
   mlperf    MLPerf Storage 基准测试
   xfstest   xfstests 文件系统回归测试
+  task      特殊工作负载场景 (编译/解压等)
 
 ======================================================================
                         测试工具详细说明
@@ -319,6 +320,22 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
     dtt config set xfstest_mds_template 'mds://172.30.14.126:6900/{fsname}'
     dtt -t xfstest -s generic/001
 
+=== TASK — 特殊工作负载场景 ===
+
+  在挂载点上执行编译、解压等真实工作负载，评估文件系统性能。
+
+  场景对应 /task/<场景>/ 目录，自动查找其中的 .sh 脚本执行。
+  用法: dtt -t task -s <场景>
+
+  可用场景:
+    build_kernel     Linux 内核编译
+    build_dynamo     Dynamo 编译
+    (* 新增场景: 在 task/ 目录下新建子目录，放入脚本和数据即可)
+
+  示例:
+    dtt -t task -s build_kernel
+    dtt -t task -s build_dynamo
+
 ======================================================================
                          命令详细说明
 ======================================================================
@@ -457,7 +474,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 ======================================================================
 
 通用选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, task
   -s, --scenario <名称>   测试场景
   -n, --np <数字>         mdtest MPI 进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录
@@ -484,6 +501,31 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   - 如果未提供 -m/-o，则使用 config 中配置的值
   - 快捷命令: dtt 是 dingofs-testsuite-tool 的别名
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
+
+EOF
+}
+
+show_task_help() {
+    cat << 'EOF'
+特殊工作负载场景 (Task)
+======================
+
+在挂载点上执行编译、解压等真实工作负载，评估文件系统在真实场景下的性能。
+
+用法:
+  dtt -t task -s <场景>
+
+可用场景:
+  build_kernel     Linux 内核编译
+  build_dynamo     Dynamo 编译
+  (* 新增场景: 在 task/ 目录下新建子目录，放入 .sh 脚本即可)
+
+示例:
+  dtt -t task -s build_kernel
+
+注意:
+  场景脚本接收 test_dir 作为第一个参数 (容器内 /data)
+  结果保存在 output/task_<timestamp>/<场景>/
 
 EOF
 }
@@ -1181,7 +1223,12 @@ cmd_smoke() {
 
     # Email notification env vars
     if [[ -n "$email_to" ]]; then
-        local email_addr=$(load_config email)
+        local email_addr
+        if [[ "$email_to" == "yes" ]]; then
+            email_addr=$(load_config email)
+        else
+            email_addr="$email_to"
+        fi
         docker_cmd+=("-e" "EMAIL=yes")
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
@@ -1433,8 +1480,13 @@ run_testsuite() {
                 shift
                 ;;
             --email)
-                email_to="yes"
-                shift
+                if [[ -n "$2" ]] && [[ "$2" != -* ]]; then
+                    email_to="$2"
+                    shift 2
+                else
+                    email_to="yes"
+                    shift
+                fi
                 ;;
             --bs_size)
                 bs_size="$2"
@@ -1462,6 +1514,10 @@ run_testsuite() {
                 ;;
             --int-report-port)
                 int_report_port="$2"
+                shift 2
+                ;;
+            --duration)
+                vd_duration="$2"
                 shift 2
                 ;;
             --env)
@@ -1494,6 +1550,9 @@ run_testsuite() {
                         exit 0
                     elif [[ "$tool" == "int" ]]; then
                         show_int_help
+                        exit 0
+                    elif [[ "$tool" == "task" ]]; then
+                        show_task_help
                         exit 0
                     else
                         run_docker_help "$tool"
@@ -1738,7 +1797,7 @@ run_testsuite() {
     fi
 
     if [[ -z "$tool" ]]; then
-        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest)"
+        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, task)"
         return 1
     fi
 
@@ -1832,7 +1891,12 @@ run_testsuite() {
 
     # Pass email if email notification enabled
     if [[ -n "$email_to" ]]; then
-        local email_addr=$(load_config email)
+        local email_addr
+        if [[ "$email_to" == "yes" ]]; then
+            email_addr=$(load_config email)
+        else
+            email_addr="$email_to"
+        fi
         docker_cmd+=("-e" "EMAIL=yes")
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
@@ -1860,12 +1924,17 @@ run_testsuite() {
         local mdtest_scenario="${scenario:-all}"
         entrypoint_cmd+=(-s "$mdtest_scenario")
     else
-        # fio, vdbench, pjdtest, ltp, int all require scenario
+        # fio, vdbench, pjdtest, ltp, int, task all require scenario
         if [[ -z "$scenario" ]]; then
-            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, ltp, and int"
+            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, ltp, int, and task"
             return 1
         fi
         entrypoint_cmd+=(-s "$scenario")
+    fi
+
+    # Add duration for vdbench stability
+    if [[ -n "$vd_duration" ]]; then
+        entrypoint_cmd+=("--duration" "$vd_duration")
     fi
 
     # Add np for mdtest

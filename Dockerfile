@@ -147,6 +147,11 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
         libaio-dev \
         sudo \
         uuid-dev \
+        libhwloc-dev \
+        libsystemd-dev \
+        clang \
+        protobuf-compiler \
+        python3-dev \
         xfsprogs \
         liburing-dev \
         perl \
@@ -155,6 +160,10 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
         numactl \
         procps \
         bc \
+        flex \
+        bison \
+        libelf-dev \
+        libssl-dev \
         libjemalloc2 && \
     ln -sf /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 /lib64/libjemalloc.so.2 && \
     cd /tmp && \
@@ -201,6 +210,7 @@ COPY --chmod=755 dingo /usr/local/bin/dingo
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 COPY dingofs-integration-test /dingofs-integration-test
+COPY --chmod=755 task/ /task/
 COPY --chmod=755 xfstests-dev/ /xfstests-dev/
 COPY --chmod=755 dingofs/build/bin/dingo-client /usr/local/bin/dingo-client
 COPY --chmod=755 dingofs/xfstests/mount.fuse.dingofs /xfstests-dev/mount.fuse.dingofs

@@ -499,9 +499,9 @@ validate_params() {
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
-        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int, xfstest)."
+        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int, xfstest, task)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke|xfstest)$ ]]; then
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke|xfstest|task)$ ]]; then
         echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke"
         error=1
     fi
@@ -607,6 +607,9 @@ scenario_exists() {
                 [[ -f "/custom/${scenario}.vdbench" ]] || [[ -f "${SCENARIOS_DIR}/vdbench/${scenario}.par" ]]
             fi
             ;;
+        task)
+            [[ -d "/task/${scenario}" ]]
+            ;;
         mdtest)
             # mdtest scenarios: mdtest_z0_n100, mdtest_z5_b4_I1, mdtest_z6_b3_I1, mdtest_z9_b2_I1
             # Also accept "all" or "mdtest" to run all scenarios
@@ -642,8 +645,6 @@ scenario_exists() {
             [[ "$scenario" =~ ^generic/[0-9]+$ ]] || [[ "$scenario" =~ ^[a-z]+/[0-9]+$ ]]
             ;;
         *)
-            return 1
-            ;;
     esac
 }
 
@@ -753,7 +754,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -792,6 +793,20 @@ parse_args() {
                 ;;
             --scratch-mnt)
                 SCRATCH_MNT="$2"
+                shift 2
+                ;;
+            --duration)
+                VDURATION="$2"
+                # Convert to seconds: 12h->43200, 30m->1800, 1d->86400
+                local val="${2%[smhd]}"
+                local unit="${2:${#val}}"
+                case "$unit" in
+                    s) VDURATION_SEC="$val" ;;
+                    m) VDURATION_SEC=$((val * 60)) ;;
+                    h) VDURATION_SEC=$((val * 3600)) ;;
+                    d) VDURATION_SEC=$((val * 86400)) ;;
+                    *) VDURATION_SEC="$val" ;;
+                esac
                 shift 2
                 ;;
             -o|--output)
@@ -1016,6 +1031,9 @@ dispatch_tool() {
         xfstest)
             xfstest_run
             ;;
+        task)
+            task_run
+            ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
             exit 1
@@ -1217,6 +1235,14 @@ vdbench_run() {
     # vdbench uses anchor= to specify the test directory
     local tmp_config="/tmp/vdbench_custom_$$.par"
     sed "s|anchor=[^,)]*|anchor=${MOUNT}|g" "$config" > "$tmp_config"
+
+    # Stability scenario: replace __ELAPSED__ with actual value
+    if [[ "$SCENARIO" == "stability" ]]; then
+        local elapsed_sec="${VDURATION_SEC:-43200}"  # default 12h = 43200s
+        sed -i "s|__ELAPSED__|${elapsed_sec}|g" "$tmp_config"
+        echo "Stability test duration: ${VDURATION:-12h} (${elapsed_sec}s)"
+    fi
+
     echo "Auto-replaced anchor= with $MOUNT in vdbench config"
 
     # Change to vdbench directory for execution
@@ -2074,6 +2100,50 @@ xfstest_run() {
     fi
 
     log_result "xfstest" "$test_selector" "$xfstest_exit" "$xfstest_start_time" "$xfstest_output"
+}
+
+# ==============================================================================
+# Task Runner — special workload scenarios under /task/
+# ==============================================================================
+
+task_run() {
+    local task_start_time=$(date +"%Y-%m-%d %H:%M:%S")
+
+    echo "Running task: $SCENARIO"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+
+    local task_dir="/task/${SCENARIO}"
+    if [[ ! -d "$task_dir" ]]; then
+        echo "Error: Task directory not found: $task_dir"
+        return 1
+    fi
+
+    mkdir -p "$OUTPUT"
+    local task_output="$OUTPUT/task_${RUN_TIMESTAMP}/${SCENARIO}"
+    mkdir -p "$task_output"
+
+    # Task scripts follow naming: <scenario>.sh or build_kernel.sh etc.
+    local task_script
+    task_script=$(ls "$task_dir"/*.sh 2>/dev/null | head -1)
+    if [[ -z "$task_script" ]]; then
+        echo "Error: No .sh script found in $task_dir"
+        return 1
+    fi
+
+    echo "Executing: bash $task_script $MOUNT --skip-deps"
+
+    cd "$task_dir"
+    bash "$task_script" "$MOUNT" --skip-deps 2>&1 | tee "$task_output/task.log"
+    local task_exit=${PIPESTATUS[0]}
+
+    if [[ $task_exit -ne 0 ]]; then
+        echo "Warning: task exited with code $task_exit"
+    else
+        echo "Task completed successfully."
+    fi
+
+    log_result "task" "$SCENARIO" "$task_exit" "$task_start_time" "$task_output"
 }
 
 # ==============================================================================
