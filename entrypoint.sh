@@ -581,8 +581,8 @@ scenario_exists() {
                 fio_scenarios_dir="/scenarios/fio/bs_small"
             fi
 
-            # Accept "all" or "perf" to run all or performance scenarios
-            if [[ "$scenario" == "all" ]] || [[ "$scenario" == "perf" ]]; then
+            # Accept "all", "perf", or "debug" to run all or performance scenarios
+            if [[ "$scenario" == "all" ]] || [[ "$scenario" == "perf" ]] || [[ "$scenario" == "debug" ]]; then
                 return 0
             fi
             # Accept "custom" if any .fio files exist in /custom/
@@ -667,8 +667,8 @@ get_scenario_paths() {
                         paths+=("$file")
                     done < <(ls "${SCENARIOS_DIR}/${type}"_*.fio 2>/dev/null | sort)
                 done
-            # Perf scenario: run fio performance scripts
-            elif [[ "$scenario" == "perf" ]]; then
+            # Perf/debug scenario: run fio performance scripts
+            elif [[ "$scenario" == "perf" ]] || [[ "$scenario" == "debug" ]]; then
                 paths+=("/scenarios/fio/performance/fio_write.sh")
                 paths+=("/scenarios/fio/performance/fio_read.sh")
             # Custom scenario: run all .fio files in /custom/
@@ -1003,6 +1003,7 @@ log_result() {
 # ==============================================================================
 
 dispatch_tool() {
+    export TEST_MOUNT="$MOUNT"
     case "$TOOL" in
         smoke)
             smoke_run
@@ -1042,6 +1043,7 @@ dispatch_tool() {
 }
 
 fio_run() {
+    local fio_run_start=$(date +%s)
     # Get all matching scenario paths
     local scenario_paths
 
@@ -1118,15 +1120,26 @@ echo ""
         # Create output directory for this scenario
         mkdir -p "$scenario_output"
 
-        # Perf scenario: prepare script in /tmp, execute from mount dir
-        if [[ "$SCENARIO" == "perf" ]]; then
+        # Perf/debug scenario: prepare script in /tmp, execute from mount dir
+        if [[ "$SCENARIO" == "perf" ]] || [[ "$SCENARIO" == "debug" ]]; then
             local perf_script_name
             perf_script_name=$(basename "$config")
-            local perf_log_dir="$OUTPUT/fio_${RUN_TIMESTAMP}/perf"
+            local rw_name="${perf_script_name%.sh}"  # fio_write or fio_read
+            local perf_log_dir="$OUTPUT/fio_${RUN_TIMESTAMP}/${SCENARIO}/${rw_name}"
             mkdir -p "$perf_log_dir"
             cp "$config" "/tmp/$perf_script_name"
             sed -i "s|^LOG_DIR=.*|LOG_DIR=\"$perf_log_dir\"|" "/tmp/$perf_script_name"
             sed -i "s|^TEST_TIMES=.*|TEST_TIMES=${TEST_TIMES:-3}|" "/tmp/$perf_script_name"
+            # Debug mode: use 1GB files instead of 8GB
+            if [[ "$SCENARIO" == "debug" ]]; then
+                sed -i "s|^FILE_SIZE=.*|FILE_SIZE=\"10MB\"|" "/tmp/$perf_script_name"
+                sed -i "s|^FILE_NUM=.*|FILE_NUM=4|" "/tmp/$perf_script_name"
+                sed -i 's|^BS_LIST=.*|BS_LIST=("1MB" "4MB")|' "/tmp/$perf_script_name"
+                sed -i 's|^NUMJOBS_LIST=.*|NUMJOBS_LIST=(1 8)|' "/tmp/$perf_script_name"
+                sed -i "s|^TEST_TIMES=.*|TEST_TIMES=2|" "/tmp/$perf_script_name"
+            fi
+            # Root without --user: replace sudo drop_caches line
+            sed -i 's|if ! sudo sh -c .*drop_caches.*; then|if ! echo 3 > /proc/sys/vm/drop_caches 2>\&1; then|' "/tmp/$perf_script_name"
             echo "Perf script: $perf_script_name"
             echo "  LOG_DIR: $perf_log_dir"
             echo "  TEST_TIMES: ${TEST_TIMES:-3}"
@@ -1167,42 +1180,51 @@ echo ""
         # Log result
         log_result "fio" "$scenario_name" "$fio_exit" "$scenario_start_time" "$scenario_output"
 
-        # Calculate duration for notification
-        local scenario_end_time=$(date +%s)
-        local scenario_start_epoch=$(date -d "$scenario_start_time" +%s 2>/dev/null || echo "$scenario_end_time")
-        local scenario_duration=$((scenario_end_time - scenario_start_epoch))
-        local scenario_duration_str=""
-        if [[ $scenario_duration -ge 60 ]]; then
-            scenario_duration_str="${scenario_duration}s ($((${scenario_duration} / 60))m $((${scenario_duration} % 60))s)"
-        else
-            scenario_duration_str="${scenario_duration}s"
-        fi
-
-        # Send WeChat notification if enabled
-        if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-            local fio_status="FAIL"
-            if [[ $fio_exit -eq 0 ]]; then
-                fio_status="SUCCESS"
-            fi
-            send_wechat_notification "fio" "$scenario_name" "$fio_status" "$scenario_duration_str"
-        fi
-
-        if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-            local fio_status="FAIL"
-            if [[ $fio_exit -eq 0 ]]; then
-                fio_status="SUCCESS"
-            fi
-            send_email_notification "fio" "$scenario_name" "$fio_status" "$scenario_duration_str"
-        fi
-
         echo ""
     done <<< "$scenario_paths"
 
-    # Generate combined report if multiple scenarios
-    if [[ $path_count -gt 1 ]]; then
+    # Extract fio perf/debug metrics for notification
+    local fio_metrics_summary=""
+    if [[ "$SCENARIO" == "perf" || "$SCENARIO" == "debug" ]]; then
+        for rw_dir in "$OUTPUT/fio_${RUN_TIMESTAMP}/${SCENARIO}"/fio_*; do
+            [[ -d "$rw_dir" ]] || continue
+            local rw_type=$(basename "$rw_dir" | sed 's/fio_//')  # read or write
+            for logfile in "$rw_dir"/fio_result_*.log; do
+                [[ -f "$logfile" ]] || continue
+                local fname=$(basename "$logfile" .log)
+                local d_val="${fname#*_d}"; d_val="${d_val%%_*}"
+                local bs_val="${fname#*_bs}"; bs_val="${bs_val%%_*}"
+                local j_val="${fname##*_j}"
+                local bw_val
+                bw_val=$(grep -oP 'bw=\K[0-9.]+[KMGT]?i?B/s' "$logfile" | tail -1 || echo "-")
+                fio_metrics_summary+="fio_${rw_type}|d:${d_val}|bs:${bs_val}|j:${j_val}|bw:${bw_val}\n"
+            done
+        done
+    fi
+
+    # Single notification for all scenarios
+    if [[ $overall_exit -eq 0 ]]; then
+        local fio_overall_status="SUCCESS"
+    else
+        local fio_overall_status="FAIL"
+    fi
+    local total_duration=$(( $(date +%s) - fio_run_start ))
+    local total_dur_str=""
+    if [[ $total_duration -ge 60 ]]; then
+        total_dur_str="${total_duration}s ($((${total_duration} / 60))m $((${total_duration} % 60))s)"
+    else
+        total_dur_str="${total_duration}s"
+    fi
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        send_wechat_notification "fio" "$SCENARIO" "$fio_overall_status" "$total_dur_str" "$fio_metrics_summary"
+    fi
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        send_email_notification "fio" "$SCENARIO" "$fio_overall_status" "$total_dur_str" "$fio_metrics_summary"
+    fi
+
+    # Generate combined report if multiple scenarios (not for perf/debug flat format)
+    if [[ $path_count -gt 1 ]] && [[ "$SCENARIO" != "perf" ]] && [[ "$SCENARIO" != "debug" ]]; then
         echo "Generating combined report..."
-        # For "all" scenario, aggregate from all scenario type subdirectories
-        # For specific scenario, use that scenario's subdirectory
         if [[ "$SCENARIO" == "all" ]]; then
             python3 /scripts/generate_report.py --tool fio --output-dir "$OUTPUT/fio_${RUN_TIMESTAMP}" --scenario "$SCENARIO" --mount "$MOUNT" --combined --bs-size "$BS_SIZE"
         else
@@ -1236,11 +1258,13 @@ vdbench_run() {
     local tmp_config="/tmp/vdbench_custom_$$.par"
     sed "s|anchor=[^,)]*|anchor=${MOUNT}|g" "$config" > "$tmp_config"
 
-    # Stability scenario: replace __ELAPSED__ with actual value
+    # Stability scenario: replace __ELAPSED__ and increase JVM heap
     if [[ "$SCENARIO" == "stability" ]]; then
         local elapsed_sec="${VDURATION_SEC:-43200}"  # default 12h = 43200s
         sed -i "s|__ELAPSED__|${elapsed_sec}|g" "$tmp_config"
         echo "Stability test duration: ${VDURATION:-12h} (${elapsed_sec}s)"
+        # Increase JVM heap for large multi-thread workload
+        export JAVA_OPTS="-Xmx8g -Xms2g"
     fi
 
     echo "Auto-replaced anchor= with $MOUNT in vdbench config"

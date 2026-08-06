@@ -22,6 +22,7 @@ log_notify() {
 
 # Send email notification
 # Usage: send_email_notification <tool> <scenario> <status> <duration> [details] [test_date] [test_ip]
+# Mount point is read from TEST_MOUNT env var (set by entrypoint.sh)
 send_email_notification() {
     local tool="$1"
     local scenario="$2"
@@ -30,6 +31,7 @@ send_email_notification() {
     local details="${5:-}"
     local test_date="${6:-$(date '+%Y-%m-%d %H:%M:%S')}"
     local test_ip="${7:-$(hostname -I | awk '{print $1}')}"
+    local mount="${TEST_MOUNT:-}"
 
     # Skip if email is not enabled
     if [[ "$EMAIL_ENABLED" != "yes" ]]; then
@@ -53,7 +55,12 @@ send_email_notification() {
 <body>
 <h2>DingoFS 自动化测试报告</h2>
 <p><b>测试日期：</b>${test_date}</p>
-<p><b>测试节点IP：</b>${test_ip}</p>
+<p><b>测试节点IP：</b>${test_ip}</p>"
+    if [[ -n "$mount" ]]; then
+        html_content="${html_content}
+<p><b>挂载点：</b>${mount}</p>"
+    fi
+    html_content="${html_content}
 <table border='1' cellpadding='5' cellspacing='0'>
 <tr><td><b>工具</b></td><td>$tool</td></tr>
 <tr><td><b>场景</b></td><td>$scenario</td></tr>
@@ -109,6 +116,24 @@ send_email_notification() {
 
         html_content="${html_content}
 </table>"
+    elif [[ "$details" =~ \|bw: ]]; then
+        # fio performance metrics — format: "fio_read|d:0|bs:1MB|j:1|bw:1500MiB/s"
+        html_content="${html_content}
+    <h3>性能指标</h3>
+    <table border='1' cellpadding='5' cellspacing='0'>
+    <tr><th>场景</th><th>Direct</th><th>块大小</th><th>并发</th><th>带宽</th></tr>"
+        while IFS= read -r mline; do
+            [[ -z "$mline" ]] && continue
+            local sname="${mline%%|*}"; local rest="${mline#*|}"
+            local dv="${rest#*d:}"; dv="${dv%%|*}"
+            local bv="${rest#*bs:}"; bv="${bv%%|*}"
+            local jv="${rest#*j:}"; jv="${jv%%|*}"
+            local bw="${rest#*bw:}"; bw="${bw%%|*}"
+            html_content="${html_content}
+    <tr><td>${sname}</td><td>${dv}</td><td>${bv}</td><td>${jv}</td><td>${bw}</td></tr>"
+        done <<< "$(echo -e "$details")"
+        html_content="${html_content}
+    </table>"
     elif [[ "$details" =~ \|create: ]]; then
         # mdtest performance metrics — multi-scenario format:
         # "name|cmd:<cmd>|create:<v>|stat:<v>|read:<v>|remove:<v>|tcreate:<v>|tremove:<v>"
@@ -268,6 +293,7 @@ PYEOF
 }
 
 # Usage: send_wechat_notification <tool> <scenario> <status> <duration> [details] [test_date] [test_ip]
+# Mount point is read from TEST_MOUNT env var (set by entrypoint.sh)
 send_wechat_notification() {
     local tool="$1"
     local scenario="$2"
@@ -276,6 +302,7 @@ send_wechat_notification() {
     local details="${5:-}"
     local test_date="${6:-$(date '+%Y-%m-%d %H:%M:%S')}"
     local test_ip="${7:-$(hostname -I | awk '{print $1}')}"
+    local mount="${TEST_MOUNT:-}"
 
     # Skip if WeChat is not enabled
     if [[ "$WECHAT_ENABLED" != "yes" ]]; then
@@ -307,7 +334,12 @@ send_wechat_notification() {
     local content="${emoji} ${status_text}
 
 测试日期：${test_date}
-测试节点IP：${test_ip}
+测试节点IP：${test_ip}"
+    if [[ -n "$mount" ]]; then
+        content+="
+挂载点：${mount}"
+    fi
+    content+="
 
 | Tool | Scenario | Duration | Status |
 |------|----------|----------|--------|
@@ -315,7 +347,23 @@ send_wechat_notification() {
 
     # Add details if provided
     if [[ -n "$details" ]]; then
-        if [[ "$details" =~ \|create: ]]; then
+        if [[ "$details" =~ \|bw: ]]; then
+            content="${content}
+
+**FIO 性能指标:**
+| 场景 | Direct | 块大小 | 并发 | 带宽 |
+|------|--------|--------|------|------|"
+            while IFS= read -r mline; do
+                [[ -z "$mline" ]] && continue
+                local sname="${mline%%|*}"; local rest="${mline#*|}"
+                local dv="${rest#*d:}"; dv="${dv%%|*}"
+                local bv="${rest#*bs:}"; bv="${bv%%|*}"
+                local jv="${rest#*j:}"; jv="${jv%%|*}"
+                local bw="${rest#*bw:}"; bw="${bw%%|*}"
+                content="${content}
+| ${sname} | ${dv} | ${bv} | ${jv} | ${bw} |"
+            done <<< "$(echo -e "$details")"
+        elif [[ "$details" =~ \|create: ]]; then
             content="${content}
 
 **性能指标 (Mean ops/s):**

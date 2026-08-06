@@ -1834,7 +1834,12 @@ run_testsuite() {
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
     )
-    if ! _is_rootless; then
+    # fio perf/debug needs root for cache clearing; skip --user
+    local skip_user=false
+    if [[ "$tool" == "fio" ]] && [[ "$scenario" == "perf" || "$scenario" == "debug" ]]; then
+        skip_user=true
+    fi
+    if ! _is_rootless && [[ "$skip_user" != "true" ]]; then
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
     fi
     docker_cmd+=(
