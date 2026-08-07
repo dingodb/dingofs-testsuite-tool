@@ -1,10 +1,8 @@
 #!/bin/bash
 #
 # Dynamo 完整编译脚本
-# 用法: ./build_dynamo.sh <编译目录> [--skip-deps] [--skip-rust]
 # 需先将 dynamo 源码仓库放在脚本同目录下
 # 示例: ./build_dynamo.sh /mnt/disk5/build_test/dynamo
-#      ./build_dynamo.sh /mnt/disk5/dingo_autotest/client/dynamo --skip-deps
 #
 
 set -e
@@ -15,19 +13,17 @@ fmt_duration() {
     printf "%02d:%02d:%02d" $((s/3600)) $(((s%3600)/60)) $((s%60))
 }
 
-STAGES="copy deps rust venv build install verify"
+STAGES="copy rust venv build install verify"
 for _stage in ${STAGES}; do
     eval "STAGE_${_stage}=0"
 done
 
 # ===================== 参数检查 =====================
-SKIP_DEPS=false
 SKIP_RUST=false
 BUILD_DIR=""
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        --skip-deps) SKIP_DEPS=true; shift ;;
         --skip-rust) SKIP_RUST=true; shift ;;
         *)
             if [ -z "${BUILD_DIR}" ]; then
@@ -42,18 +38,15 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [ -z "${BUILD_DIR}" ]; then
-    echo "用法: $0 <编译目录> [--skip-deps] [--skip-rust]"
     echo ""
     echo "参数:"
     echo "  编译目录    目标工作目录 (必需)"
-    echo "  --skip-deps 跳过系统依赖安装 (已安装过时使用)"
     echo "  --skip-rust 跳过 Rust 安装 (已安装过时使用)"
     echo ""
     echo "注意: 需先将 dynamo 源码仓库放在脚本同目录下"
     echo ""
     echo "示例:"
     echo "  $0 /mnt/disk5/build_test/dynamo"
-    echo "  $0 /mnt/disk5/dingo_autotest/client/dynamo --skip-deps --skip-rust"
     exit 1
 fi
 
@@ -68,7 +61,6 @@ echo "=============================================="
 echo "编译目录   : ${BUILD_DIR}"
 echo "源码目录   : ${SRC_DIR}"
 echo "CPU 核心数 : ${CORES}"
-echo "跳过依赖   : ${SKIP_DEPS}"
 echo "跳过 Rust  : ${SKIP_RUST}"
 echo "脚本目录   : ${SCRIPT_DIR}"
 echo "=============================================="
@@ -78,7 +70,7 @@ SCRIPT_START=$(date +%s)
 
 # ===================== 1. 拷贝源码 =====================
 T0=$(date +%s)
-echo "[1/8] 拷贝 Dynamo 源码..."
+echo "[1/7] 拷贝 Dynamo 源码..."
 
 if [ ! -d "${SCRIPT_DIR}/dynamo/.git" ]; then
     echo "错误: 源码仓库不存在: ${SCRIPT_DIR}/dynamo"
@@ -101,33 +93,11 @@ fi
 
 STAGE_copy=$(($(date +%s) - T0))
 
-# ===================== 2. 安装系统依赖 =====================
+
+
+# ===================== 2. 安装 Rust =====================
 T0=$(date +%s)
-echo "[2/8] 安装系统依赖..."
-
-if [ "${SKIP_DEPS}" = true ]; then
-    echo "跳过系统依赖安装 (--skip-deps)"
-elif command -v apt-get &>/dev/null; then
-    echo "检测到 apt-get (Ubuntu/Debian)，安装系统依赖..."
-    sudo apt-get update -qq
-    sudo apt-get install -y -qq build-essential protobuf-compiler libhwloc-dev \
-        libsystemd-dev pkg-config clang python3-dev cmake 2>/dev/null || true
-    echo "系统依赖安装完成"
-elif command -v dnf &>/dev/null; then
-    echo "检测到 dnf (RHEL/CentOS)，安装系统依赖..."
-    sudo dnf groupinstall -y "Development Tools" 2>/dev/null || true
-    sudo dnf --enablerepo=devel install -y protobuf-compiler 2>/dev/null || true
-    sudo dnf install -y hwloc-devel systemd-devel pkgconfig clang-devel protobuf-compiler python3-devel cmake
-    echo "系统依赖安装完成"
-else
-    echo "警告: 未检测到包管理器，跳过依赖安装"
-fi
-
-STAGE_deps=$(($(date +%s) - T0))
-
-# ===================== 3. 安装 Rust =====================
-T0=$(date +%s)
-echo "[3/8] 安装 Rust..."
+echo "[2/7] 安装 Rust..."
 
 if [ "${SKIP_RUST}" = true ]; then
     echo "跳过 Rust 安装 (--skip-rust)"
@@ -145,9 +115,9 @@ fi
 
 STAGE_rust=$(($(date +%s) - T0))
 
-# ===================== 4. 创建 Python 虚拟环境 =====================
+# ===================== 3. 创建 Python 虚拟环境 =====================
 T0=$(date +%s)
-echo "[4/8] 创建 Python 虚拟环境..."
+echo "[3/7] 创建 Python 虚拟环境..."
 
 cd "${SRC_DIR}"
 
@@ -172,9 +142,9 @@ uv pip install pip 'maturin[patchelf]'
 
 STAGE_venv=$(($(date +%s) - T0))
 
-# ===================== 5. 构建 Rust 绑定 =====================
+# ===================== 4. 构建 Rust 绑定 =====================
 T0=$(date +%s)
-echo "[5/8] 构建 Rust 绑定..."
+echo "[4/7] 构建 Rust 绑定..."
 
 cd "${SRC_DIR}/lib/bindings/python"
 export RUSTC_MMAP_OK=0
@@ -182,22 +152,22 @@ maturin develop --uv
 
 STAGE_build=$(($(date +%s) - T0))
 
-# ===================== 6. 安装 GPU 内存服务 =====================
+# ===================== 5. 安装 GPU 内存服务 =====================
 T0=$(date +%s)
-echo "[6/8] 安装 GPU 内存服务..."
+echo "[5/7] 安装 GPU 内存服务..."
 
 cd "${SRC_DIR}"
 uv pip install -e lib/gpu_memory_service
 
-# ===================== 7. 安装 Dynamo Wheel =====================
-echo "[7/8] 安装 Dynamo Wheel..."
+# ===================== 6. 安装 Dynamo Wheel =====================
+echo "[6/7] 安装 Dynamo Wheel..."
 uv pip install -e .
 
 STAGE_install=$(($(date +%s) - T0))
 
-# ===================== 8. 验证编译 =====================
+# ===================== 7. 验证编译 =====================
 T0=$(date +%s)
-echo "[8/8] 验证编译..."
+echo "[7/7] 验证编译..."
 
 if python3 -m dynamo.frontend --help &>/dev/null; then
     VERIFY_STATUS="通过"
@@ -219,7 +189,6 @@ echo "验证状态   : ${VERIFY_STATUS}"
 echo ""
 echo "--- 各阶段耗时 ---"
 printf "  %-12s  %s\n" "拷贝源码"   "$(fmt_duration ${STAGE_copy})"
-printf "  %-12s  %s\n" "系统依赖"   "$(fmt_duration ${STAGE_deps})"
 printf "  %-12s  %s\n" "Rust安装"   "$(fmt_duration ${STAGE_rust})"
 printf "  %-12s  %s\n" "Python环境" "$(fmt_duration ${STAGE_venv})"
 printf "  %-12s  %s\n" "Rust绑定"   "$(fmt_duration ${STAGE_build})"
