@@ -499,9 +499,9 @@ validate_params() {
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
-        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int, xfstest, task)."
+        echo "Error: Tool is required. Use -t or --tool to specify (fio, vdbench, mdtest, pjdtest, ltp, int, xfstest, task, elbencho)."
         error=1
-    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke|xfstest|task)$ ]]; then
+    elif [[ ! "$TOOL" =~ ^(fio|vdbench|mdtest|pjdtest|ltp|int|mlperf|smoke|xfstest|task|elbencho)$ ]]; then
         echo "Error: Invalid tool '$TOOL'. Valid options: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, smoke"
         error=1
     fi
@@ -643,6 +643,10 @@ scenario_exists() {
             [[ "$scenario" == "all" ]] || [[ "$scenario" == "auto" ]] || \
             [[ "$scenario" == "quick" ]] || [[ "$scenario" == "custom" ]] || \
             [[ "$scenario" =~ ^generic/[0-9]+$ ]] || [[ "$scenario" =~ ^[a-z]+/[0-9]+$ ]]
+            ;;
+        elbencho)
+            [[ "$scenario" == "all" ]] || [[ "$scenario" == "custom" ]] || \
+            [[ "$scenario" =~ ^(seq_write|seq_read|rand_read|rand_write|small|full)$ ]]
             ;;
         *)
     esac
@@ -1035,6 +1039,9 @@ dispatch_tool() {
         task)
             task_run
             ;;
+        elbencho)
+            elbencho_run
+            ;;
         *)
             echo "Error: Unknown tool '$TOOL'"
             exit 1
@@ -1283,6 +1290,15 @@ vdbench_run() {
     local vdbench_exit=${PIPESTATUS[0]}
     rm -f "$tmp_config"
 
+    # Determine vdbench success by checking raw output
+    local vdbench_status="FAIL"
+    local vdbench_raw="$vdbench_output/vdbench.raw"
+    if [[ -f "$vdbench_raw" ]] && grep -q "Vdbench execution completed successfully" "$vdbench_raw"; then
+        vdbench_status="SUCCESS"
+        vdbench_exit=0
+    fi
+    echo "vdbench status: $vdbench_status"
+
     # Generate reports
     echo "Generating reports..."
     python3 /scripts/generate_report.py --tool vdbench --output-dir "$vdbench_output" --scenario "$SCENARIO" --mount "$MOUNT"
@@ -1301,21 +1317,10 @@ vdbench_run() {
         vdbench_duration_str="${vdbench_duration}s"
     fi
 
-    # Send WeChat notification if enabled
     if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-        local vdbench_status="FAIL"
-        if [[ $vdbench_exit -eq 0 ]]; then
-            vdbench_status="SUCCESS"
-        fi
         send_wechat_notification "vdbench" "$SCENARIO" "$vdbench_status" "$vdbench_duration_str"
     fi
-
-    # Send Email notification if enabled
     if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-        local vdbench_status="FAIL"
-        if [[ $vdbench_exit -eq 0 ]]; then
-            vdbench_status="SUCCESS"
-        fi
         send_email_notification "vdbench" "$SCENARIO" "$vdbench_status" "$vdbench_duration_str"
     fi
 
@@ -2144,6 +2149,115 @@ xfstest_run() {
 # Task Runner — special workload scenarios under /task/
 # ==============================================================================
 
+elbencho_run() {
+    local elbencho_start=$(date +%s)
+
+    echo "Running elbencho"
+    echo "  Scenario: ${SCENARIO:-all}"
+    echo "  Mount: $MOUNT"
+    echo "  Output: $OUTPUT"
+
+    mkdir -p "$OUTPUT"
+    local elb_output="$OUTPUT/elbencho_${RUN_TIMESTAMP}"
+    mkdir -p "$elb_output"
+
+    # Default parameters
+    local elb_threads="${ELBENCHO_THREADS:-8}"
+    local elb_bs="${ELBENCHO_BS:-4M}"
+    local elb_size="${ELBENCHO_SIZE:-1G}"
+    local elb_files="${ELBENCHO_FILES:-4}"
+    local elb_direct="--direct"
+    local json_file="$elb_output/elbencho.json"
+
+    # Run selected scenario(s)
+    # Handle script-based scenarios
+    if [[ "$SCENARIO" == "small" ]] || [[ "$SCENARIO" == "full" ]]; then
+        local script="/scenarios/elbencho/${SCENARIO}.sh"
+        echo "Executing: bash $script $MOUNT"
+        bash "$script" "$MOUNT" 2>&1 | tee "$elb_output/${SCENARIO}.log"
+        local sc_exit=${PIPESTATUS[0]}
+        log_result "elbencho" "$SCENARIO" "$sc_exit" "" "$elb_output"
+        return $sc_exit
+    fi
+
+    local scenarios_to_run="${SCENARIO:-all}"
+    if [[ "$scenarios_to_run" == "all" ]]; then
+        scenarios_to_run="seq_write seq_read rand_read rand_write"
+    fi
+
+    local overall_exit=0
+    local metrics_summary=""
+
+    for sc in $scenarios_to_run; do
+        echo "--- Running elbencho $sc ---"
+        local sc_start=$(date +%s)
+        local sc_json="$elb_output/${sc}.json"
+
+        case "$sc" in
+            seq_write)
+                elbencho -w -b "$elb_bs" -t "$elb_threads" $elb_direct \
+                    -s "$elb_size" --jsonfile "$sc_json" \
+                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
+                ;;
+            seq_read)
+                elbencho -r -b "$elb_bs" -t "$elb_threads" $elb_direct \
+                    -s "$elb_size" --jsonfile "$sc_json" \
+                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
+                ;;
+            rand_read)
+                elbencho -r -b "$elb_bs" -t "$elb_threads" $elb_direct --rand \
+                    -s "$elb_size" --jsonfile "$sc_json" \
+                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
+                ;;
+            rand_write)
+                elbencho -w -b "$elb_bs" -t "$elb_threads" $elb_direct --rand \
+                    -s "$elb_size" --jsonfile "$sc_json" \
+                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
+                ;;
+        esac
+        local sc_exit=${PIPESTATUS[0]}
+
+        # Extract metrics from JSON
+        local bw_val="-"
+        if [[ -f "$sc_json" ]]; then
+            bw_val=$(python3 -c "
+import json,sys
+with open('$sc_json') as f:
+    d=json.load(f)
+bw=d.get('throughput',{}).get('MiB',0)
+print(f'{bw:.1f}MiB/s')
+" 2>/dev/null || echo "-")
+        fi
+        metrics_summary+="elbencho_${sc}|bw:${bw_val}\n"
+
+        if [[ $sc_exit -ne 0 ]]; then
+            echo "Warning: $sc exited with $sc_exit"
+            overall_exit=$sc_exit
+        fi
+        echo "  $sc done: $bw_val"
+    done
+
+    # Notification
+    if [[ $overall_exit -eq 0 ]]; then local elb_status="SUCCESS"; else local elb_status="FAIL"; fi
+    local total_dur=$(( $(date +%s) - elbencho_start ))
+    local dur_str=""
+    if [[ $total_dur -ge 60 ]]; then
+        dur_str="${total_dur}s ($(($total_dur/60))m $(($total_dur%60))s)"
+    else
+        dur_str="${total_dur}s"
+    fi
+
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        send_wechat_notification "elbencho" "$SCENARIO" "$elb_status" "$dur_str" "$metrics_summary"
+    fi
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        send_email_notification "elbencho" "$SCENARIO" "$elb_status" "$dur_str" "$metrics_summary"
+    fi
+
+    log_result "elbencho" "$SCENARIO" "$overall_exit" "" "$elb_output"
+    return $overall_exit
+}
+
 task_run() {
     local task_start_time=$(date +"%Y-%m-%d %H:%M:%S")
 
@@ -2169,10 +2283,10 @@ task_run() {
         return 1
     fi
 
-    echo "Executing: bash $task_script $MOUNT --skip-deps"
+    echo "Executing: bash $task_script $MOUNT"
 
     cd "$task_dir"
-    bash "$task_script" "$MOUNT" --skip-deps 2>&1 | tee "$task_output/task.log"
+    bash "$task_script" "$MOUNT" 2>&1 | tee "$task_output/task.log"
     local task_exit=${PIPESTATUS[0]}
 
     if [[ $task_exit -ne 0 ]]; then

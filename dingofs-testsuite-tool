@@ -167,6 +167,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   mlperf    MLPerf Storage 基准测试
   xfstest   xfstests 文件系统回归测试
   task      特殊工作负载场景 (编译/解压等)
+  elbencho  分布式存储基准测试
 
 ======================================================================
                         测试工具详细说明
@@ -319,6 +320,23 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
     # MDS 模式
     dtt config set xfstest_mds_template 'mds://172.30.14.126:6900/{fsname}'
     dtt -t xfstest -s generic/001
+
+=== ELBENCHO — 分布式存储基准测试 ===
+
+  场景:
+    all              运行内置场景 (默认)
+    seq_write        顺序写大文件 (4M/1G)
+    seq_read         顺序读大文件
+    rand_read        随机读大文件
+    rand_write       随机写大文件
+    small            小文件多并发测试 (100m/256files, 1-32线程)
+    full             综合测试 (4M+4K, 1-64线程, 写/读/删)
+    custom           从 custom 目录加载自定义脚本
+
+  示例:
+    dtt -t elbencho -s all
+    dtt -t elbencho -s elbencho_small
+    dtt -t elbencho -s custom
 
 === TASK — 特殊工作负载场景 ===
 
@@ -474,7 +492,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 ======================================================================
 
 通用选项:
-  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, task
+  -t, --tool <名称>       测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, task, elbencho
   -s, --scenario <名称>   测试场景
   -n, --np <数字>         mdtest MPI 进程数 (默认: 16)
   -m, --mount <目录>      覆盖测试目录
@@ -501,6 +519,32 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   - 如果未提供 -m/-o，则使用 config 中配置的值
   - 快捷命令: dtt 是 dingofs-testsuite-tool 的别名
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
+
+EOF
+}
+
+show_elbencho_help() {
+    cat << 'EOF'
+elbencho — 分布式存储基准测试
+============================
+
+用法:
+  dtt -t elbencho [-s <场景>]
+
+场景:
+  all           运行所有场景：顺序写+读、随机读+写 (默认)
+  seq_write     顺序写
+  seq_read      顺序读
+  rand_read     随机读
+  rand_write    随机写
+
+示例:
+  dtt -t elbencho -s all
+  dtt -t elbencho -s seq_write
+  dtt -t elbencho -s rand_read
+
+结果保存在 output/elbencho_<timestamp>/:
+  各场景的 JSON 和日志，邮件/微信通知含性能指标
 
 EOF
 }
@@ -1554,6 +1598,9 @@ run_testsuite() {
                     elif [[ "$tool" == "task" ]]; then
                         show_task_help
                         exit 0
+                    elif [[ "$tool" == "elbencho" ]]; then
+                        show_elbencho_help
+                        exit 0
                     else
                         run_docker_help "$tool"
                         exit $?
@@ -1797,7 +1844,7 @@ run_testsuite() {
     fi
 
     if [[ -z "$tool" ]]; then
-        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, task)"
+        echo "Error: -t <tool> is required (fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, task, elbencho)"
         return 1
     fi
 
@@ -1923,15 +1970,21 @@ run_testsuite() {
         -m "$container_mount"
         -o /output
     )
-    # Add scenario for all tools (mdtest is optional, others required)
+    # Add scenario (mdtest and elbencho default to "all")
     if [[ "$tool" == "mdtest" ]]; then
-        # mdtest scenario is optional, default to "all" if not specified
         local mdtest_scenario="${scenario:-all}"
         entrypoint_cmd+=(-s "$mdtest_scenario")
+    elif [[ "$tool" == "elbencho" ]]; then
+        entrypoint_cmd+=(-s "${scenario:-all}")
     else
-        # fio, vdbench, pjdtest, ltp, int, task all require scenario
+        # fio, vdbench, pjdtest, ltp, int, task all require scenario; elbencho defaults to all
         if [[ -z "$scenario" ]]; then
-            echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, ltp, int, and task"
+            if [[ "$tool" == "elbencho" ]]; then
+                scenario="all"
+            else
+                echo "Error: -s <scenario> is required for fio, vdbench, mdtest, pjdtest, ltp, int, and task"
+                return 1
+            fi
             return 1
         fi
         entrypoint_cmd+=(-s "$scenario")

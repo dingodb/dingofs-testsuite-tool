@@ -207,6 +207,7 @@ COPY --chmod=755 scripts/ /scripts/
 COPY --chmod=755 scenarios/ /scenarios/
 COPY pjdtest/ /pjdtest/
 COPY --chmod=755 dingo /usr/local/bin/dingo
+COPY --chmod=755 elbencho/elbencho /usr/local/bin/elbencho
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 COPY dingofs-integration-test /dingofs-integration-test
