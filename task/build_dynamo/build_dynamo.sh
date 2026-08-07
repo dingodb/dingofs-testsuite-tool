@@ -107,11 +107,20 @@ echo "[2/8] 安装系统依赖..."
 
 if [ "${SKIP_DEPS}" = true ]; then
     echo "跳过系统依赖安装 (--skip-deps)"
-else
-    sudo dnf groupinstall -y "Development Tools"
-    sudo dnf --enablerepo=devel install -y protobuf-compiler
+elif command -v apt-get &>/dev/null; then
+    echo "检测到 apt-get (Ubuntu/Debian)，安装系统依赖..."
+    sudo apt-get update -qq
+    sudo apt-get install -y -qq build-essential protobuf-compiler libhwloc-dev \
+        libsystemd-dev pkg-config clang python3-dev cmake 2>/dev/null || true
+    echo "系统依赖安装完成"
+elif command -v dnf &>/dev/null; then
+    echo "检测到 dnf (RHEL/CentOS)，安装系统依赖..."
+    sudo dnf groupinstall -y "Development Tools" 2>/dev/null || true
+    sudo dnf --enablerepo=devel install -y protobuf-compiler 2>/dev/null || true
     sudo dnf install -y hwloc-devel systemd-devel pkgconfig clang-devel protobuf-compiler python3-devel cmake
     echo "系统依赖安装完成"
+else
+    echo "警告: 未检测到包管理器，跳过依赖安装"
 fi
 
 STAGE_deps=$(($(date +%s) - T0))
