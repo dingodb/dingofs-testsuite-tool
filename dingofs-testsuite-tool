@@ -374,6 +374,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
     warmup              env_126_warmup
     client              env_40_dingofs
     cache_node          env_40_dingofs
+    fault               env_40_dingofs (chaos)
     mds_manage          env_126_mds_manage
 
   选项:
@@ -1079,6 +1080,10 @@ cmd_daily() {
         warmup --env env_${env}_warmup \
         client --env env_40_dingofs \
         cache_node --env env_40_dingofs \
+        fault --env env_40_dingofs \
+            --case testcases/fault_test_cases \
+            --enable-external-chaos \
+            --chaos-tool-path /mnt/disk5/dingo_autotest/dingofs-chaos-tool \
         mds_manage --env env_${env}_mds_manage \
         --log_path /output \
         --commit_info_file_path ${commit_info_file} \
