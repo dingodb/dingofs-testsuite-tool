@@ -8,6 +8,7 @@ if [ $# -ne 1 ]; then
 fi
 
 TEST_PATH="$1"
+OUT_DIR="${2:-/output}"
 
 # 检查目录是否存在，不存在则创建
 if [ ! -d "$TEST_PATH" ]; then
@@ -20,8 +21,8 @@ if ! command -v elbencho &> /dev/null; then
     exit 1
 fi
 
-# 创建本次测试的根目录（带时间戳）
-ROOT_DIR="elbencho_benchmark_$(date +%Y%m%d_%H%M%S)"
+# 创建本次测试的根目录（带时间戳，放到 output 目录下避免 FUSE 权限问题）
+ROOT_DIR="$OUT_DIR/elbencho_small_$(date +%Y%m%d_%H%M%S)"
 mkdir -p "$ROOT_DIR"
 RAW_LOG_DIR="$ROOT_DIR/raw_logs"
 mkdir -p "$RAW_LOG_DIR"

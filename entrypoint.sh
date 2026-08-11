@@ -2173,8 +2173,8 @@ elbencho_run() {
     # Handle script-based scenarios
     if [[ "$SCENARIO" == "small" ]] || [[ "$SCENARIO" == "full" ]]; then
         local script="/scenarios/elbencho/${SCENARIO}.sh"
-        echo "Executing: bash $script $MOUNT"
-        bash "$script" "$MOUNT" 2>&1 | tee "$elb_output/${SCENARIO}.log"
+        echo "Executing: bash $script $MOUNT $OUTPUT"
+        bash "$script" "$MOUNT" "$OUTPUT" 2>&1 | tee "$elb_output/${SCENARIO}.log"
         local sc_exit=${PIPESTATUS[0]}
         log_result "elbencho" "$SCENARIO" "$sc_exit" "" "$elb_output"
         return $sc_exit
