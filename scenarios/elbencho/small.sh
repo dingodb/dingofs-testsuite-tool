@@ -32,7 +32,7 @@ RESULT_FILE="$ROOT_DIR/result.csv"
 echo "测试类型,并发度,吞吐量(MiB/s),平均延迟(ms),最大延迟(ms),原始日志文件" > "$RESULT_FILE"
 
 # 固定测试参数
-FILE_SIZE="100m"
+FILE_SIZE="4m"
 BLOCK_SIZE="4m"
 DIRS_PER_THREAD=1
 FILES_PER_DIR=256
