@@ -3674,176 +3674,55 @@ cmd_install() {
     esac
 }
 
-_install_mdtest_local() {
-    local runtime=$(load_config runtime)
-    local image=$(load_config image)
-
-    if ! command -v "$runtime" &> /dev/null; then
-        echo "错误: 未找到运行时 '$runtime'，请先安装，或执行 'dtt config set runtime <运行时>'"
-        return 1
-    fi
-    if [[ -z "$image" ]]; then
-        echo "错误: 未配置镜像，请先执行 'dtt config set image <镜像>'"
-        return 1
-    fi
-
-    local SUDO=""
-    [[ "$EUID" -ne 0 ]] && SUDO="sudo -E"
-
-    echo "=============================================="
-    echo "本地安装 mdtest"
-    echo "=============================================="
-    echo "  运行时:   $runtime"
-    echo "  镜像:     $image"
-    echo "  安装目录: /usr/local/bin"
-    echo ""
-
-    # 1. 确保镜像存在
-    if ! $runtime image inspect "$image" >/dev/null 2>&1; then
-        echo "镜像不存在，正在拉取 $image ..."
-        $runtime pull "$image" || { echo "错误: 拉取镜像失败"; return 1; }
-    fi
-
-    # 2. 安装 MPI 依赖
-    echo "安装 MPI 依赖 (openmpi) ..."
-    if command -v apt-get &> /dev/null; then
-        $SUDO apt-get update && \
-        $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev
-    elif command -v dnf &> /dev/null; then
-        $SUDO dnf install -y openmpi openmpi-devel
-    elif command -v yum &> /dev/null; then
-        $SUDO yum install -y openmpi openmpi-devel
-    else
-        echo "  警告: 未检测到 apt-get/dnf/yum，跳过 MPI 依赖安装"
-    fi
-
-    # 3. 从镜像提取 mdtest 二进制
-    local tmp_bin="/tmp/mdtest_install_$$"
-    echo "从镜像提取 /usr/local/bin/mdtest ..."
-    $runtime run --rm --privileged --entrypoint cat "$image" /usr/local/bin/mdtest > "$tmp_bin" || {
-        echo "错误: 提取 mdtest 二进制失败"
-        rm -f "$tmp_bin"
-        return 1
-    }
-
-    if [[ ! -s "$tmp_bin" ]]; then
-        echo "错误: 提取的 mdtest 二进制为空"
-        rm -f "$tmp_bin"
-        return 1
-    fi
-
-    # 4. 安装到 /usr/local/bin
-    $SUDO install -m 755 "$tmp_bin" /usr/local/bin/mdtest || {
-        echo "错误: 安装到 /usr/local/bin 失败"
-        rm -f "$tmp_bin"
-        return 1
-    }
-    rm -f "$tmp_bin"
-
-    # 5. 验证
-    echo ""
-    local missing
-    missing=$(ldd /usr/local/bin/mdtest 2>&1 | grep -i "not found")
-    if [[ -n "$missing" ]]; then
-        echo "警告: 检测到缺失的动态库，mdtest 可能无法运行:"
-        echo "$missing"
-    else
-        echo "动态库依赖检查通过"
-    fi
-
-    if command -v mpirun &> /dev/null; then
-        echo "mpirun 可用: $(command -v mpirun)"
-    else
-        echo "提示: 未在 PATH 中找到 mpirun"
-        echo "  - Debian/Ubuntu: 安装 openmpi-bin 后通常可直接使用"
-        echo "  - RHEL/CentOS:  可能需要 'module load mpi/openmpi-x86_64' 或将 /usr/lib64/openmpi/bin 加入 PATH"
-    fi
-
-    echo ""
-    echo "安装完成: /usr/local/bin/mdtest"
-    echo "运行方式: mpirun -np <进程数> /usr/local/bin/mdtest <选项>"
-    echo "注意: 镜像基于 Ubuntu 24.04 构建，若宿主机 glibc 版本较旧，二进制可能无法运行"
-}
-
-_install_mdtest_remote() {
-    local host="$1"
-    local runtime=$(load_config runtime)
-    local image=$(load_config image)
-
-    if ! command -v "$runtime" &> /dev/null; then
-        echo "错误: 未找到运行时 '$runtime'，请先安装，或执行 'dtt config set runtime <运行时>'"
-        return 1
-    fi
-    if [[ -z "$image" ]]; then
-        echo "错误: 未配置镜像，请先执行 'dtt config set image <镜像>'"
-        return 1
-    fi
-    if ! command -v ssh &> /dev/null; then
-        echo "错误: 未找到 ssh 命令"
-        return 1
-    fi
-
-    echo "=============================================="
-    echo "远程安装 mdtest"
-    echo "=============================================="
-    echo "  目标主机: $host"
-    echo "  运行时:   $runtime"
-    echo "  镜像:     $image"
-    echo "  安装目录: /usr/local/bin"
-    echo ""
-
-    # 1. 确保镜像存在（本地提取用）
-    if ! $runtime image inspect "$image" >/dev/null 2>&1; then
-        echo "镜像不存在，正在拉取 $image ..."
-        $runtime pull "$image" || { echo "错误: 拉取镜像失败"; return 1; }
-    fi
-
-    # 2. 本地提取二进制
-    local tmp_bin="/tmp/mdtest_install_$$"
-    echo "从镜像提取 /usr/local/bin/mdtest ..."
-    $runtime run --rm --privileged --entrypoint cat "$image" /usr/local/bin/mdtest > "$tmp_bin" || {
-        echo "错误: 提取 mdtest 二进制失败"
-        rm -f "$tmp_bin"
-        return 1
-    }
-    if [[ ! -s "$tmp_bin" ]]; then
-        echo "错误: 提取的 mdtest 二进制为空"
-        rm -f "$tmp_bin"
-        return 1
-    fi
-
-    # 3. 传输到远程主机
-    local remote_tmp="/tmp/mdtest_install_$$"
-    echo "传输二进制到 $host ..."
-    scp -q "$tmp_bin" "$host:$remote_tmp" || {
-        echo "错误: 传输到远程主机失败"
-        rm -f "$tmp_bin"
-        return 1
-    }
-    rm -f "$tmp_bin"
-
-    # 4. 远程安装 MPI 依赖 + 安装二进制 + 验证
-    echo "远程安装 MPI 依赖并安装 mdtest ..."
-    ssh "$host" "bash -s $remote_tmp" << 'REMOTE_EOF'
+_mdtest_build_script() {
+    cat << 'BUILD_EOF'
 set -e
-TMP_BIN="$1"
 SUDO=""
 [[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
 
+echo "==> 安装编译依赖和 openmpi ..."
 if command -v apt-get &> /dev/null; then
     $SUDO apt-get update
-    $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openmpi-bin libopenmpi-dev
+    $SUDO DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        git build-essential autoconf automake libtool pkg-config openmpi-bin libopenmpi-dev libaio-dev
 elif command -v dnf &> /dev/null; then
-    $SUDO dnf install -y openmpi openmpi-devel
+    $SUDO dnf install -y git gcc gcc-c++ make autoconf automake libtool pkg-config openmpi openmpi-devel libaio-devel
 elif command -v yum &> /dev/null; then
-    $SUDO yum install -y openmpi openmpi-devel
+    $SUDO yum install -y git gcc gcc-c++ make autoconf automake libtool pkg-config openmpi openmpi-devel libaio-devel
 else
-    echo "警告: 未检测到 apt-get/dnf/yum，跳过 MPI 依赖安装"
+    echo "错误: 未检测到 apt-get/dnf/yum，无法安装编译依赖"
+    exit 1
 fi
 
-$SUDO install -m 755 "$TMP_BIN" /usr/local/bin/mdtest
-rm -f "$TMP_BIN"
+# RHEL/CentOS: openmpi 的 mpicc 和 libmpi 在 /usr/lib64/openmpi 下，不在默认路径
+if [[ -d /usr/lib64/openmpi/bin ]]; then
+    export PATH="/usr/lib64/openmpi/bin:$PATH"
+fi
+if [[ -d /usr/lib64/openmpi/lib ]] && ls /usr/lib64/openmpi/lib/libmpi.so* &>/dev/null; then
+    echo "/usr/lib64/openmpi/lib" | $SUDO tee /etc/ld.so.conf.d/openmpi-x86_64.conf >/dev/null
+    $SUDO ldconfig
+fi
 
+echo "==> 从源码编译 IOR/mdtest ..."
+WORK_DIR=$(mktemp -d /tmp/ior_build.XXXXXX)
+trap 'rm -rf "$WORK_DIR"' EXIT
+cd "$WORK_DIR"
+git clone --depth 1 https://github.com/hpc/ior.git
+cd ior
+./bootstrap
+./configure --prefix=/usr/local
+make -j"$(nproc)"
+$SUDO make install
+
+# RHEL/CentOS: mpirun/mpiexec 不在 PATH，软链到 /usr/local/bin
+if [[ -d /usr/lib64/openmpi/bin ]]; then
+    for b in mpirun mpiexec; do
+        $SUDO ln -sf "/usr/lib64/openmpi/bin/$b" "/usr/local/bin/$b"
+    done
+fi
+
+echo ""
+echo "==> 验证 ..."
 missing=$(ldd /usr/local/bin/mdtest 2>&1 | grep -i "not found" || true)
 if [[ -n "$missing" ]]; then
     echo "警告: 检测到缺失的动态库:"
@@ -3858,14 +3737,40 @@ else
     echo "提示: 未在 PATH 中找到 mpirun"
 fi
 
+echo ""
 echo "安装完成: /usr/local/bin/mdtest"
-REMOTE_EOF
+echo "运行方式: mpirun -np <进程数> /usr/local/bin/mdtest <选项>"
+BUILD_EOF
+}
 
-    local rc=$?
-    if [[ $rc -ne 0 ]]; then
-        echo "错误: 远程安装失败 (exit $rc)"
+_install_mdtest_local() {
+    echo "=============================================="
+    echo "本地安装 mdtest（源码编译）"
+    echo "=============================================="
+    echo "  安装目录: /usr/local/bin"
+    echo ""
+
+    _mdtest_build_script | bash
+    return $?
+}
+
+_install_mdtest_remote() {
+    local host="$1"
+
+    if ! command -v ssh &> /dev/null; then
+        echo "错误: 未找到 ssh 命令"
         return 1
     fi
+
+    echo "=============================================="
+    echo "远程安装 mdtest（源码编译）"
+    echo "=============================================="
+    echo "  目标主机: $host"
+    echo "  安装目录: /usr/local/bin"
+    echo ""
+
+    _mdtest_build_script | ssh "$host" bash -s
+    return $?
 }
 
 # ==============================================================================
