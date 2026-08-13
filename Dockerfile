@@ -211,6 +211,7 @@ COPY --chmod=755 elbencho/elbencho /usr/local/bin/elbencho
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 COPY dingofs-integration-test /dingofs-integration-test
+COPY --chmod=755 dingofs-chaos-tool/ /opt/dingofs-chaos-tool/
 COPY --chmod=755 task/ /task/
 COPY --chmod=755 xfstests-dev/ /xfstests-dev/
 COPY --chmod=755 dingofs/build/bin/dingo-client /usr/local/bin/dingo-client

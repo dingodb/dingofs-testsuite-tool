@@ -1770,8 +1770,16 @@ EOF
     local cmd=(
         python3 run_tests.py "$module" --env "$test_env"
         --report-path "$int_output" --report-dir "$report_dir"
-        --reruns 5 --email ""
+        --reruns 2 --email ""
     )
+    # Append fault-specific flags from env vars
+    if [[ -n "${INT_CASE:-}" ]]; then
+        cmd+=("--case" "$INT_CASE")
+    fi
+    if [[ "${INT_ENABLE_EXT_CHAOS:-}" == "1" ]]; then
+        cmd+=("--enable-external-chaos")
+        cmd+=("--chaos-tool-path" "${INT_CHAOS_PATH:-/opt/dingofs-chaos-tool}")
+    fi
     echo "Executing: ${cmd[*]}"
     (
         trap 'kill -INT $$' INT TERM

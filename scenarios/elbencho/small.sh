@@ -23,9 +23,8 @@ fi
 
 # 创建本次测试的根目录（带时间戳，放到 output 目录下避免 FUSE 权限问题）
 ROOT_DIR="$OUT_DIR/elbencho_small_$(date +%Y%m%d_%H%M%S)"
-mkdir -p "$ROOT_DIR"
+mkdir -p "$ROOT_DIR/raw_logs" || { echo "错误: 无法创建输出目录"; exit 1; }
 RAW_LOG_DIR="$ROOT_DIR/raw_logs"
-mkdir -p "$RAW_LOG_DIR"
 
 # 结果 CSV 文件
 RESULT_FILE="$ROOT_DIR/result.csv"
@@ -56,33 +55,27 @@ run_test() {
     fi
 
     echo "运行: $cmd"
+    # 确保目录存在
+    mkdir -p "$(dirname "$raw_log")"
+    mkdir -p "$(dirname "$RESULT_FILE")"
     # 执行并保存输出
     $cmd 2>&1 | tee "$raw_log"
 
     # ---- 解析结果 ----
-    # 1. 吞吐量：从 "Throughput MiB/s : 数字" 中提取
+    # 1. 吞吐量：从 "Throughput MiB/s" 行提取
     local throughput="N/A"
-    local tp_line=$(grep -i "Throughput MiB/s" "$raw_log" | head -1)
+    local tp_line=$(grep -i "Throughput MiB" "$raw_log" | head -1)
     if [ -n "$tp_line" ]; then
-        # 提取冒号后的数字（可能带小数点）
         throughput=$(echo "$tp_line" | grep -oE '[0-9]+(\.[0-9]+)?' | head -1)
     fi
 
-    # 2. 文件级延迟：从 "Files latency" 行提取 avg 和 max（单位 ms）
+    # 2. 延迟：从 "Files latency" 行提取
     local avg_lat="N/A"
     local max_lat="N/A"
     local lat_line=$(grep -i "Files latency" "$raw_log" | head -1)
     if [ -n "$lat_line" ]; then
-        # 提取 avg=数字ms 和 max=数字ms
         avg_lat=$(echo "$lat_line" | grep -oP 'avg=\K[0-9.]+')
         max_lat=$(echo "$lat_line" | grep -oP 'max=\K[0-9.]+')
-        # 如果未提取到，尝试匹配带 ms 的格式
-        if [ -z "$avg_lat" ]; then
-            avg_lat=$(echo "$lat_line" | grep -oP 'avg=\K[0-9.]+ms' | sed 's/ms//')
-        fi
-        if [ -z "$max_lat" ]; then
-            max_lat=$(echo "$lat_line" | grep -oP 'max=\K[0-9.]+ms' | sed 's/ms//')
-        fi
     fi
 
     # 记录结果

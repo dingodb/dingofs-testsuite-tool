@@ -1084,7 +1084,7 @@ cmd_daily() {
         fault --env env_40_dingofs \
             --case testcases/fault_test_cases \
             --enable-external-chaos \
-            --chaos-tool-path /mnt/disk5/dingo_autotest/dingofs-chaos-tool \
+            --chaos-tool-path /opt/dingofs-chaos-tool \
         mds_manage --env env_${env}_mds_manage \
         --log_path /output \
         --commit_info_file_path ${commit_info_file} \
