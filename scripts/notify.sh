@@ -159,10 +159,8 @@ send_email_notification() {
     </table>"
     elif [[ "$details" =~ \|tp: ]]; then
         # elbencho performance metrics — format: "read|threads:32|tp:3168|avg:35.8|max:167"
-        html_content="${html_content}
-    <h3>性能指标</h3>
-    <table border='1' cellpadding='5' cellspacing='0'>
-    <tr><th>操作</th><th>并发数</th><th>吞吐量 (MiB/s)</th><th>平均延迟 (ms)</th><th>最大延迟 (ms)</th></tr>"
+        local write_rows=""
+        local read_rows=""
         while IFS= read -r mline; do
             [[ -z "$mline" ]] && continue
             local op="${mline%%|*}"
@@ -171,11 +169,29 @@ send_email_notification() {
             local tp="${rest#*tp:}"; tp="${tp%%|*}"
             local av="${rest#*avg:}"; av="${av%%|*}"
             local mx="${rest#*max:}"; mx="${mx%%|*}"
-            html_content="${html_content}
-    <tr><td>${op}</td><td>${tv}</td><td>${tp}</td><td>${av}</td><td>${mx}</td></tr>"
+            local row="    <tr><td>${tv}</td><td>${tp}</td><td>${av}</td><td>${mx}</td></tr>
+"
+            if [[ "$op" == "read" ]]; then
+                read_rows+="$row"
+            else
+                write_rows+="$row"
+            fi
         done <<< "$(echo -e "$details")"
-        html_content="${html_content}
-    </table>"
+
+        if [[ -n "$write_rows" ]]; then
+            html_content="${html_content}
+    <h3>写性能</h3>
+    <table border='1' cellpadding='5' cellspacing='0'>
+    <tr><th>并发数</th><th>吞吐量 (MiB/s)</th><th>平均延迟 (ms)</th><th>最大延迟 (ms)</th></tr>
+${write_rows}    </table>"
+        fi
+        if [[ -n "$read_rows" ]]; then
+            html_content="${html_content}
+    <h3>读性能</h3>
+    <table border='1' cellpadding='5' cellspacing='0'>
+    <tr><th>并发数</th><th>吞吐量 (MiB/s)</th><th>平均延迟 (ms)</th><th>最大延迟 (ms)</th></tr>
+${read_rows}    </table>"
+        fi
     elif [[ -n "$details" ]]; then
         local passed_val=""
         local failed_val=""
@@ -403,11 +419,8 @@ send_wechat_notification() {
 | ${sname} | ${cmd_v:0:50} | ${cv:-0} | ${sv:-0} | ${rv:-0} | ${rmv:-0} | ${tcv:-0} | ${trv:-0} |"
             done <<< "$(echo -e "$details")"
         elif [[ "$details" =~ \|tp: ]]; then
-            content="${content}
-
-**Elbencho 性能指标:**
-| 操作 | 并发数 | 吞吐量 (MiB/s) | 平均延迟 (ms) | 最大延迟 (ms) |
-|------|--------|----------------|--------------|--------------|"
+            local write_rows=""
+            local read_rows=""
             while IFS= read -r mline; do
                 [[ -z "$mline" ]] && continue
                 local op="${mline%%|*}"
@@ -416,9 +429,31 @@ send_wechat_notification() {
                 local tp="${rest#*tp:}"; tp="${tp%%|*}"
                 local av="${rest#*avg:}"; av="${av%%|*}"
                 local mx="${rest#*max:}"; mx="${mx%%|*}"
-                content="${content}
-| ${op} | ${tv} | ${tp} | ${av} | ${mx} |"
+                local row="| ${tv} | ${tp} | ${av} | ${mx} |
+"
+                if [[ "$op" == "read" ]]; then
+                    read_rows+="$row"
+                else
+                    write_rows+="$row"
+                fi
             done <<< "$(echo -e "$details")"
+
+            if [[ -n "$write_rows" ]]; then
+                content="${content}
+
+**写性能:**
+| 并发数 | 吞吐量 (MiB/s) | 平均延迟 (ms) | 最大延迟 (ms) |
+|--------|----------------|--------------|--------------|
+${write_rows}"
+            fi
+            if [[ -n "$read_rows" ]]; then
+                content="${content}
+
+**读性能:**
+| 并发数 | 吞吐量 (MiB/s) | 平均延迟 (ms) | 最大延迟 (ms) |
+|--------|----------------|--------------|--------------|
+${read_rows}"
+            fi
         else
             content="${content}
 
