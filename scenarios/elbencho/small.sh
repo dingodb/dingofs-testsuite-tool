@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 检查参数
-if [ $# -ne 1 ]; then
-    echo "用法: $0 <测试目录>"
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "用法: $0 <测试目录> [输出目录]"
     echo "示例: $0 /mnt/disk5/dingo_autotest/client/test1"
     exit 1
 fi
