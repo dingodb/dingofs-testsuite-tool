@@ -153,7 +153,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   cluster <子命令>   管理 DingoFS 集群（update / status）
   deploy <子命令>    部署运维工具到目标机器
   debug              在测试容器中启动交互式 Shell
-  install <工具>     安装测试工具到本地或远程（如 mdtest，可加 --host）
+  install <工具>     安装测试工具到本地或远程（mdtest, elbencho，可加 --host）
   --setup-env <名>   创建文件系统并挂载，更新 testdir 配置
   --cleanup-env <名> 卸载并清理文件系统
   help               显示此帮助信息
@@ -3636,8 +3636,8 @@ cmd_deploy_bin_tool() {
 # ==============================================================================
 
 cmd_install() {
-    local tool="$1"
-    shift
+    local tool="${1:-}"
+    [[ $# -gt 0 ]] && shift
     local host=""
 
     while [[ $# -gt 0 ]]; do
@@ -3655,7 +3655,7 @@ cmd_install() {
 
     if [[ -z "$tool" ]]; then
         echo "用法: dtt install <工具> [--host <host名或ip>]"
-        echo "目前支持: mdtest"
+        echo "目前支持: mdtest, elbencho"
         return 1
     fi
 
@@ -3667,8 +3667,15 @@ cmd_install() {
                 _install_mdtest_local
             fi
             ;;
+        elbencho)
+            if [[ -n "$host" ]]; then
+                _install_elbencho_remote "$host"
+            else
+                _install_elbencho_local
+            fi
+            ;;
         *)
-            echo "错误: 暂不支持安装 '$tool'，目前仅支持 mdtest"
+            echo "错误: 暂不支持安装 '$tool'，目前仅支持 mdtest, elbencho"
             return 1
             ;;
     esac
@@ -3772,6 +3779,139 @@ _install_mdtest_remote() {
 
     _mdtest_build_script | ssh "$host" bash -s
     return $?
+}
+
+_install_elbencho_local() {
+    local runtime=$(load_config runtime)
+    local image=$(load_config image)
+
+    if ! command -v "$runtime" &> /dev/null; then
+        echo "错误: 未找到运行时 '$runtime'，请先安装，或执行 'dtt config set runtime <运行时>'"
+        return 1
+    fi
+    if [[ -z "$image" ]]; then
+        echo "错误: 未配置镜像，请先执行 'dtt config set image <镜像>'"
+        return 1
+    fi
+
+    local SUDO=""
+    [[ "$EUID" -ne 0 ]] && SUDO="sudo -E"
+
+    echo "=============================================="
+    echo "本地安装 elbencho"
+    echo "=============================================="
+    echo "  运行时:   $runtime"
+    echo "  镜像:     $image"
+    echo "  安装目录: /usr/local/bin"
+    echo ""
+
+    # 1. 确保镜像存在
+    if ! $runtime image inspect "$image" >/dev/null 2>&1; then
+        echo "镜像不存在，正在拉取 $image ..."
+        $runtime pull "$image" || { echo "错误: 拉取镜像失败"; return 1; }
+    fi
+
+    # 2. 从镜像提取 elbencho 二进制（静态链接，跨发行版可用）
+    local tmp_bin="/tmp/elbencho_install_$$"
+    echo "从镜像提取 /usr/local/bin/elbencho ..."
+    $runtime run --rm --privileged --entrypoint cat "$image" /usr/local/bin/elbencho > "$tmp_bin" || {
+        echo "错误: 提取 elbencho 二进制失败"
+        rm -f "$tmp_bin"
+        return 1
+    }
+    if [[ ! -s "$tmp_bin" ]]; then
+        echo "错误: 提取的 elbencho 二进制为空"
+        rm -f "$tmp_bin"
+        return 1
+    fi
+
+    # 3. 安装到 /usr/local/bin
+    $SUDO install -m 755 "$tmp_bin" /usr/local/bin/elbencho || {
+        echo "错误: 安装到 /usr/local/bin 失败"
+        rm -f "$tmp_bin"
+        return 1
+    }
+    rm -f "$tmp_bin"
+
+    echo ""
+    echo "安装完成: /usr/local/bin/elbencho"
+    echo "运行方式: elbencho --help"
+}
+
+_install_elbencho_remote() {
+    local host="$1"
+    local runtime=$(load_config runtime)
+    local image=$(load_config image)
+
+    if ! command -v "$runtime" &> /dev/null; then
+        echo "错误: 未找到运行时 '$runtime'，请先安装，或执行 'dtt config set runtime <运行时>'"
+        return 1
+    fi
+    if [[ -z "$image" ]]; then
+        echo "错误: 未配置镜像，请先执行 'dtt config set image <镜像>'"
+        return 1
+    fi
+    if ! command -v ssh &> /dev/null; then
+        echo "错误: 未找到 ssh 命令"
+        return 1
+    fi
+
+    echo "=============================================="
+    echo "远程安装 elbencho"
+    echo "=============================================="
+    echo "  目标主机: $host"
+    echo "  运行时:   $runtime"
+    echo "  镜像:     $image"
+    echo "  安装目录: /usr/local/bin"
+    echo ""
+
+    # 1. 确保镜像存在
+    if ! $runtime image inspect "$image" >/dev/null 2>&1; then
+        echo "镜像不存在，正在拉取 $image ..."
+        $runtime pull "$image" || { echo "错误: 拉取镜像失败"; return 1; }
+    fi
+
+    # 2. 本地提取二进制
+    local tmp_bin="/tmp/elbencho_install_$$"
+    echo "从镜像提取 /usr/local/bin/elbencho ..."
+    $runtime run --rm --privileged --entrypoint cat "$image" /usr/local/bin/elbencho > "$tmp_bin" || {
+        echo "错误: 提取 elbencho 二进制失败"
+        rm -f "$tmp_bin"
+        return 1
+    }
+    if [[ ! -s "$tmp_bin" ]]; then
+        echo "错误: 提取的 elbencho 二进制为空"
+        rm -f "$tmp_bin"
+        return 1
+    fi
+
+    # 3. 传输到远程主机
+    local remote_tmp="/tmp/elbencho_install_$$"
+    echo "传输二进制到 $host ..."
+    scp -q "$tmp_bin" "$host:$remote_tmp" || {
+        echo "错误: 传输到远程主机失败"
+        rm -f "$tmp_bin"
+        return 1
+    }
+    rm -f "$tmp_bin"
+
+    # 4. 远程安装
+    echo "远程安装 elbencho ..."
+    ssh "$host" "bash -s $remote_tmp" << 'REMOTE_EOF'
+set -e
+TMP_BIN="$1"
+SUDO=""
+[[ "$(id -u)" -ne 0 ]] && SUDO="sudo"
+$SUDO install -m 755 "$TMP_BIN" /usr/local/bin/elbencho
+rm -f "$TMP_BIN"
+echo "安装完成: /usr/local/bin/elbencho"
+REMOTE_EOF
+
+    local rc=$?
+    if [[ $rc -ne 0 ]]; then
+        echo "错误: 远程安装失败 (exit $rc)"
+        return 1
+    fi
 }
 
 # ==============================================================================
