@@ -2157,6 +2157,28 @@ xfstest_run() {
 # Task Runner — special workload scenarios under /task/
 # ==============================================================================
 
+elbencho_notify() {
+    local start_ts="$1"
+    local status="$2"
+    local scenario="$3"
+    local metrics_summary="${4:-}"
+
+    local total_dur=$(( $(date +%s) - start_ts ))
+    local dur_str
+    if [[ $total_dur -ge 60 ]]; then
+        dur_str="${total_dur}s ($(($total_dur/60))m $(($total_dur%60))s)"
+    else
+        dur_str="${total_dur}s"
+    fi
+
+    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
+        send_wechat_notification "elbencho" "$scenario" "$status" "$dur_str" "$metrics_summary"
+    fi
+    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
+        send_email_notification "elbencho" "$scenario" "$status" "$dur_str" "$metrics_summary"
+    fi
+}
+
 elbencho_run() {
     local elbencho_start=$(date +%s)
 
@@ -2185,6 +2207,10 @@ elbencho_run() {
         bash "$script" "$MOUNT" "$OUTPUT" 2>&1 | tee "$elb_output/${SCENARIO}.log"
         local sc_exit=${PIPESTATUS[0]}
         log_result "elbencho" "$SCENARIO" "$sc_exit" "" "$elb_output"
+
+        local elb_status="SUCCESS"
+        [[ $sc_exit -ne 0 ]] && elb_status="FAIL"
+        elbencho_notify "$elbencho_start" "$elb_status" "$SCENARIO" ""
         return $sc_exit
     fi
 
@@ -2247,20 +2273,7 @@ print(f'{bw:.1f}MiB/s')
 
     # Notification
     if [[ $overall_exit -eq 0 ]]; then local elb_status="SUCCESS"; else local elb_status="FAIL"; fi
-    local total_dur=$(( $(date +%s) - elbencho_start ))
-    local dur_str=""
-    if [[ $total_dur -ge 60 ]]; then
-        dur_str="${total_dur}s ($(($total_dur/60))m $(($total_dur%60))s)"
-    else
-        dur_str="${total_dur}s"
-    fi
-
-    if [[ "$WECHAT_ENABLED" == "yes" ]]; then
-        send_wechat_notification "elbencho" "$SCENARIO" "$elb_status" "$dur_str" "$metrics_summary"
-    fi
-    if [[ "$EMAIL_ENABLED" == "yes" ]]; then
-        send_email_notification "elbencho" "$SCENARIO" "$elb_status" "$dur_str" "$metrics_summary"
-    fi
+    elbencho_notify "$elbencho_start" "$elb_status" "$SCENARIO" "$metrics_summary"
 
     log_result "elbencho" "$SCENARIO" "$overall_exit" "" "$elb_output"
     return $overall_exit
