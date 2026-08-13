@@ -2210,7 +2210,20 @@ elbencho_run() {
 
         local elb_status="SUCCESS"
         [[ $sc_exit -ne 0 ]] && elb_status="FAIL"
-        elbencho_notify "$elbencho_start" "$elb_status" "$SCENARIO" ""
+
+        local metrics_summary=""
+        while IFS= read -r line; do
+            line=$(echo "$line" | xargs)
+            [[ -z "$line" ]] && continue
+            local op=$(echo "$line" | sed -n 's/^结果: \([^,]*\).*/\1/p')
+            local thr=$(echo "$line" | sed -n 's/^结果: [^,]*, \([^,]*\).*/\1/p')
+            local tp=$(echo "$line" | sed -n 's/.*吞吐量=\([^ ]*\).*/\1/p')
+            local avg=$(echo "$line" | sed -n 's/.*平均延迟=\([^ ]*\).*/\1/p')
+            local max=$(echo "$line" | sed -n 's/.*最大延迟=\([^ ]*\).*/\1/p')
+            metrics_summary+="${op}|threads:${thr}|tp:${tp}|avg:${avg}|max:${max}\n"
+        done < <(grep '结果:' "$elb_output/${SCENARIO}.log" 2>/dev/null)
+
+        elbencho_notify "$elbencho_start" "$elb_status" "$SCENARIO" "$metrics_summary"
         return $sc_exit
     fi
 
