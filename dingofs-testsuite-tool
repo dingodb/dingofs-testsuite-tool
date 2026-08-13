@@ -1475,7 +1475,7 @@ run_docker_help() {
         return 1
     fi
 
-    $runtime run --rm --net=host "$image" -t "$tool" --help
+    $runtime run --rm --privileged --net=host "$image" -t "$tool" --help
 }
 
 run_testsuite() {
