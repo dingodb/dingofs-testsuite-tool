@@ -1,15 +1,16 @@
 #!/bin/bash
 # elbencho 多线程综合测试（单节点版）
-# 参数: <测试目录>
+# 参数: <测试目录> [输出目录]
 # 测试: 大文件(4M/8G) + 小文件(4K/8G), 1-64线程, 写/读/删除
 
-if [ $# -ne 1 ]; then
-    echo "用法: $0 <测试目录>"
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "用法: $0 <测试目录> [输出目录]"
     echo "示例: $0 /data"
     exit 1
 fi
 
 TESTDIR="$1"
+OUT_DIR="${2:-/output}"
 ELBENCHO=/usr/local/bin/elbencho
 
 mkdir -p "$TESTDIR"
