@@ -2928,7 +2928,7 @@ smoke_run() {
     set +e
     (
         trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py client --run-level smoke --env "$INT_ENV" --reruns 5 2>&1 | tee "$int_client_log"
+        cd "$INTEGRATION_DIR" && python3 run_tests.py client --run-level smoke --env "$INT_ENV" --reruns 2 2>&1 | tee "$int_client_log"
     )
     local int_client_exit=${PIPESTATUS[0]}
     set -e
@@ -2957,7 +2957,7 @@ smoke_run() {
     set +e
     (
         trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py cache_node --run-level smoke --env "$INT_ENV" --reruns 5 2>&1 | tee "$int_cachenode_log"
+        cd "$INTEGRATION_DIR" && python3 run_tests.py cache_node --run-level smoke --env "$INT_ENV" --reruns 2 2>&1 | tee "$int_cachenode_log"
     )
     local int_cachenode_exit=${PIPESTATUS[0]}
     set -e
@@ -2986,7 +2986,7 @@ smoke_run() {
     set +e
     (
         trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py quota --run-level smoke --env "$INT_ENV" --reruns 5 2>&1 | tee "$int_quota_log"
+        cd "$INTEGRATION_DIR" && python3 run_tests.py quota --run-level smoke --env "$INT_ENV" --reruns 2 2>&1 | tee "$int_quota_log"
     )
     local int_quota_exit=${PIPESTATUS[0]}
     set -e
