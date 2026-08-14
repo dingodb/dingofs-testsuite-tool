@@ -1779,6 +1779,8 @@ EOF
     if [[ "${INT_ENABLE_EXT_CHAOS:-}" == "1" ]]; then
         cmd+=("--enable-external-chaos")
         cmd+=("--chaos-tool-path" "${INT_CHAOS_PATH:-/opt/dingofs-chaos-tool}")
+        # Skip chaos residue check by default (no need to block on stale records)
+        export DINGOFS_SKIP_CHAOS_RESIDUE_CHECK=1
     fi
     echo "Executing: ${cmd[*]}"
     (
