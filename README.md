@@ -410,7 +410,7 @@ dtt -t xfstest -s generic/001
 
 ## daily — 每日集成测试
 
-`dtt daily` 在容器内执行 `run_tests.py`，依次运行 11 个测试模块，每个失败用例重试 5 次，完成后生成 Allure 报告并发送邮件/微信通知。
+`dtt daily` 在容器内执行 `run_tests.py`，依次运行 12 个测试模块，每个失败用例重试 2 次，完成后生成 Allure 报告并发送邮件/微信通知。
 
 ### 模块列表
 
@@ -426,9 +426,12 @@ dtt -t xfstest -s generic/001
 | 8 | `warmup` | `env_126_warmup` |
 | 9 | `client` | `env_40_dingofs` |
 | 10 | `cache_node` | `env_40_dingofs` |
-| 11 | `mds_manage` | `env_126_mds_manage` |
+| 11 | `fault` | `env_79_dingofs` |
+| 12 | `mds_manage` | `env_126_mds_manage` |
 
 > 调试模式 (`--debug`) 仅运行 `client` 模块。
+>
+> `fault` 会启用 external chaos 和高风险故障，并将宿主机 `$HOME/.ssh/rocky_70` 只读挂载到容器；执行前必须确保该私钥文件存在。
 
 ### 使用示例
 
@@ -784,8 +787,8 @@ dtt cluster update 29 root -f /custom/topology.yaml
 或者分步进行：
 
 ```bash
-# 1. 构建镜像
-docker build -t dingofs-testsuite-tools .
+# 1. 构建本地镜像（构建前自动覆盖同步 dingofs-chaos-tool）
+DINGOFS_CHAOS_TOOL_SRC=/home/jenkins/dgy/github/dingofs-chaos-tool ./build.sh --debug
 
 # 2. 将 dingofs-testsuite-tool 加入 PATH
 export PATH="$PATH:/path/to/dingofs-storage-testsuite-tools"

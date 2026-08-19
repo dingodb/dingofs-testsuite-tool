@@ -1000,6 +1000,12 @@ cmd_daily() {
     fi
     mkdir -p "$output"
 
+    local fault_identity="$HOME/.ssh/rocky_70"
+    if [[ -z "$debug" ]] && [[ ! -f "$fault_identity" ]]; then
+        echo "Error: Fault SSH identity file not found: $fault_identity"
+        return 1
+    fi
+
     # commit_info.yaml file path
     local commit_info_file="__USER_HOME__/jenkins_workdir/script-main/commit_info.yaml"
 
@@ -1023,6 +1029,10 @@ cmd_daily() {
     fi
 
     docker_cmd+=("-v" "${output}:/output")
+
+    if [[ -z "$debug" ]]; then
+        docker_cmd+=("-v" "${fault_identity}:/root/.ssh/rocky_70:ro")
+    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
@@ -1086,10 +1096,11 @@ cmd_daily() {
         warmup --env env_${env}_warmup \
         client --env env_40_dingofs \
         cache_node --env env_40_dingofs \
-        fault --env env_40_dingofs \
-            --case testcases/fault_test_cases \
-            --enable-external-chaos \
+        fault --env env_79_dingofs \
             --chaos-tool-path /opt/dingofs-chaos-tool \
+            --ssh-identity-file /root/.ssh/rocky_70 \
+            --enable-external-chaos \
+            --allow-high-risk-chaos \
         mds_manage --env env_${env}_mds_manage \
         --log_path /output \
         --commit_info_file_path ${commit_info_file} \
