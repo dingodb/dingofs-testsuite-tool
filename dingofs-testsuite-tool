@@ -785,19 +785,21 @@ Smoke Test Suite
     1. pjdtest     -s all    (POSIX文件系统测试套件)
     2. mdtest      -s all -n 8 (元数据性能测试, 8进程)
     3. ltp         -s smoke   (LTP文件系统快速测试)
-    4. int_client  (集成测试 client, 使用 int_env 配置)
-    5. int_cache_node (集成测试 cache_node, 使用 int_env 配置)
-    6. int_quota   (集成测试 quota, 使用 env_126_quota)
+    4. xfstest     -s quick   (DingoFS TEST/SCRATCH 快速回归)
+    5. int_client  (集成测试 client, 使用 int_env 配置)
+    6. int_cache_node (集成测试 cache_node, 使用 int_env 配置)
+    7. int_quota   (集成测试 quota, 使用 int_env 配置)
 
   所有工具全部执行，单个工具失败不会中止后续工具运行。
+  xfstest 要求先配置 xfstest_mds_template；未配置时该项失败，不回退到本地文件模式。
   可通过 --exclude 排除指定工具。
   测试结果和汇总报告输出到 smoke_<timestamp>/ 目录。
 
 选项:
-  --wechat      启用企业微信通知（发送单条聚合通知，包含三个工具的汇总结果）
-  --email       启用邮件通知（发送单条聚合通知，包含三个工具的汇总结果）
+  --wechat      启用企业微信通知（发送单条聚合通知）
+  --email       启用邮件通知（发送单条聚合通知）
   --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,mdtest）
-                        可选值: pjdtest, mdtest, ltp, int
+                        可选值: pjdtest, mdtest, ltp, xfstest, int
                         int 代表 int_client, int_cache_node, int_quota 三个集成测试
   --debug       调试模式，容器执行完毕后保留不删除
   --help, -h    显示此帮助信息
@@ -1145,6 +1147,7 @@ cmd_smoke() {
     local config_output=$(load_config output)
     local config_mdsaddr=$(load_config mdsaddr)
     local config_custom=$(load_config custom)
+    local config_xfstest_mds_template=$(load_config xfstest_mds_template)
     local runtime=$(load_config runtime)
     local int_env=$(load_config int_env)
 
@@ -1231,7 +1234,25 @@ cmd_smoke() {
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
     )
-    if ! _is_rootless; then
+
+    local exclude_normalized="${exclude//[[:space:]]/}"
+    local run_xfstest="no"
+    if [[ -n "$config_xfstest_mds_template" ]] && \
+       [[ ",${exclude_normalized}," != *",xfstest,"* ]]; then
+        run_xfstest="yes"
+    fi
+
+    local rootless_runtime="no"
+    if _is_rootless; then
+        rootless_runtime="yes"
+    fi
+
+    # xfstests mounts TEST/SCRATCH filesystems and must run as root. Other smoke
+    # invocations retain the existing host-user mapping.
+    if [[ "$run_xfstest" == "yes" && "$rootless_runtime" == "no" ]]; then
+        docker_cmd+=("-e" "DTT_SMOKE_RUN_AS=$(stat -c '%u:%g' "$mount")")
+        docker_cmd+=("-e" "DTT_SMOKE_OUTPUT_OWNER=$(stat -c '%u:%g' "$output")")
+    elif [[ "$run_xfstest" == "no" && "$rootless_runtime" == "no" ]]; then
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
     fi
     docker_cmd+=(
@@ -1243,6 +1264,11 @@ cmd_smoke() {
     if [[ -n "$config_custom" ]]; then
         mkdir -p "$config_custom"
         docker_cmd+=("-v" "${config_custom}:/custom")
+    fi
+
+    # xfstest smoke must target the configured DingoFS TEST/SCRATCH filesystems.
+    if [[ "$run_xfstest" == "yes" ]]; then
+        docker_cmd+=("-e" "DINGOFS_META_URL_TEMPLATE=$config_xfstest_mds_template")
     fi
 
     # Pass MDS address if configured (needed for integration test context)
@@ -1317,6 +1343,13 @@ cmd_smoke() {
     echo "  Image:       $image"
     echo "  Test dir:    $mount -> $container_mount"
     echo "  Output dir:  $output -> /output"
+    if [[ ",${exclude_normalized}," == *",xfstest,"* ]]; then
+        echo "  xfstest MDS: excluded"
+    elif [[ -n "$config_xfstest_mds_template" ]]; then
+        echo "  xfstest MDS: $config_xfstest_mds_template"
+    else
+        echo "  xfstest MDS: not configured (xfstest quick will fail)"
+    fi
     if [[ -n "$wechat" ]]; then
         echo "  WeChat:      enabled"
     fi

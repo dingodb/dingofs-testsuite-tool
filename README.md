@@ -482,12 +482,19 @@ http://<宿主机IP>:<report-port>/allure-daily-report-latest/index.html
 
 ```bash
 # 运行完整冒烟测试
+dtt config set xfstest_mds_template 'mds://<MDS_ADDR>/{fsname}'
 dtt smoke
 
 # 排除指定工具
 dtt smoke --exclude int
 dtt smoke --exclude pjdtest,mdtest
+dtt smoke --exclude xfstest
 ```
+
+完整 smoke 会执行 pjdtest、mdtest、LTP smoketest、xfstest quick，以及
+client/cache_node/quota 集成测试。xfstest 只运行已配置的 DingoFS
+TEST/SCRATCH 文件系统；未配置 `xfstest_mds_template` 时该项明确失败，
+不会回退到容器本地文件模式。
 
 ---
 

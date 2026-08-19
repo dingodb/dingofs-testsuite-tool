@@ -20,7 +20,7 @@ TOOL=""              # Storage testing tool (fio, vdbench, mdtest)
 SCENARIO=""          # Test scenario name (e.g., seq_read, rand_write)
 MOUNT="/data"        # Filesystem mount point
 OUTPUT="/data/results"  # Output directory
-RUN_TIMESTAMP=""     # Timestamp for this run (format: YYYYmmdd_HHMMSS)
+RUN_TIMESTAMP="${RUN_TIMESTAMP:-}"  # Timestamp for this run (format: YYYYmmdd_HHMMSS)
 MODE="one-shot"      # Mode: one-shot or long-running
 NP=16                # Number of MPI processes for mdtest (default: 16)
 BS_SIZE="${BS_SIZE:-normal}"  # Block size type: normal (128K/1M/4M) or small (128B-8K)
@@ -2109,9 +2109,32 @@ xfstest_run() {
     # Re-run setup.sh if MDS mode is requested (updates META_URL_TEMPLATE)
     if [[ -n "${DINGOFS_META_URL_TEMPLATE:-}" ]]; then
         echo "Reconfiguring for MDS mode: $DINGOFS_META_URL_TEMPLATE"
+        local setup_exit
         DINGOFS_CLIENT_BIN="${DINGOFS_CLIENT_BIN:-/usr/local/bin/dingo-client}" \
         DINGOFS_META_URL_TEMPLATE="$DINGOFS_META_URL_TEMPLATE" \
         bash "$XFSTESTS_DIR/setup.sh" "$XFSTESTS_DIR" "$xfstest_root"
+        setup_exit=$?
+        if [[ $setup_exit -ne 0 ]]; then
+            echo "ERROR: xfstest MDS setup failed (exit: $setup_exit); refusing to use stale configuration."
+            return "$setup_exit"
+        fi
+
+        local xfstests_conf="${DINGOFS_XFSTESTS_CONF:-/etc/dingofs-xfstests.conf}"
+        local expected_template
+        printf -v expected_template '%q' "$DINGOFS_META_URL_TEMPLATE"
+        if [[ ! -f "$xfstests_conf" ]] || \
+           ! grep -Fqx "META_URL_TEMPLATE=$expected_template" "$xfstests_conf"; then
+            echo "ERROR: xfstest MDS template was not written to $xfstests_conf; refusing to run."
+            return 1
+        fi
+
+        local local_config="$XFSTESTS_DIR/local.config"
+        if [[ ! -f "$local_config" ]] || \
+           ! grep -Eq '^export[[:space:]]+FSTYP=fuse[[:space:]]*$' "$local_config" || \
+           ! grep -Eq '^export[[:space:]]+FUSE_SUBTYP=\.dingofs[[:space:]]*$' "$local_config"; then
+            echo "ERROR: $local_config is not a DingoFS MDS configuration; refusing to run."
+            return 1
+        fi
     fi
 
     # Verify local.config exists
@@ -2138,7 +2161,7 @@ xfstest_run() {
 
     cd "$XFSTESTS_DIR"
     ./check $test_selector 2>&1 | tee "$xfstest_output/check.log"
-    local xfstest_exit=$?
+    local xfstest_exit=${PIPESTATUS[0]}
 
     # Copy results to output
     if [[ -d "$XFSTESTS_DIR/results" ]]; then
@@ -2153,6 +2176,7 @@ xfstest_run() {
     fi
 
     log_result "xfstest" "$test_selector" "$xfstest_exit" "$xfstest_start_time" "$xfstest_output"
+    return "$xfstest_exit"
 }
 
 # ==============================================================================
@@ -2552,6 +2576,13 @@ generate_smoke_summary() {
         ltp_status="PASS"
     fi
 
+    local xfstest_status="FAIL"
+    if [[ ${SMOKE_XFSTEST_SKIPPED:-0} -eq 1 ]]; then
+        xfstest_status="SKIP"
+    elif [[ ${SMOKE_XFSTEST_EXIT:-1} -eq 0 ]]; then
+        xfstest_status="PASS"
+    fi
+
     local int_client_status="FAIL"
     if [[ ${SMOKE_INT_CLIENT_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_CLIENT_TOTAL:-0} -gt 0 ]]; then
         int_client_status="PASS"
@@ -2597,6 +2628,11 @@ generate_smoke_summary() {
       "skip": ${SMOKE_LTP_SKIP:-0},
       "total": ${SMOKE_LTP_TOTAL:-0},
       "timeout": ${SMOKE_LTP_TIMEOUT:-0}
+    },
+    "xfstest": {
+      "status": "${xfstest_status}",
+      "scenario": "quick",
+      "exit_code": ${SMOKE_XFSTEST_EXIT:-1}
     },
     "int_client": {
       "status": "${int_client_status}",
@@ -2646,6 +2682,7 @@ Timestamp: ${RUN_TIMESTAMP}
 pjdtest       [${pjd_status}]  pass: ${SMOKE_PJD_PASS:-0}  fail: ${SMOKE_PJD_FAIL:-0}  skip: ${SMOKE_PJD_SKIP:-0}  total: ${SMOKE_PJD_TOTAL:-0}
 mdtest        [${mdt_status}]  ${mdt_reason}
 ltp           [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}
+xfstest       [${xfstest_status}]  scenario: quick  exit: ${SMOKE_XFSTEST_EXIT:-1}
 int_client    [${int_client_status}]  pass: ${SMOKE_INT_CLIENT_PASS:-0}  fail: ${SMOKE_INT_CLIENT_FAIL:-0}  total: ${SMOKE_INT_CLIENT_TOTAL:-0}  env: ${INT_ENV}
 int_cache_node [${int_cachenode_status}]  pass: ${SMOKE_INT_CACHENODE_PASS:-0}  fail: ${SMOKE_INT_CACHENODE_FAIL:-0}  total: ${SMOKE_INT_CACHENODE_TOTAL:-0}  env: ${INT_ENV}
 int_quota     [${int_quota_status}]  pass: ${SMOKE_INT_QUOTA_PASS:-0}  fail: ${SMOKE_INT_QUOTA_FAIL:-0}  total: ${SMOKE_INT_QUOTA_TOTAL:-0}  env: ${INT_ENV}
@@ -2695,6 +2732,13 @@ send_smoke_notification() {
         ltp_status="FAIL"
     fi
 
+    local xfstest_status="PASS"
+    if [[ ${SMOKE_XFSTEST_SKIPPED:-0} -eq 1 ]]; then
+        xfstest_status="SKIP"
+    elif [[ ${SMOKE_XFSTEST_EXIT:-1} -ne 0 ]]; then
+        xfstest_status="FAIL"
+    fi
+
     local int_client_status="PASS"
     if [[ ${SMOKE_INT_CLIENT_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_CLIENT_TOTAL:-0} -eq 0 ]]; then
         int_client_status="FAIL"
@@ -2714,6 +2758,7 @@ send_smoke_notification() {
     local details="pjdtest[${pjd_status}] pass:${SMOKE_PJD_PASS:-0} fail:${SMOKE_PJD_FAIL:-0} skip:${SMOKE_PJD_SKIP:-0} total:${SMOKE_PJD_TOTAL:-0}
 mdtest[${mdt_status}]
 ltp[${ltp_status}] pass:${SMOKE_LTP_PASS:-0} fail:${SMOKE_LTP_FAIL:-0} skip:${SMOKE_LTP_SKIP:-0} total:${SMOKE_LTP_TOTAL:-0}
+xfstest[${xfstest_status}] scenario:quick exit:${SMOKE_XFSTEST_EXIT:-1}
 int_client[${int_client_status}] pass:${SMOKE_INT_CLIENT_PASS:-0} fail:${SMOKE_INT_CLIENT_FAIL:-0} total:${SMOKE_INT_CLIENT_TOTAL:-0}
 int_cache_node[${int_cachenode_status}] pass:${SMOKE_INT_CACHENODE_PASS:-0} fail:${SMOKE_INT_CACHENODE_FAIL:-0} total:${SMOKE_INT_CACHENODE_TOTAL:-0}
 int_quota[${int_quota_status}] pass:${SMOKE_INT_QUOTA_PASS:-0} fail:${SMOKE_INT_QUOTA_FAIL:-0} total:${SMOKE_INT_QUOTA_TOTAL:-0}"
@@ -2761,6 +2806,9 @@ smoke_run() {
     if ! is_excluded "ltp"; then
         tools_list="${tools_list}  ltp\n"
     fi
+    if ! is_excluded "xfstest"; then
+        tools_list="${tools_list}  xfstest (quick)\n"
+    fi
     if ! is_excluded "int_client"; then
         tools_list="${tools_list}  int_client\n"
     fi
@@ -2803,6 +2851,7 @@ smoke_run() {
     local pjdtest_exit=0
     local mdtest_exit=0
     local ltp_exit=0
+    local xfstest_exit=0
     local aggregate_exit=0
 
     # ---- Setup: test environment initialization ----
@@ -2841,7 +2890,7 @@ smoke_run() {
     # ---- Tool 1: pjdtest -s all ----
     if ! is_excluded "pjdtest"; then
     echo "=============================================="
-    echo "[1/6] Running pjdtest -s all"
+    echo "[1/7] Running pjdtest -s all"
     echo "=============================================="
     SCENARIO="all"
     OUTPUT="${smoke_base}/pjdtest"
@@ -2867,7 +2916,7 @@ smoke_run() {
     # ---- Tool 2: mdtest -s all -n 8 ----
     if ! is_excluded "mdtest"; then
     echo "=============================================="
-    echo "[2/6] Running mdtest -s all -n 8"
+    echo "[2/7] Running mdtest -s all -n 8"
     echo "=============================================="
     SCENARIO="all"
     NP=8
@@ -2894,7 +2943,7 @@ smoke_run() {
     # ---- Tool 3: ltp -s smoke ----
     if ! is_excluded "ltp"; then
     echo "=============================================="
-    echo "[3/6] Running ltp -s smoke"
+    echo "[3/7] Running ltp -s smoke"
     echo "=============================================="
     SCENARIO="smoke"
     OUTPUT="${smoke_base}/ltp"
@@ -2917,10 +2966,47 @@ smoke_run() {
     fi
     echo ""
 
-    # ---- Tool 4: int client ----
+    # ---- Tool 4: xfstest -s quick ----
+    SMOKE_XFSTEST_SKIPPED=0
+    if ! is_excluded "xfstest"; then
+    echo "=============================================="
+    echo "[4/7] Running xfstest -s quick"
+    echo "=============================================="
+    SCENARIO="quick"
+    OUTPUT="${smoke_base}/xfstest"
+    mkdir -p "$OUTPUT"
+    if [[ -z "${DINGOFS_META_URL_TEMPLATE:-}" ]]; then
+        echo "ERROR: xfstest_mds_template is not configured."
+        echo "Configure it with: dtt config set xfstest_mds_template 'mds://<MDS_ADDR>/{fsname}'"
+        xfstest_exit=2
+        aggregate_exit=1
+    else
+        set +e
+        if [[ "${DTT_SMOKE_DROPPED_PRIVILEGES:-}" == "yes" ]]; then
+            sudo -n /usr/local/sbin/dtt-smoke-xfstest
+        else
+            xfstest_run
+        fi
+        xfstest_exit=$?
+        set -e
+        if [[ $xfstest_exit -ne 0 ]]; then
+            echo "xfstest quick completed with failures (exit: $xfstest_exit) -- continuing"
+            aggregate_exit=1
+        else
+            echo "xfstest quick completed successfully (exit: 0)"
+        fi
+    fi
+    else
+        echo "--- Skipping xfstest (excluded) ---"
+        SMOKE_XFSTEST_SKIPPED=1
+    fi
+    SMOKE_XFSTEST_EXIT=$xfstest_exit
+    echo ""
+
+    # ---- Tool 5: int client ----
     if ! is_excluded "int_client"; then
     echo "=============================================="
-    echo "[4/6] Running integration test: client"
+    echo "[5/7] Running integration test: client"
     echo "=============================================="
     local int_client_output="${smoke_base}/int_client"
     mkdir -p "$int_client_output"
@@ -2946,10 +3032,10 @@ smoke_run() {
     fi
     echo ""
 
-    # ---- Tool 5: int cache_node ----
+    # ---- Tool 6: int cache_node ----
     if ! is_excluded "int_cache_node"; then
     echo "=============================================="
-    echo "[5/6] Running integration test: cache_node"
+    echo "[6/7] Running integration test: cache_node"
     echo "=============================================="
     local int_cachenode_output="${smoke_base}/int_cache_node"
     mkdir -p "$int_cachenode_output"
@@ -2975,10 +3061,10 @@ smoke_run() {
     fi
     echo ""
 
-    # ---- Tool 6: int quota ----
+    # ---- Tool 7: int quota ----
     if ! is_excluded "int_quota"; then
     echo "=============================================="
-    echo "[6/6] Running integration test: quota"
+    echo "[7/7] Running integration test: quota"
     echo "=============================================="
     local int_quota_output="${smoke_base}/int_quota"
     mkdir -p "$int_quota_output"
@@ -3023,6 +3109,7 @@ smoke_run() {
     echo "  pjdtest:     pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL (exit=$pjdtest_exit)"
     echo "  mdtest:      $( [[ $SMOKE_MDT_PASS -eq 1 ]] && echo 'PASS' || echo 'FAIL' ) (exit=$mdtest_exit)"
     echo "  ltp:         pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL (exit=$ltp_exit)"
+    echo "  xfstest:     $( [[ $SMOKE_XFSTEST_SKIPPED -eq 1 ]] && echo 'SKIP' || { [[ $xfstest_exit -eq 0 ]] && echo 'PASS' || echo 'FAIL'; } ) (exit=$xfstest_exit)"
     echo "  int_client:  pass=$SMOKE_INT_CLIENT_PASS fail=$SMOKE_INT_CLIENT_FAIL total=$SMOKE_INT_CLIENT_TOTAL (exit=$int_client_exit)"
     echo "  int_cache_node: pass=$SMOKE_INT_CACHENODE_PASS fail=$SMOKE_INT_CACHENODE_FAIL total=$SMOKE_INT_CACHENODE_TOTAL (exit=$int_cachenode_exit)"
     echo "  int_quota:   pass=$SMOKE_INT_QUOTA_PASS fail=$SMOKE_INT_QUOTA_FAIL total=$SMOKE_INT_QUOTA_TOTAL (exit=$int_quota_exit)"
@@ -3082,15 +3169,115 @@ run_long_running() {
 # Main Entry Point
 # ==============================================================================
 
+install_smoke_xfstest_helper() {
+    local helper_path="$1"
+    local sudoers_path="$2"
+    local entrypoint_path="$3"
+    local template="$4"
+    local output_owner="$5"
+    local smoke_output="$6"
+    local run_timestamp="$7"
+    local mount_path="$8"
+
+    local q_entrypoint q_template q_owner q_output q_timestamp q_mount
+    printf -v q_entrypoint '%q' "$entrypoint_path"
+    printf -v q_template '%q' "$template"
+    printf -v q_owner '%q' "$output_owner"
+    printf -v q_output '%q' "$smoke_output"
+    printf -v q_timestamp '%q' "$run_timestamp"
+    printf -v q_mount '%q' "$mount_path"
+
+    umask 077
+    {
+        echo '#!/bin/bash'
+        echo '[[ $# -eq 0 ]] || exit 64'
+        printf 'exec env -i PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin '
+        printf 'DINGOFS_META_URL_TEMPLATE=%s ' "$q_template"
+        printf 'DTT_SMOKE_OUTPUT_OWNER=%s ' "$q_owner"
+        printf 'SMOKE_MODE=1 RUN_TIMESTAMP=%s ' "$q_timestamp"
+        printf '%s -t xfstest -s quick -m %s -o %s\n' \
+            "$q_entrypoint" "$q_mount" "$q_output"
+    } > "$helper_path"
+    chmod 0500 "$helper_path"
+
+    printf '%%dtt-smoke-sudo ALL=(root) NOPASSWD: %s ""\n' "$helper_path" \
+        > "$sudoers_path"
+    chmod 0440 "$sudoers_path"
+}
+
+drop_smoke_privileges() {
+    local owner="$1"
+    shift
+
+    local run_uid="${owner%%:*}"
+    local run_gid="${owner##*:}"
+    local group_name
+    group_name=$(getent group "$run_gid" | cut -d: -f1 || true)
+    if [[ -z "$group_name" ]]; then
+        group_name="dtt-smoke-${run_gid}"
+        groupadd --gid "$run_gid" "$group_name"
+    fi
+
+    local user_name
+    user_name=$(getent passwd "$run_uid" | cut -d: -f1 || true)
+    if [[ -z "$user_name" ]]; then
+        user_name="dtt-smoke-${run_uid}"
+        useradd --uid "$run_uid" --gid "$run_gid" --no-create-home "$user_name"
+    fi
+
+    groupadd --force dtt-smoke-sudo
+    usermod --append --groups dtt-smoke-sudo "$user_name"
+    install_smoke_xfstest_helper \
+        /usr/local/sbin/dtt-smoke-xfstest \
+        /etc/sudoers.d/dtt-smoke \
+        /entrypoint.sh \
+        "$DINGOFS_META_URL_TEMPLATE" \
+        "$DTT_SMOKE_OUTPUT_OWNER" \
+        "$OUTPUT/smoke_${RUN_TIMESTAMP}/xfstest" \
+        "$RUN_TIMESTAMP" \
+        "$MOUNT"
+
+    echo "Running non-xfstest smoke phases as ${run_uid}:${run_gid}; xfstest will use root."
+    export DTT_SMOKE_DROPPED_PRIVILEGES=yes
+    exec setpriv --reuid="$run_uid" --regid="$run_gid" --init-groups \
+        /entrypoint.sh "$@"
+}
+
 main() {
     # Parse command line arguments
     parse_args "$@"
+
+    # Only reuse timestamps created by the root smoke bootstrap. Do not allow an
+    # arbitrary inherited value to influence output paths in the root helper.
+    if [[ -n "$RUN_TIMESTAMP" ]] && \
+       [[ ! "$RUN_TIMESTAMP" =~ ^[0-9]{8}_[0-9]{6}$ ]]; then
+        RUN_TIMESTAMP=""
+    fi
+
+    # A rootful smoke container starts as root only so xfstests can mount its
+    # TEST/SCRATCH filesystems. Re-exec the orchestrator as the original host
+    # owner; the xfstest phase alone returns to root through its sudo rule.
+    if [[ "$TOOL" == "smoke" ]] && [[ $(id -u) -eq 0 ]] && \
+       [[ "${DTT_SMOKE_DROPPED_PRIVILEGES:-}" != "yes" ]] && \
+       [[ "${DTT_SMOKE_RUN_AS:-}" =~ ^[0-9]+:[0-9]+$ ]] && \
+       [[ "${DTT_SMOKE_RUN_AS%%:*}" != "0" ]]; then
+        RUN_TIMESTAMP="${RUN_TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}"
+        export RUN_TIMESTAMP
+        drop_smoke_privileges "$DTT_SMOKE_RUN_AS" "$@"
+    fi
+
+    # The root-only xfstest helper must restore output ownership even when
+    # errexit propagates a failing ./check status.
+    if [[ "$TOOL" == "xfstest" ]] && [[ $(id -u) -eq 0 ]] && \
+       [[ "${DTT_SMOKE_OUTPUT_OWNER:-}" =~ ^[0-9]+:[0-9]+$ ]]; then
+        trap 'rc=$?; chown -R "$DTT_SMOKE_OUTPUT_OWNER" "$OUTPUT" 2>/dev/null || true; exit "$rc"' EXIT
+    fi
 
     # Validate parameters
     validate_params
 
     # Generate run timestamp for output directory
-    RUN_TIMESTAMP=$(date +"%Y%m%d_%H%M%S")
+    RUN_TIMESTAMP="${RUN_TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}"
 
     echo "=============================================="
     echo "DingoFS Storage Testsuite Tools"
