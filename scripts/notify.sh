@@ -70,12 +70,13 @@ send_email_notification() {
 <br>"
 
     if [[ "$tool" == "smoke" ]]; then
-        # Smoke details format: "pjdtest[PASS] pass:587 fail:0 skip:1 total:588; mdtest[PASS]; ltp[PASS] pass:328 fail:0 skip:2 total:330"
+        # Smoke details format: one tool per line, with optional
+        # pass/fail/error/skip/total counters.
         # Build a multi-tool HTML table from the smoke-specific format
         html_content="${html_content}
 <h3>冒烟测试结果详情</h3>
 <table border='1' cellpadding='5' cellspacing='0'>
-<tr><th>工具</th><th>状态</th><th>通过 (Pass)</th><th>失败 (Fail)</th><th>跳过 (Skip)</th><th>总计 (Total)</th></tr>"
+<tr><th>工具</th><th>状态</th><th>通过 (Pass)</th><th>失败 (Fail)</th><th>错误 (Error)</th><th>跳过 (Skip)</th><th>总计 (Total)</th></tr>"
 
         # Parse each tool's section separated by newline
         local tools_sections=()
@@ -93,9 +94,10 @@ send_email_notification() {
             local tool_status="${section#*\[}"
             tool_status="${tool_status%%\]*}"
 
-            # Extract pass/fail/skip/total if present
+            # Extract pass/fail/error/skip/total if present
             local t_pass="-"
             local t_fail="-"
+            local t_error="-"
             local t_skip="-"
             local t_total="-"
             if [[ "$section" =~ pass:[0-9]+ ]]; then
@@ -104,6 +106,9 @@ send_email_notification() {
                 t_skip=$(echo "$section" | sed -n 's/.*skip:\([0-9]\+\).*/\1/p')
                 t_total=$(echo "$section" | sed -n 's/.*total:\([0-9]\+\).*/\1/p')
             fi
+            if [[ "$section" =~ error:[0-9]+ ]]; then
+                t_error=$(echo "$section" | sed -n 's/.*error:\([0-9]\+\).*/\1/p')
+            fi
 
             # Color status
             local status_color="green"
@@ -111,7 +116,7 @@ send_email_notification() {
             [[ "$tool_status" == "TIMEOUT" ]] && status_color="orange"
 
             html_content="${html_content}
-<tr><td>${tool_name}</td><td style='color:${status_color}'><b>${tool_status}</b></td><td>${t_pass}</td><td>${t_fail}</td><td>${t_skip}</td><td>${t_total}</td></tr>"
+<tr><td>${tool_name}</td><td style='color:${status_color}'><b>${tool_status}</b></td><td>${t_pass}</td><td>${t_fail}</td><td>${t_error}</td><td>${t_skip}</td><td>${t_total}</td></tr>"
         done
 
         html_content="${html_content}

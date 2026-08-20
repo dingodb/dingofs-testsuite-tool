@@ -87,7 +87,7 @@ Tools:
   int       - DingoFS integration test (自动化框架)
   mlperf    - MLPerf Storage 存储基准测试
   xfstest   - xfstests 文件系统回归测试套件
-  smoke     - 冒烟测试 (串行运行 pjdtest + mdtest + ltp)
+  smoke     - 冒烟测试 (pjdtest/LTP/xfstest + 精选集成测试)
 
 运行模式:
   one-shot      - 容器启动 → 运行测试 → 测试完成后容器退出 (默认)
@@ -217,28 +217,42 @@ show_smoke_help() {
 冒烟测试 (Smoke Test)
 =====================
 
-用法: dtt -t smoke [-m <挂载点>] [-o <输出目录>]
+宿主命令用法: dtt smoke [--exclude <阶段列表>]
 
-自动串行运行以下三个测试:
-  1. pjdtest -s all    -- POSIX 文件系统兼容性测试
-  2. mdtest  -s all -n 8 -- 元数据性能测试 (8 MPI 进程)
-  3. ltp     -s smoke   -- LTP 冒烟测试 (smoketest 套件)
+自动串行运行以下 14 个阶段:
+  1. pjdtest -s all
+  2. ltp -s smoke
+  3. xfstest -s quick
+  4. int_quota (env_126_quota，仅两个指定 quota 用例)
+  5. int_basic_file_operation (env_126_smoke，全部用例)
+  6. int_client (env_40_dingofs，run-level smoke)
+  7. int_cache_node (env_40_dingofs，run-level smoke)
+  8. int_dirstat (env_126_dirstat，smoke 目录)
+  9. int_hot_upgrade (env_126_hotupgrade_multi，smoke 目录)
+ 10. int_mds_manage (env_126_mds_manage，smoke 目录)
+ 11. int_mount_subdir (env_126_mount_subdir，仅 verify_mount_subdir.yaml)
+ 12. int_trash (env_126_trash，smoke 目录)
+ 13. int_warmup (env_126_warmup，smoke 目录)
+ 14. int_xattr (env_126_xattr，smoke 目录)
+
+所有集成测试均使用 --reruns 2。
 
 特性:
-  - 单个工具的失败不会中止后续工具的运行 (fail-continue)
+  - 单个阶段失败不会中止后续阶段 (fail-continue)
   - 所有结果统一输出到 smoke_<timestamp>/ 目录
-  - 每个工具的结果保存在各自的子目录中
+  - 宿主命令可通过 --exclude int 排除全部集成测试，或排除单个阶段
 
 示例:
-  # 运行冒烟测试 (使用默认挂载点和输出目录)
-  dtt -t smoke
+  # 运行冒烟测试
+  dtt smoke
 
-  # 指定挂载点和输出目录
-  dtt -t smoke -m /mnt/test -o /tmp/results
+  # 排除全部集成测试
+  dtt smoke --exclude int
 
 注意:
   - 建议使用 --privileged 运行以支持 LTP 内核测试
-  - 冒烟测试会按顺序运行所有三个工具，可能需要较长时间
+  - 宿主 dtt smoke 会在启动容器前准备 env_126_tool
+  - xfstest 要求配置 DINGOFS_META_URL_TEMPLATE
 EOF
 }
 
@@ -2444,32 +2458,42 @@ parse_ltp_output() {
 # Parse integration test output for smoke results.
 # Handles both run_tests.py "TEST SUITE SUMMARY" format and pytest summary lines.
 # Arguments: $1 = log file path; $2 = variable prefix (e.g., SMOKE_INT_CLIENT).
-# Sets global ${prefix}_PASS, ${prefix}_FAIL, ${prefix}_TOTAL variables.
+# Sets global ${prefix}_PASS, ${prefix}_FAIL, ${prefix}_ERROR,
+# ${prefix}_SKIP and ${prefix}_TOTAL variables.
 parse_int_smoke_output() {
     local log_file="$1"
     local prefix="$2"
 
     local int_passed=0
     local int_failed=0
+    local int_errors=0
+    local int_skipped=0
     local int_total=0
 
     if [[ ! -f "$log_file" ]]; then
         eval "${prefix}_PASS=0"
         eval "${prefix}_FAIL=0"
+        eval "${prefix}_ERROR=0"
+        eval "${prefix}_SKIP=0"
         eval "${prefix}_TOTAL=0"
-        echo "${prefix} stats: pass=0 fail=0 total=0 (no log file)"
+        echo "${prefix} stats: pass=0 fail=0 error=0 skip=0 total=0 (no log file)"
         return 0
     fi
 
     # Try run_tests.py "TEST SUITE SUMMARY" format first
-    # Lines: Total Cases: N / Passed: N / Failed: N
+    # Lines: Total Cases: N / Passed: N / Failed: N / Suite Errors: N /
+    # Skipped: N
     if grep -q "TEST SUITE SUMMARY" "$log_file" 2>/dev/null; then
         int_total=$(grep "Total Cases:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Total Cases:[[:space:]]*\([0-9]\+\).*/\1/p')
         int_passed=$(grep "Passed:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Passed:[[:space:]]*\([0-9]\+\).*/\1/p')
         int_failed=$(grep "Failed:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Failed:[[:space:]]*\([0-9]\+\).*/\1/p')
+        int_errors=$(grep "Suite Errors:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Suite Errors:[[:space:]]*\([0-9]\+\).*/\1/p' || true)
+        int_skipped=$(grep "Skipped:" "$log_file" 2>/dev/null | tail -1 | sed -n 's/.*Skipped:[[:space:]]*\([0-9]\+\).*/\1/p' || true)
         [[ -z "$int_total" ]] && int_total=0
         [[ -z "$int_passed" ]] && int_passed=0
         [[ -z "$int_failed" ]] && int_failed=0
+        [[ -z "$int_errors" ]] && int_errors=0
+        [[ -z "$int_skipped" ]] && int_skipped=0
     else
         # Fallback: try pytest summary line (e.g., "======= X passed, Y failed in Zs =======")
         local summary_line
@@ -2482,126 +2506,237 @@ parse_int_smoke_output() {
             [[ -z "$int_passed" ]] && int_passed=0
             int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
             [[ -z "$int_failed" ]] && int_failed=0
-            int_total=$((int_passed + int_failed))
+            int_skipped=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) skipped.*/\1/p' | head -1)
+            [[ -z "$int_skipped" ]] && int_skipped=0
+            int_total=$((int_passed + int_failed + int_skipped))
         fi
     fi
 
     eval "${prefix}_PASS=$int_passed"
     eval "${prefix}_FAIL=$int_failed"
+    eval "${prefix}_ERROR=$int_errors"
+    eval "${prefix}_SKIP=$int_skipped"
     eval "${prefix}_TOTAL=$int_total"
 
-    echo "${prefix} stats: pass=$int_passed fail=$int_failed total=$int_total"
+    echo "${prefix} stats: pass=$int_passed fail=$int_failed error=$int_errors skip=$int_skipped total=$int_total"
 }
 
-# Validate mdtest smoke results using three conditions:
-# 1. Exit code is 0, 2. SUMMARY rate is present, 3. Operation counts are non-zero.
-# Arguments: $1 = directory path containing mdtest.raw files; $2 = mdtest exit code.
-# Sets global SMOKE_MDT_PASS (1=pass, 0=fail).
-validate_mdtest_smoke() {
-    local raw_files
-    raw_files=$(find "$1" -type f -name 'mdtest.raw' 2>/dev/null)
+SMOKE_INT_MODULES=(
+    quota basic_file_operation client cache_node dirstat hot_upgrade
+    mds_manage mount_subdir trash warmup xattr
+)
 
-    if [[ -z "$raw_files" ]]; then
-        SMOKE_MDT_PASS=0
-        echo "mdtest validation: FAIL (reason: no mdtest.raw files found)"
-        return 0
+smoke_int_env() {
+    case "$1" in
+        quota)                echo "env_126_quota" ;;
+        basic_file_operation) echo "env_126_smoke" ;;
+        client|cache_node)    echo "env_40_dingofs" ;;
+        dirstat)              echo "env_126_dirstat" ;;
+        hot_upgrade)          echo "env_126_hotupgrade_multi" ;;
+        mds_manage)           echo "env_126_mds_manage" ;;
+        mount_subdir)         echo "env_126_mount_subdir" ;;
+        trash)                echo "env_126_trash" ;;
+        warmup)               echo "env_126_warmup" ;;
+        xattr)                echo "env_126_xattr" ;;
+        *) return 1 ;;
+    esac
+}
+
+smoke_int_prefix() {
+    local module_name="${1^^}"
+    module_name="${module_name//-/_}"
+    printf 'SMOKE_INT_%s' "$module_name"
+}
+
+smoke_int_set_result() {
+    local prefix
+    prefix=$(smoke_int_prefix "$1")
+    printf -v "${prefix}_PASS" '%s' "$2"
+    printf -v "${prefix}_FAIL" '%s' "$3"
+    printf -v "${prefix}_ERROR" '%s' "$4"
+    printf -v "${prefix}_SKIP" '%s' "$5"
+    printf -v "${prefix}_TOTAL" '%s' "$6"
+    printf -v "${prefix}_EXIT" '%s' "$7"
+    printf -v "${prefix}_SKIPPED" '%s' "$8"
+}
+
+smoke_int_get() {
+    local prefix variable
+    prefix=$(smoke_int_prefix "$1")
+    variable="${prefix}_${2}"
+    printf '%s' "${!variable:-0}"
+}
+
+smoke_int_status() {
+    local module="$1"
+    if [[ $(smoke_int_get "$module" SKIPPED) -eq 1 ]]; then
+        echo "SKIP"
+    elif [[ $(smoke_int_get "$module" EXIT) -eq 0 ]] && \
+         [[ $(smoke_int_get "$module" FAIL) -eq 0 ]] && \
+         [[ $(smoke_int_get "$module" ERROR) -eq 0 ]] && \
+         [[ $(smoke_int_get "$module" TOTAL) -gt 0 ]]; then
+        echo "PASS"
+    else
+        echo "FAIL"
+    fi
+}
+
+# Run one run_tests.py command and expose its parsed result through
+# SMOKE_INT_LAST_{PASS,FAIL,ERROR,SKIP,TOTAL,EXIT}.
+run_smoke_int_command() {
+    local smoke_base="$1"
+    local module="$2"
+    local env_name="$3"
+    local log_name="$4"
+    shift 4
+
+    local output_dir="${smoke_base}/int_${module}"
+    local log_file="${output_dir}/${log_name}.log"
+    local report_path="${output_dir}/${log_name}"
+    local report_dir="${report_path}/allure-results"
+    local -a command=(python3 run_tests.py "$module" --env "$env_name")
+    command+=("$@")
+    # Persist each child report below the smoke output. Quota uses one report
+    # subtree per case so its two invocations cannot overwrite each other.
+    # An explicit empty URL also keeps run_tests.py from starting a persistent
+    # HTTP server on its default report port.
+    command+=(
+        --reruns 2
+        --report-path "$report_path"
+        --report-dir "$report_dir"
+        --report-url ""
+    )
+    mkdir -p "$output_dir"
+
+    echo "Command: ${command[*]}"
+    if (
+        trap 'kill -INT $$' INT TERM
+        cd "$INTEGRATION_DIR" || exit $?
+        "${command[@]}" 2>&1 | tee "$log_file"
+        exit "${PIPESTATUS[0]}"
+    ); then
+        SMOKE_INT_LAST_EXIT=0
+    else
+        SMOKE_INT_LAST_EXIT=$?
     fi
 
-    # Condition 1: exit code must be 0
-    if [[ "$2" != "0" ]]; then
-        SMOKE_MDT_PASS=0
-        echo "mdtest validation: FAIL (reason: non-zero exit code $2)"
-        return 0
+    parse_int_smoke_output "$log_file" "SMOKE_INT_LAST"
+    return 0
+}
+
+run_smoke_int_phase() {
+    local smoke_base="$1"
+    local module="$2"
+    local env_name="$3"
+    shift 3
+
+    run_smoke_int_command "$smoke_base" "$module" "$env_name" "$module" "$@"
+    smoke_int_set_result \
+        "$module" "$SMOKE_INT_LAST_PASS" "$SMOKE_INT_LAST_FAIL" \
+        "$SMOKE_INT_LAST_ERROR" "$SMOKE_INT_LAST_SKIP" \
+        "$SMOKE_INT_LAST_TOTAL" \
+        "$SMOKE_INT_LAST_EXIT" 0
+
+    if [[ $SMOKE_INT_LAST_EXIT -ne 0 ]] || \
+       [[ $SMOKE_INT_LAST_FAIL -ne 0 ]] || \
+       [[ $SMOKE_INT_LAST_ERROR -ne 0 ]] || \
+       [[ $SMOKE_INT_LAST_TOTAL -eq 0 ]]; then
+        echo "int ${module} completed with failures (exit: $SMOKE_INT_LAST_EXIT) -- continuing"
+        return 1
     fi
 
-    # Condition 2: at least one file must contain SUMMARY rate
-    local has_summary=false
-    local summary_file=""
-    while IFS= read -r raw_file; do
-        if grep -q "SUMMARY rate" "$raw_file" 2>/dev/null; then
-            has_summary=true
-            summary_file="$raw_file"
-            break
+    echo "int ${module} completed successfully (exit: 0)"
+    return 0
+}
+
+run_smoke_quota_phase() {
+    local smoke_base="$1"
+    local env_name="env_126_quota"
+    local -a quota_cases=(
+        testcases/quota_test_cases/smoke/verify_fs_capacity.yaml
+        testcases/quota_test_cases/smoke/verify_fs_quota.yaml
+    )
+    local pass_count=0
+    local fail_count=0
+    local error_count=0
+    local skip_count=0
+    local total_count=0
+    local combined_exit=0
+    local case_path log_name
+
+    for case_path in "${quota_cases[@]}"; do
+        log_name=$(basename "$case_path" .yaml)
+        run_smoke_int_command \
+            "$smoke_base" quota "$env_name" "$log_name" --case "$case_path"
+        pass_count=$((pass_count + SMOKE_INT_LAST_PASS))
+        fail_count=$((fail_count + SMOKE_INT_LAST_FAIL))
+        error_count=$((error_count + SMOKE_INT_LAST_ERROR))
+        skip_count=$((skip_count + SMOKE_INT_LAST_SKIP))
+        total_count=$((total_count + SMOKE_INT_LAST_TOTAL))
+        if [[ $combined_exit -eq 0 ]] && [[ $SMOKE_INT_LAST_EXIT -ne 0 ]]; then
+            combined_exit=$SMOKE_INT_LAST_EXIT
         fi
-    done <<< "$raw_files"
+    done
 
-    if [[ "$has_summary" != "true" ]]; then
-        SMOKE_MDT_PASS=0
-        echo "mdtest validation: FAIL (reason: no SUMMARY rate found)"
-        return 0
+    smoke_int_set_result \
+        quota "$pass_count" "$fail_count" "$error_count" "$skip_count" \
+        "$total_count" "$combined_exit" 0
+    if [[ $combined_exit -ne 0 ]] || [[ $fail_count -ne 0 ]] || \
+       [[ $error_count -ne 0 ]] || \
+       [[ $total_count -ne ${#quota_cases[@]} ]]; then
+        echo "int quota completed with failures (exit: $combined_exit) -- continuing"
+        return 1
     fi
 
-    # Condition 3: at least one file with SUMMARY rate must have non-zero operation counts
-    local has_nonzero_ops=false
-    while IFS= read -r raw_file; do
-        if grep -q "SUMMARY rate" "$raw_file" 2>/dev/null; then
-            # Extract the block after SUMMARY rate and check for non-zero operation rates
-            if grep -A 100 "SUMMARY rate" "$raw_file" 2>/dev/null | grep -qE '(File creation|File stat|File removal).*[1-9][0-9]*\.[0-9]+'; then
-                has_nonzero_ops=true
-                break
-            fi
-        fi
-    done <<< "$raw_files"
+    echo "int quota completed successfully (exit: 0)"
+    return 0
+}
 
-    if [[ "$has_nonzero_ops" != "true" ]]; then
-        SMOKE_MDT_PASS=0
-        echo "mdtest validation: FAIL (reason: zero operation counts)"
-        return 0
+smoke_pjd_status() {
+    if [[ ${SMOKE_PJD_SKIPPED:-0} -eq 1 ]]; then
+        echo "SKIP"
+    elif [[ ${SMOKE_PJD_EXIT:-1} -eq 0 ]] && \
+         [[ ${SMOKE_PJD_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_PJD_TOTAL:-0} -gt 0 ]]; then
+        echo "PASS"
+    else
+        echo "FAIL"
     fi
+}
 
-    SMOKE_MDT_PASS=1
-    echo "mdtest validation: PASS"
+smoke_ltp_status() {
+    if [[ ${SMOKE_LTP_SKIPPED:-0} -eq 1 ]]; then
+        echo "SKIP"
+    elif [[ ${SMOKE_LTP_TIMEOUT:-0} -eq 1 ]]; then
+        echo "TIMEOUT"
+    elif [[ ${SMOKE_LTP_EXIT:-1} -eq 0 ]] && \
+         [[ ${SMOKE_LTP_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_LTP_TOTAL:-0} -gt 0 ]]; then
+        echo "PASS"
+    else
+        echo "FAIL"
+    fi
+}
+
+smoke_xfstest_status() {
+    if [[ ${SMOKE_XFSTEST_SKIPPED:-0} -eq 1 ]]; then
+        echo "SKIP"
+    elif [[ ${SMOKE_XFSTEST_EXIT:-1} -eq 0 ]]; then
+        echo "PASS"
+    else
+        echo "FAIL"
+    fi
 }
 
 # Generate combined smoke summary reports (JSON + text).
-# Arguments: $1 = smoke_base directory path; $2 = aggregate exit code.
-# Reads global SMOKE_PJD_*, SMOKE_LTP_*, SMOKE_MDT_PASS variables.
 generate_smoke_summary() {
     local smoke_base="$1"
     local aggregate_exit="$2"
-
-    # Determine per-tool status strings
-    local pjd_status="FAIL"
-    if [[ $SMOKE_PJD_FAIL -eq 0 ]] && [[ $SMOKE_PJD_TOTAL -gt 0 ]]; then
-        pjd_status="PASS"
-    fi
-
-    local mdt_status="FAIL"
-    [[ $SMOKE_MDT_PASS -eq 1 ]] && mdt_status="PASS"
-
-    local ltp_status="FAIL"
-    if [[ $SMOKE_LTP_TIMEOUT -eq 1 ]]; then
-        ltp_status="TIMEOUT"
-    elif [[ $SMOKE_LTP_FAIL -eq 0 ]] && [[ $SMOKE_LTP_TOTAL -gt 0 ]]; then
-        ltp_status="PASS"
-    fi
-
-    local xfstest_status="FAIL"
-    if [[ ${SMOKE_XFSTEST_SKIPPED:-0} -eq 1 ]]; then
-        xfstest_status="SKIP"
-    elif [[ ${SMOKE_XFSTEST_EXIT:-1} -eq 0 ]]; then
-        xfstest_status="PASS"
-    fi
-
-    local int_client_status="FAIL"
-    if [[ ${SMOKE_INT_CLIENT_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_CLIENT_TOTAL:-0} -gt 0 ]]; then
-        int_client_status="PASS"
-    fi
-
-    local int_cachenode_status="FAIL"
-    if [[ ${SMOKE_INT_CACHENODE_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_CACHENODE_TOTAL:-0} -gt 0 ]]; then
-        int_cachenode_status="PASS"
-    fi
-
-    local int_quota_status="FAIL"
-    if [[ ${SMOKE_INT_QUOTA_FAIL:-0} -eq 0 ]] && [[ ${SMOKE_INT_QUOTA_TOTAL:-0} -gt 0 ]]; then
-        int_quota_status="PASS"
-    fi
-
-    local agg_status="FAIL"
+    local pjd_status ltp_status xfstest_status agg_status
+    pjd_status=$(smoke_pjd_status)
+    ltp_status=$(smoke_ltp_status)
+    xfstest_status=$(smoke_xfstest_status)
+    agg_status="FAIL"
     [[ $aggregate_exit -eq 0 ]] && agg_status="PASS"
 
-    # Generate smoke_summary.json
     cat > "${smoke_base}/smoke_summary.json" << EOF
 {
   "smoke_timestamp": "${RUN_TIMESTAMP}",
@@ -2611,15 +2746,9 @@ generate_smoke_summary() {
       "pass": ${SMOKE_PJD_PASS:-0},
       "fail": ${SMOKE_PJD_FAIL:-0},
       "skip": ${SMOKE_PJD_SKIP:-0},
-      "total": ${SMOKE_PJD_TOTAL:-0}
-    },
-    "mdtest": {
-      "status": "${mdt_status}",
-      "pass": 0,
-      "fail": 0,
-      "skip": 0,
-      "total": 0,
-      "note": "Performance benchmark - pass/fail determined by exit code, SUMMARY rate presence, and non-zero operation counts"
+      "total": ${SMOKE_PJD_TOTAL:-0},
+      "scenario": "all",
+      "exit_code": ${SMOKE_PJD_EXIT:-0}
     },
     "ltp": {
       "status": "${ltp_status}",
@@ -2627,34 +2756,50 @@ generate_smoke_summary() {
       "fail": ${SMOKE_LTP_FAIL:-0},
       "skip": ${SMOKE_LTP_SKIP:-0},
       "total": ${SMOKE_LTP_TOTAL:-0},
-      "timeout": ${SMOKE_LTP_TIMEOUT:-0}
+      "timeout": ${SMOKE_LTP_TIMEOUT:-0},
+      "scenario": "smoke",
+      "exit_code": ${SMOKE_LTP_EXIT:-0}
     },
     "xfstest": {
       "status": "${xfstest_status}",
       "scenario": "quick",
       "exit_code": ${SMOKE_XFSTEST_EXIT:-1}
     },
-    "int_client": {
-      "status": "${int_client_status}",
-      "pass": ${SMOKE_INT_CLIENT_PASS:-0},
-      "fail": ${SMOKE_INT_CLIENT_FAIL:-0},
-      "total": ${SMOKE_INT_CLIENT_TOTAL:-0},
-      "env": "${INT_ENV}"
-    },
-    "int_cache_node": {
-      "status": "${int_cachenode_status}",
-      "pass": ${SMOKE_INT_CACHENODE_PASS:-0},
-      "fail": ${SMOKE_INT_CACHENODE_FAIL:-0},
-      "total": ${SMOKE_INT_CACHENODE_TOTAL:-0},
-      "env": "${INT_ENV}"
-    },
-    "int_quota": {
-      "status": "${int_quota_status}",
-      "pass": ${SMOKE_INT_QUOTA_PASS:-0},
-      "fail": ${SMOKE_INT_QUOTA_FAIL:-0},
-      "total": ${SMOKE_INT_QUOTA_TOTAL:-0},
-      "env": "${INT_ENV}"
-    }
+EOF
+
+    local module env_name status pass_count fail_count error_count skip_count excluded_count total_count exit_code
+    local module_index=0
+    local module_count=${#SMOKE_INT_MODULES[@]}
+    local comma
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        env_name=$(smoke_int_env "$module")
+        status=$(smoke_int_status "$module")
+        pass_count=$(smoke_int_get "$module" PASS)
+        fail_count=$(smoke_int_get "$module" FAIL)
+        error_count=$(smoke_int_get "$module" ERROR)
+        skip_count=$(smoke_int_get "$module" SKIP)
+        excluded_count=$(smoke_int_get "$module" SKIPPED)
+        total_count=$(smoke_int_get "$module" TOTAL)
+        exit_code=$(smoke_int_get "$module" EXIT)
+        module_index=$((module_index + 1))
+        comma=","
+        [[ $module_index -eq $module_count ]] && comma=""
+        cat >> "${smoke_base}/smoke_summary.json" << EOF
+    "int_${module}": {
+      "status": "${status}",
+      "pass": ${pass_count},
+      "fail": ${fail_count},
+      "error": ${error_count},
+      "skip": ${skip_count},
+      "excluded": ${excluded_count},
+      "total": ${total_count},
+      "env": "${env_name}",
+      "exit_code": ${exit_code}
+    }${comma}
+EOF
+    done
+
+    cat >> "${smoke_base}/smoke_summary.json" << EOF
   },
   "aggregate": {
     "status": "${agg_status}",
@@ -2663,29 +2808,33 @@ generate_smoke_summary() {
 }
 EOF
 
-    # Determine mdtest reason string for text output
-    local mdt_reason="SUMMARY rate verified, non-zero operations"
-    if [[ $SMOKE_MDT_PASS -eq 1 ]]; then
-        mdt_reason="SUMMARY rate verified, non-zero operations"
-    else
-        # Extract reason from validate_mdtest_smoke output (best effort fallback)
-        mdt_reason="FAIL - see smoke_summary.json for details"
-    fi
-
-    # Generate smoke_summary.txt
     cat > "${smoke_base}/smoke_summary.txt" << EOF
 ==============================================
 Smoke Test Summary
 Timestamp: ${RUN_TIMESTAMP}
 ==============================================
 
-pjdtest       [${pjd_status}]  pass: ${SMOKE_PJD_PASS:-0}  fail: ${SMOKE_PJD_FAIL:-0}  skip: ${SMOKE_PJD_SKIP:-0}  total: ${SMOKE_PJD_TOTAL:-0}
-mdtest        [${mdt_status}]  ${mdt_reason}
-ltp           [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}
-xfstest       [${xfstest_status}]  scenario: quick  exit: ${SMOKE_XFSTEST_EXIT:-1}
-int_client    [${int_client_status}]  pass: ${SMOKE_INT_CLIENT_PASS:-0}  fail: ${SMOKE_INT_CLIENT_FAIL:-0}  total: ${SMOKE_INT_CLIENT_TOTAL:-0}  env: ${INT_ENV}
-int_cache_node [${int_cachenode_status}]  pass: ${SMOKE_INT_CACHENODE_PASS:-0}  fail: ${SMOKE_INT_CACHENODE_FAIL:-0}  total: ${SMOKE_INT_CACHENODE_TOTAL:-0}  env: ${INT_ENV}
-int_quota     [${int_quota_status}]  pass: ${SMOKE_INT_QUOTA_PASS:-0}  fail: ${SMOKE_INT_QUOTA_FAIL:-0}  total: ${SMOKE_INT_QUOTA_TOTAL:-0}  env: ${INT_ENV}
+pjdtest        [${pjd_status}]  pass: ${SMOKE_PJD_PASS:-0}  fail: ${SMOKE_PJD_FAIL:-0}  skip: ${SMOKE_PJD_SKIP:-0}  total: ${SMOKE_PJD_TOTAL:-0}  scenario: all
+ltp            [${ltp_status}]  pass: ${SMOKE_LTP_PASS:-0}  fail: ${SMOKE_LTP_FAIL:-0}  skip: ${SMOKE_LTP_SKIP:-0}  total: ${SMOKE_LTP_TOTAL:-0}  scenario: smoke
+xfstest        [${xfstest_status}]  scenario: quick  exit: ${SMOKE_XFSTEST_EXIT:-1}
+EOF
+
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        env_name=$(smoke_int_env "$module")
+        status=$(smoke_int_status "$module")
+        pass_count=$(smoke_int_get "$module" PASS)
+        fail_count=$(smoke_int_get "$module" FAIL)
+        error_count=$(smoke_int_get "$module" ERROR)
+        skip_count=$(smoke_int_get "$module" SKIP)
+        excluded_count=$(smoke_int_get "$module" SKIPPED)
+        total_count=$(smoke_int_get "$module" TOTAL)
+        printf '%-15s [%s]  pass: %s  fail: %s  error: %s  skip: %s  excluded: %s  total: %s  env: %s\n' \
+            "int_${module}" "$status" "$pass_count" "$fail_count" \
+            "$error_count" "$skip_count" "$excluded_count" "$total_count" \
+            "$env_name" >> "${smoke_base}/smoke_summary.txt"
+    done
+
+    cat >> "${smoke_base}/smoke_summary.txt" << EOF
 
 Aggregate: ${agg_status}
 ==============================================
@@ -2694,84 +2843,36 @@ EOF
     echo "Smoke summary reports generated: ${smoke_base}/smoke_summary.json, ${smoke_base}/smoke_summary.txt"
 }
 
-# Send combined smoke notification (WeChat + Email) with all three tools' results.
-# Arguments: $1 = smoke_base directory path; $2 = aggregate exit code; $3 = start timestamp (seconds since epoch).
-# Reads global SMOKE_PJD_*, SMOKE_LTP_*, SMOKE_MDT_PASS variables set by parse/validate functions.
+# Send one combined smoke notification.
 send_smoke_notification() {
     local smoke_base="$1"
     local aggregate_exit="$2"
     local start_ts="$3"
-
-    # Calculate total duration
-    local end_ts=$(date +%s)
-    local duration_sec=$((end_ts - start_ts))
-    local duration_str
+    local end_ts duration_sec duration_str agg_status
+    end_ts=$(date +%s)
+    duration_sec=$((end_ts - start_ts))
     duration_str=$(printf '%dm%ds' $((duration_sec/60)) $((duration_sec%60)))
+    agg_status="SUCCESS"
+    [[ $aggregate_exit -ne 0 ]] && agg_status="FAIL"
 
-    # Determine aggregate status
-    local agg_status="SUCCESS"
-    if [[ $aggregate_exit -ne 0 ]]; then
-        agg_status="FAIL"
-    fi
+    local pjd_status ltp_status xfstest_status
+    pjd_status=$(smoke_pjd_status)
+    ltp_status=$(smoke_ltp_status)
+    xfstest_status=$(smoke_xfstest_status)
+    local details="pjdtest[${pjd_status}] pass:${SMOKE_PJD_PASS:-0} fail:${SMOKE_PJD_FAIL:-0} skip:${SMOKE_PJD_SKIP:-0} total:${SMOKE_PJD_TOTAL:-0} scenario:all
+ltp[${ltp_status}] pass:${SMOKE_LTP_PASS:-0} fail:${SMOKE_LTP_FAIL:-0} skip:${SMOKE_LTP_SKIP:-0} total:${SMOKE_LTP_TOTAL:-0} scenario:smoke
+xfstest[${xfstest_status}] scenario:quick exit:${SMOKE_XFSTEST_EXIT:-1}"
 
-    # Determine per-tool statuses
-    local pjd_status="PASS"
-    if [[ ${SMOKE_PJD_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_PJD_TOTAL:-0} -eq 0 ]]; then
-        pjd_status="FAIL"
-    fi
-
-    local mdt_status="PASS"
-    if [[ ${SMOKE_MDT_PASS:-0} -ne 1 ]]; then
-        mdt_status="FAIL"
-    fi
-
-    local ltp_status="PASS"
-    if [[ ${SMOKE_LTP_TIMEOUT:-0} -eq 1 ]]; then
-        ltp_status="TIMEOUT"
-    elif [[ ${SMOKE_LTP_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_LTP_TOTAL:-0} -eq 0 ]]; then
-        ltp_status="FAIL"
-    fi
-
-    local xfstest_status="PASS"
-    if [[ ${SMOKE_XFSTEST_SKIPPED:-0} -eq 1 ]]; then
-        xfstest_status="SKIP"
-    elif [[ ${SMOKE_XFSTEST_EXIT:-1} -ne 0 ]]; then
-        xfstest_status="FAIL"
-    fi
-
-    local int_client_status="PASS"
-    if [[ ${SMOKE_INT_CLIENT_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_CLIENT_TOTAL:-0} -eq 0 ]]; then
-        int_client_status="FAIL"
-    fi
-
-    local int_cachenode_status="PASS"
-    if [[ ${SMOKE_INT_CACHENODE_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_CACHENODE_TOTAL:-0} -eq 0 ]]; then
-        int_cachenode_status="FAIL"
-    fi
-
-    local int_quota_status="PASS"
-    if [[ ${SMOKE_INT_QUOTA_FAIL:-0} -ne 0 ]] || [[ ${SMOKE_INT_QUOTA_TOTAL:-0} -eq 0 ]]; then
-        int_quota_status="FAIL"
-    fi
-
-    # Build combined details string for notification functions (newline-separated for readability)
-    local details="pjdtest[${pjd_status}] pass:${SMOKE_PJD_PASS:-0} fail:${SMOKE_PJD_FAIL:-0} skip:${SMOKE_PJD_SKIP:-0} total:${SMOKE_PJD_TOTAL:-0}
-mdtest[${mdt_status}]
-ltp[${ltp_status}] pass:${SMOKE_LTP_PASS:-0} fail:${SMOKE_LTP_FAIL:-0} skip:${SMOKE_LTP_SKIP:-0} total:${SMOKE_LTP_TOTAL:-0}
-xfstest[${xfstest_status}] scenario:quick exit:${SMOKE_XFSTEST_EXIT:-1}
-int_client[${int_client_status}] pass:${SMOKE_INT_CLIENT_PASS:-0} fail:${SMOKE_INT_CLIENT_FAIL:-0} total:${SMOKE_INT_CLIENT_TOTAL:-0}
-int_cache_node[${int_cachenode_status}] pass:${SMOKE_INT_CACHENODE_PASS:-0} fail:${SMOKE_INT_CACHENODE_FAIL:-0} total:${SMOKE_INT_CACHENODE_TOTAL:-0}
-int_quota[${int_quota_status}] pass:${SMOKE_INT_QUOTA_PASS:-0} fail:${SMOKE_INT_QUOTA_FAIL:-0} total:${SMOKE_INT_QUOTA_TOTAL:-0}"
+    local module status
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        status=$(smoke_int_status "$module")
+        details+=$'\n'"int_${module}[${status}] pass:$(smoke_int_get "$module" PASS) fail:$(smoke_int_get "$module" FAIL) error:$(smoke_int_get "$module" ERROR) skip:$(smoke_int_get "$module" SKIP) excluded:$(smoke_int_get "$module" SKIPPED) total:$(smoke_int_get "$module" TOTAL) env:$(smoke_int_env "$module")"
+    done
 
     echo ""
     echo "[notify] Sending combined smoke notification (WeChat: $WECHAT_ENABLED, Email: $EMAIL_ENABLED)..."
-
-    # Send WeChat notification (function sourced from notify.sh)
     send_wechat_notification "smoke" "smoke" "$agg_status" "$duration_str" "$details"
-
-    # Send Email notification (function sourced from notify.sh)
     send_email_notification "smoke" "smoke" "$agg_status" "$duration_str" "$details"
-
     echo "[notify] Combined smoke notification sent."
 }
 
@@ -2795,29 +2896,31 @@ is_excluded() {
 }
 
 smoke_run() {
-    # Build list of tools to run for display
+    # The host wrapper owns env_126_tool setup and bind-mount preparation. Do
+    # not silently run smoke against an arbitrary container-local mount when
+    # entrypoint.sh is invoked directly.
+    if [[ "${DTT_SMOKE_ENV_READY:-0}" != "1" ]]; then
+        echo "ERROR: smoke environment was not prepared by the host wrapper."
+        echo "Run this suite with: dtt smoke"
+        return 2
+    fi
+
     local tools_list=""
     if ! is_excluded "pjdtest"; then
-        tools_list="${tools_list}  pjdtest\n"
-    fi
-    if ! is_excluded "mdtest"; then
-        tools_list="${tools_list}  mdtest\n"
+        tools_list="${tools_list}  pjdtest (all)\n"
     fi
     if ! is_excluded "ltp"; then
-        tools_list="${tools_list}  ltp\n"
+        tools_list="${tools_list}  ltp (smoke)\n"
     fi
     if ! is_excluded "xfstest"; then
         tools_list="${tools_list}  xfstest (quick)\n"
     fi
-    if ! is_excluded "int_client"; then
-        tools_list="${tools_list}  int_client\n"
-    fi
-    if ! is_excluded "int_cache_node"; then
-        tools_list="${tools_list}  int_cache_node\n"
-    fi
-    if ! is_excluded "int_quota"; then
-        tools_list="${tools_list}  int_quota\n"
-    fi
+    local module
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        if ! is_excluded "int_${module}"; then
+            tools_list="${tools_list}  int_${module}\n"
+        fi
+    done
 
     echo "=============================================="
     echo "Smoke Test Suite"
@@ -2832,170 +2935,121 @@ smoke_run() {
     echo "=============================================="
     echo ""
 
-    # Record start time for notification duration calculation
-    local smoke_start_ts=$(date +%s)
-
-    # Save original environment
+    local smoke_start_ts
+    smoke_start_ts=$(date +%s)
     local orig_output="$OUTPUT"
     local orig_scenario="$SCENARIO"
     local orig_np="$NP"
+    local orig_mount="$MOUNT"
 
-    # Create unified smoke output directory
     local smoke_base="$OUTPUT/smoke_${RUN_TIMESTAMP}"
     mkdir -p "$smoke_base"
-
-    # Enable SMOKE_MODE to suppress per-tool notifications
     export SMOKE_MODE=1
 
-    # Track per-tool exit codes
     local pjdtest_exit=0
-    local mdtest_exit=0
     local ltp_exit=0
     local xfstest_exit=0
     local aggregate_exit=0
-
-    # ---- Setup: test environment initialization ----
-    echo "=============================================="
-    echo "[Setup] Running test environment setup: $INT_ENV"
-    echo "=============================================="
-    local setup_output
-    set +e
-    setup_output=$(
-        trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 tests/test_env_setup.py "$INT_ENV" 2>&1
-    )
-    local setup_exit=$?
-    set -e
-    echo "$setup_output"
-    if [[ $setup_exit -ne 0 ]]; then
-        echo "WARNING: test_env_setup.py failed (exit: $setup_exit) -- continuing"
-        aggregate_exit=1
-    else
-        echo "test_env_setup.py completed successfully"
-    fi
-
-    # Extract DINGOFS_TEMP_MOUNTDIR from setup output.
-    # The host parent dir is bind-mounted to /data, so the container path
-    # is /data/<basename_of_temp_mountdir>.
-    local temp_mountdir_host
-    temp_mountdir_host=$(echo "$setup_output" | sed -n 's/.*DINGOFS_TEMP_MOUNTDIR=//p' | head -1 | xargs)
-    if [[ -n "$temp_mountdir_host" ]]; then
-        local temp_mountdir_name
-        temp_mountdir_name=$(basename "$temp_mountdir_host")
-        MOUNT="/data/${temp_mountdir_name}"
-        echo "Smoke mount point updated to: $MOUNT"
-    fi
-    echo ""
+    SMOKE_PJD_SKIPPED=0
+    SMOKE_LTP_SKIPPED=0
+    SMOKE_XFSTEST_SKIPPED=0
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        smoke_int_set_result "$module" 0 0 0 0 0 0 0
+    done
 
     # ---- Tool 1: pjdtest -s all ----
     if ! is_excluded "pjdtest"; then
-    echo "=============================================="
-    echo "[1/7] Running pjdtest -s all"
-    echo "=============================================="
-    SCENARIO="all"
-    OUTPUT="${smoke_base}/pjdtest"
-    mkdir -p "$OUTPUT"
-    set +e
-    pjdtest_run
-    pjdtest_exit=$?
-    set -e
-    echo "--- Parsing pjdtest results ---"
-    parse_pjdtest_tap "${smoke_base}/pjdtest"
-    if [[ $pjdtest_exit -ne 0 ]]; then
-        echo "pjdtest completed with failures (exit: $pjdtest_exit) -- continuing to next tool"
-        aggregate_exit=1
-    else
-        echo "pjdtest completed successfully (exit: 0)"
-    fi
-    else
-        echo "--- Skipping pjdtest (excluded) ---"
-        SMOKE_PJD_PASS=0; SMOKE_PJD_FAIL=0; SMOKE_PJD_SKIP=0; SMOKE_PJD_TOTAL=0
-    fi
-    echo ""
-
-    # ---- Tool 2: mdtest -s all -n 8 ----
-    if ! is_excluded "mdtest"; then
-    echo "=============================================="
-    echo "[2/7] Running mdtest -s all -n 8"
-    echo "=============================================="
-    SCENARIO="all"
-    NP=8
-    OUTPUT="${smoke_base}/mdtest"
-    mkdir -p "$OUTPUT"
-    set +e
-    mdtest_run
-    mdtest_exit=$?
-    set -e
-    echo "--- Validating mdtest results ---"
-    validate_mdtest_smoke "${smoke_base}/mdtest" $mdtest_exit
-    if [[ $mdtest_exit -ne 0 ]]; then
-        echo "mdtest completed with failures (exit: $mdtest_exit) -- continuing to next tool"
-        aggregate_exit=1
-    else
-        echo "mdtest completed successfully (exit: 0)"
-    fi
-    else
-        echo "--- Skipping mdtest (excluded) ---"
-        SMOKE_MDT_PASS=0
-    fi
-    echo ""
-
-    # ---- Tool 3: ltp -s smoke ----
-    if ! is_excluded "ltp"; then
-    echo "=============================================="
-    echo "[3/7] Running ltp -s smoke"
-    echo "=============================================="
-    SCENARIO="smoke"
-    OUTPUT="${smoke_base}/ltp"
-    mkdir -p "$OUTPUT"
-    set +e
-    ltp_run
-    ltp_exit=$?
-    set -e
-    echo "--- Parsing ltp results ---"
-    parse_ltp_output "${smoke_base}/ltp" $ltp_exit
-    if [[ $ltp_exit -ne 0 ]]; then
-        echo "ltp completed with failures (exit: $ltp_exit)"
-        aggregate_exit=1
-    else
-        echo "ltp completed successfully (exit: 0)"
-    fi
-    else
-        echo "--- Skipping ltp (excluded) ---"
-        SMOKE_LTP_PASS=0; SMOKE_LTP_FAIL=0; SMOKE_LTP_SKIP=0; SMOKE_LTP_TOTAL=0
-    fi
-    echo ""
-
-    # ---- Tool 4: xfstest -s quick ----
-    SMOKE_XFSTEST_SKIPPED=0
-    if ! is_excluded "xfstest"; then
-    echo "=============================================="
-    echo "[4/7] Running xfstest -s quick"
-    echo "=============================================="
-    SCENARIO="quick"
-    OUTPUT="${smoke_base}/xfstest"
-    mkdir -p "$OUTPUT"
-    if [[ -z "${DINGOFS_META_URL_TEMPLATE:-}" ]]; then
-        echo "ERROR: xfstest_mds_template is not configured."
-        echo "Configure it with: dtt config set xfstest_mds_template 'mds://<MDS_ADDR>/{fsname}'"
-        xfstest_exit=2
-        aggregate_exit=1
-    else
-        set +e
-        if [[ "${DTT_SMOKE_DROPPED_PRIVILEGES:-}" == "yes" ]]; then
-            sudo -n /usr/local/sbin/dtt-smoke-xfstest
+        echo "=============================================="
+        echo "[1/14] Running pjdtest -s all"
+        echo "=============================================="
+        SCENARIO="all"
+        OUTPUT="${smoke_base}/pjdtest"
+        mkdir -p "$OUTPUT"
+        if pjdtest_run; then
+            pjdtest_exit=0
         else
-            xfstest_run
+            pjdtest_exit=$?
         fi
-        xfstest_exit=$?
-        set -e
-        if [[ $xfstest_exit -ne 0 ]]; then
-            echo "xfstest quick completed with failures (exit: $xfstest_exit) -- continuing"
+        parse_pjdtest_tap "${smoke_base}/pjdtest"
+        if [[ $pjdtest_exit -ne 0 ]] || [[ ${SMOKE_PJD_FAIL:-0} -ne 0 ]] || \
+           [[ ${SMOKE_PJD_TOTAL:-0} -eq 0 ]]; then
+            echo "pjdtest completed with failures (exit: $pjdtest_exit) -- continuing"
             aggregate_exit=1
         else
-            echo "xfstest quick completed successfully (exit: 0)"
+            echo "pjdtest completed successfully (exit: 0)"
         fi
+    else
+        echo "--- Skipping pjdtest (excluded) ---"
+        SMOKE_PJD_SKIPPED=1
+        SMOKE_PJD_PASS=0; SMOKE_PJD_FAIL=0; SMOKE_PJD_SKIP=0; SMOKE_PJD_TOTAL=0
     fi
+    SMOKE_PJD_EXIT=$pjdtest_exit
+    echo ""
+
+    # ---- Tool 2: ltp -s smoke ----
+    if ! is_excluded "ltp"; then
+        echo "=============================================="
+        echo "[2/14] Running ltp -s smoke"
+        echo "=============================================="
+        SCENARIO="smoke"
+        OUTPUT="${smoke_base}/ltp"
+        mkdir -p "$OUTPUT"
+        if ltp_run; then
+            ltp_exit=0
+        else
+            ltp_exit=$?
+        fi
+        parse_ltp_output "${smoke_base}/ltp" "$ltp_exit"
+        if [[ $ltp_exit -ne 0 ]] || [[ ${SMOKE_LTP_FAIL:-0} -ne 0 ]] || \
+           [[ ${SMOKE_LTP_TOTAL:-0} -eq 0 ]]; then
+            echo "ltp completed with failures (exit: $ltp_exit) -- continuing"
+            aggregate_exit=1
+        else
+            echo "ltp completed successfully (exit: 0)"
+        fi
+    else
+        echo "--- Skipping ltp (excluded) ---"
+        SMOKE_LTP_SKIPPED=1
+        SMOKE_LTP_PASS=0; SMOKE_LTP_FAIL=0; SMOKE_LTP_SKIP=0; SMOKE_LTP_TOTAL=0
+        SMOKE_LTP_TIMEOUT=0
+    fi
+    SMOKE_LTP_EXIT=$ltp_exit
+    echo ""
+
+    # ---- Tool 3: xfstest -s quick ----
+    if ! is_excluded "xfstest"; then
+        echo "=============================================="
+        echo "[3/14] Running xfstest -s quick"
+        echo "=============================================="
+        SCENARIO="quick"
+        OUTPUT="${smoke_base}/xfstest"
+        mkdir -p "$OUTPUT"
+        if [[ -z "${DINGOFS_META_URL_TEMPLATE:-}" ]]; then
+            echo "ERROR: xfstest_mds_template is not configured."
+            echo "Configure it with: dtt config set xfstest_mds_template 'mds://<MDS_ADDR>/{fsname}'"
+            xfstest_exit=2
+            aggregate_exit=1
+        else
+            if [[ "${DTT_SMOKE_DROPPED_PRIVILEGES:-}" == "yes" ]]; then
+                if sudo -n /usr/local/sbin/dtt-smoke-xfstest; then
+                    xfstest_exit=0
+                else
+                    xfstest_exit=$?
+                fi
+            else
+                if xfstest_run; then
+                    xfstest_exit=0
+                else
+                    xfstest_exit=$?
+                fi
+            fi
+            if [[ $xfstest_exit -ne 0 ]]; then
+                echo "xfstest quick completed with failures (exit: $xfstest_exit) -- continuing"
+                aggregate_exit=1
+            else
+                echo "xfstest quick completed successfully (exit: 0)"
+            fi
+        fi
     else
         echo "--- Skipping xfstest (excluded) ---"
         SMOKE_XFSTEST_SKIPPED=1
@@ -3003,122 +3057,76 @@ smoke_run() {
     SMOKE_XFSTEST_EXIT=$xfstest_exit
     echo ""
 
-    # ---- Tool 5: int client ----
-    if ! is_excluded "int_client"; then
-    echo "=============================================="
-    echo "[5/7] Running integration test: client"
-    echo "=============================================="
-    local int_client_output="${smoke_base}/int_client"
-    mkdir -p "$int_client_output"
-    local int_client_log="${int_client_output}/int_client.log"
-    set +e
-    (
-        trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py client --run-level smoke --env "$INT_ENV" --reruns 2 2>&1 | tee "$int_client_log"
+    local -A int_cases=(
+        [dirstat]="testcases/dirstat_test_cases/smoke"
+        [hot_upgrade]="testcases/hot_upgrade_test_cases/smoke"
+        [mds_manage]="testcases/mds_manage_test_cases/smoke"
+        [mount_subdir]="testcases/mount_subdir_test_cases/smoke/verify_mount_subdir.yaml"
+        [trash]="testcases/trash_test_cases/smoke"
+        [warmup]="testcases/warmup_test_cases/smoke"
+        [xattr]="testcases/xattr_test_cases/smoke"
     )
-    local int_client_exit=${PIPESTATUS[0]}
-    set -e
-    echo "--- Parsing int client results ---"
-    parse_int_smoke_output "$int_client_log" "SMOKE_INT_CLIENT"
-    if [[ $int_client_exit -ne 0 ]]; then
-        echo "int client completed with failures (exit: $int_client_exit) -- continuing"
-        aggregate_exit=1
-    else
-        echo "int client completed successfully (exit: 0)"
-    fi
-    else
-        echo "--- Skipping int_client (excluded) ---"
-        SMOKE_INT_CLIENT_PASS=0; SMOKE_INT_CLIENT_FAIL=0; SMOKE_INT_CLIENT_TOTAL=0
-    fi
-    echo ""
-
-    # ---- Tool 6: int cache_node ----
-    if ! is_excluded "int_cache_node"; then
-    echo "=============================================="
-    echo "[6/7] Running integration test: cache_node"
-    echo "=============================================="
-    local int_cachenode_output="${smoke_base}/int_cache_node"
-    mkdir -p "$int_cachenode_output"
-    local int_cachenode_log="${int_cachenode_output}/int_cache_node.log"
-    set +e
-    (
-        trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py cache_node --run-level smoke --env "$INT_ENV" --reruns 2 2>&1 | tee "$int_cachenode_log"
+    local -A int_run_levels=(
+        [client]="smoke"
+        [cache_node]="smoke"
     )
-    local int_cachenode_exit=${PIPESTATUS[0]}
-    set -e
-    echo "--- Parsing int cache_node results ---"
-    parse_int_smoke_output "$int_cachenode_log" "SMOKE_INT_CACHENODE"
-    if [[ $int_cachenode_exit -ne 0 ]]; then
-        echo "int cache_node completed with failures (exit: $int_cachenode_exit) -- continuing"
-        aggregate_exit=1
-    else
-        echo "int cache_node completed successfully (exit: 0)"
-    fi
-    else
-        echo "--- Skipping int_cache_node (excluded) ---"
-        SMOKE_INT_CACHENODE_PASS=0; SMOKE_INT_CACHENODE_FAIL=0; SMOKE_INT_CACHENODE_TOTAL=0
-    fi
-    echo ""
+    local step=3
+    local env_name case_path run_level
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        step=$((step + 1))
+        if is_excluded "int_${module}"; then
+            echo "--- Skipping int_${module} (excluded) ---"
+            smoke_int_set_result "$module" 0 0 0 0 0 0 1
+            echo ""
+            continue
+        fi
 
-    # ---- Tool 7: int quota ----
-    if ! is_excluded "int_quota"; then
-    echo "=============================================="
-    echo "[7/7] Running integration test: quota"
-    echo "=============================================="
-    local int_quota_output="${smoke_base}/int_quota"
-    mkdir -p "$int_quota_output"
-    local int_quota_log="${int_quota_output}/int_quota.log"
-    set +e
-    (
-        trap 'kill -INT $$' INT TERM
-        cd "$INTEGRATION_DIR" && python3 run_tests.py quota --run-level smoke --env "$INT_ENV" --reruns 2 2>&1 | tee "$int_quota_log"
-    )
-    local int_quota_exit=${PIPESTATUS[0]}
-    set -e
-    echo "--- Parsing int quota results ---"
-    parse_int_smoke_output "$int_quota_log" "SMOKE_INT_QUOTA"
-    if [[ $int_quota_exit -ne 0 ]]; then
-        echo "int quota completed with failures (exit: $int_quota_exit) -- continuing"
-        aggregate_exit=1
-    else
-        echo "int quota completed successfully (exit: 0)"
-    fi
-    else
-        echo "--- Skipping int_quota (excluded) ---"
-        SMOKE_INT_QUOTA_PASS=0; SMOKE_INT_QUOTA_FAIL=0; SMOKE_INT_QUOTA_TOTAL=0
-    fi
-    echo ""
+        env_name=$(smoke_int_env "$module")
+        echo "=============================================="
+        echo "[${step}/14] Running integration test: ${module} (env: ${env_name})"
+        echo "=============================================="
+        if [[ "$module" == "quota" ]]; then
+            if ! run_smoke_quota_phase "$smoke_base"; then
+                aggregate_exit=1
+            fi
+        else
+            local -a selection_args=()
+            case_path="${int_cases[$module]:-}"
+            run_level="${int_run_levels[$module]:-}"
+            [[ -n "$case_path" ]] && selection_args+=(--case "$case_path")
+            [[ -n "$run_level" ]] && selection_args+=(--run-level "$run_level")
+            if ! run_smoke_int_phase \
+                "$smoke_base" "$module" "$env_name" "${selection_args[@]}"; then
+                aggregate_exit=1
+            fi
+        fi
+        echo ""
+    done
 
-    # Restore original environment
     OUTPUT="$orig_output"
     SCENARIO="$orig_scenario"
     NP="$orig_np"
+    MOUNT="$orig_mount"
     unset SMOKE_MODE
 
-    # Generate smoke summary reports
-    generate_smoke_summary "$smoke_base" $aggregate_exit
+    generate_smoke_summary "$smoke_base" "$aggregate_exit"
+    send_smoke_notification "$smoke_base" "$aggregate_exit" "$smoke_start_ts"
 
-    # Send combined notification (only fires if WECHAT/EMAIL env vars are set)
-    send_smoke_notification "$smoke_base" $aggregate_exit $smoke_start_ts
-
-    # Final summary with statistics
     echo "=============================================="
     echo "Smoke Test Suite Complete"
     echo "=============================================="
-    echo "  pjdtest:     pass=$SMOKE_PJD_PASS fail=$SMOKE_PJD_FAIL skip=$SMOKE_PJD_SKIP total=$SMOKE_PJD_TOTAL (exit=$pjdtest_exit)"
-    echo "  mdtest:      $( [[ $SMOKE_MDT_PASS -eq 1 ]] && echo 'PASS' || echo 'FAIL' ) (exit=$mdtest_exit)"
-    echo "  ltp:         pass=$SMOKE_LTP_PASS fail=$SMOKE_LTP_FAIL skip=$SMOKE_LTP_SKIP total=$SMOKE_LTP_TOTAL (exit=$ltp_exit)"
-    echo "  xfstest:     $( [[ $SMOKE_XFSTEST_SKIPPED -eq 1 ]] && echo 'SKIP' || { [[ $xfstest_exit -eq 0 ]] && echo 'PASS' || echo 'FAIL'; } ) (exit=$xfstest_exit)"
-    echo "  int_client:  pass=$SMOKE_INT_CLIENT_PASS fail=$SMOKE_INT_CLIENT_FAIL total=$SMOKE_INT_CLIENT_TOTAL (exit=$int_client_exit)"
-    echo "  int_cache_node: pass=$SMOKE_INT_CACHENODE_PASS fail=$SMOKE_INT_CACHENODE_FAIL total=$SMOKE_INT_CACHENODE_TOTAL (exit=$int_cachenode_exit)"
-    echo "  int_quota:   pass=$SMOKE_INT_QUOTA_PASS fail=$SMOKE_INT_QUOTA_FAIL total=$SMOKE_INT_QUOTA_TOTAL (exit=$int_quota_exit)"
+    echo "  pjdtest:     $(smoke_pjd_status) pass=${SMOKE_PJD_PASS:-0} fail=${SMOKE_PJD_FAIL:-0} skip=${SMOKE_PJD_SKIP:-0} total=${SMOKE_PJD_TOTAL:-0} (exit=$pjdtest_exit)"
+    echo "  ltp:         $(smoke_ltp_status) pass=${SMOKE_LTP_PASS:-0} fail=${SMOKE_LTP_FAIL:-0} skip=${SMOKE_LTP_SKIP:-0} total=${SMOKE_LTP_TOTAL:-0} (exit=$ltp_exit)"
+    echo "  xfstest:     $(smoke_xfstest_status) (exit=$xfstest_exit)"
+    for module in "${SMOKE_INT_MODULES[@]}"; do
+        echo "  int_${module}: $(smoke_int_status "$module") pass=$(smoke_int_get "$module" PASS) fail=$(smoke_int_get "$module" FAIL) error=$(smoke_int_get "$module" ERROR) skip=$(smoke_int_get "$module" SKIP) excluded=$(smoke_int_get "$module" SKIPPED) total=$(smoke_int_get "$module" TOTAL) (exit=$(smoke_int_get "$module" EXIT))"
+    done
     echo "  aggregate exit: $aggregate_exit"
     echo "  Output: $smoke_base"
     echo "  Reports: smoke_summary.json, smoke_summary.txt"
     echo "=============================================="
 
-    return $aggregate_exit
+    return "$aggregate_exit"
 }
 
 # ==============================================================================

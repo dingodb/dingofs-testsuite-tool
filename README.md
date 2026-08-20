@@ -490,14 +490,35 @@ dtt smoke
 
 # 排除指定工具
 dtt smoke --exclude int
-dtt smoke --exclude pjdtest,mdtest
+dtt smoke --exclude pjdtest,xfstest
 dtt smoke --exclude xfstest
 ```
 
-完整 smoke 会执行 pjdtest、mdtest、LTP smoketest、xfstest quick，以及
-client/cache_node/quota 集成测试。xfstest 只运行已配置的 DingoFS
-TEST/SCRATCH 文件系统；未配置 `xfstest_mds_template` 时该项明确失败，
-不会回退到容器本地文件模式。
+启用 pjdtest、LTP、xfstest 中任一工具测试时，`dtt smoke` 会先执行
+`dtt --setup-env env_126_tool`，并使用生成后写回配置的 `testdir` 运行
+pjdtest all、LTP smoketest 和 xfstest quick；setup 失败时不会启动 smoke
+容器。三个工具均被排除时不会执行该 setup。xfstest 仍使用
+`xfstest_mds_template` 指向的 DingoFS TEST/SCRATCH 文件系统；未配置时该项
+明确失败，不会回退到本地文件模式。
+
+随后按 fail-continue 模式执行以下集成测试，所有调用均使用 `--reruns 2`：
+
+| 模块 | 范围 | 环境 |
+|---|---|---|
+| quota | 仅 `verify_fs_capacity.yaml`、`verify_fs_quota.yaml` | `env_126_quota` |
+| basic_file_operation | 全部用例 | `env_126_smoke` |
+| client | `--run-level smoke` | `env_40_dingofs` |
+| cache_node | `--run-level smoke` | `env_40_dingofs` |
+| dirstat | `testcases/dirstat_test_cases/smoke` | `env_126_dirstat` |
+| hot_upgrade | `testcases/hot_upgrade_test_cases/smoke` | `env_126_hotupgrade_multi` |
+| mds_manage | `testcases/mds_manage_test_cases/smoke` | `env_126_mds_manage` |
+| mount_subdir | 仅 `verify_mount_subdir.yaml` | `env_126_mount_subdir` |
+| trash | `testcases/trash_test_cases/smoke` | `env_126_trash` |
+| warmup | `testcases/warmup_test_cases/smoke` | `env_126_warmup` |
+| xattr | `testcases/xattr_test_cases/smoke` | `env_126_xattr` |
+
+任一阶段失败不会阻止后续阶段，最终 JSON、文本和通知汇总会包含全部阶段。
+`--exclude int` 可排除全部集成测试，也可以用 `int_<模块名>` 排除单个模块。
 
 ---
 

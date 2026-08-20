@@ -404,7 +404,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   示例:
     dtt smoke
     dtt smoke --exclude int
-    dtt smoke --exclude pjdtest,mdtest
+    dtt smoke --exclude pjdtest,xfstest
 
 === cluster — 集群管理 ===
 
@@ -781,16 +781,27 @@ Smoke Test Suite
   dtt smoke [选项]
 
 说明:
-  dtt smoke 会在容器中自动串行执行以下测试:
-    1. pjdtest     -s all    (POSIX文件系统测试套件)
-    2. mdtest      -s all -n 8 (元数据性能测试, 8进程)
-    3. ltp         -s smoke   (LTP文件系统快速测试)
-    4. xfstest     -s quick   (DingoFS TEST/SCRATCH 快速回归)
-    5. int_client  (集成测试 client, 使用 int_env 配置)
-    6. int_cache_node (集成测试 cache_node, 使用 int_env 配置)
-    7. int_quota   (集成测试 quota, 使用 int_env 配置)
+  运行工具测试前，先自动执行 dtt --setup-env env_126_tool，并使用其更新后的 testdir。
+  然后串行执行以下 14 个测试阶段:
+    1. pjdtest -s all
+    2. ltp -s smoke
+    3. xfstest -s quick
+    4. quota (env_126_quota，仅 verify_fs_capacity.yaml 和 verify_fs_quota.yaml)
+    5. basic_file_operation (env_126_smoke，全部用例)
+    6. client (env_40_dingofs，run-level smoke)
+    7. cache_node (env_40_dingofs，run-level smoke)
+    8. dirstat (env_126_dirstat，smoke 目录)
+    9. hot_upgrade (env_126_hotupgrade_multi，smoke 目录)
+   10. mds_manage (env_126_mds_manage，smoke 目录)
+   11. mount_subdir (env_126_mount_subdir，仅 verify_mount_subdir.yaml)
+   12. trash (env_126_trash，smoke 目录)
+   13. warmup (env_126_warmup，smoke 目录)
+   14. xattr (env_126_xattr，smoke 目录)
+
+  所有集成测试均使用 --reruns 2。
 
   所有工具全部执行，单个工具失败不会中止后续工具运行。
+  env_126_tool 初始化失败时不会启动 smoke 容器。
   xfstest 要求先配置 xfstest_mds_template；未配置时该项失败，不回退到本地文件模式。
   可通过 --exclude 排除指定工具。
   测试结果和汇总报告输出到 smoke_<timestamp>/ 目录。
@@ -798,9 +809,9 @@ Smoke Test Suite
 选项:
   --wechat      启用企业微信通知（发送单条聚合通知）
   --email       启用邮件通知（发送单条聚合通知）
-  --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,mdtest）
-                        可选值: pjdtest, mdtest, ltp, xfstest, int
-                        int 代表 int_client, int_cache_node, int_quota 三个集成测试
+  --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,xfstest）
+                        工具值: pjdtest, ltp, xfstest
+                        int 排除全部 11 个集成测试；也可使用 int_<模块名> 排除单个模块
   --debug       调试模式，容器执行完毕后保留不删除
   --help, -h    显示此帮助信息
 
@@ -817,23 +828,22 @@ Smoke Test Suite
   # 同时启用微信和邮件通知
   dtt smoke --wechat --email
 
-  # 排除集成测试（只跑 pjdtest, mdtest, ltp）
+  # 排除集成测试（只跑 pjdtest、LTP、xfstest）
   dtt smoke --exclude int
 
-  # 排除 pjdtest 和 mdtest（只跑 ltp 和 int）
-  dtt smoke --exclude pjdtest,mdtest
+  # 排除 pjdtest 和 xfstest
+  dtt smoke --exclude pjdtest,xfstest
 
   # 调试模式（保留容器）
   dtt smoke --debug
 
 注意:
-  - 需要先配置 testdir 和 output:
-    dtt config set testdir <目录>
+  - 需要先配置 output；启用任一工具测试时，env_126_tool setup 会自动更新 testdir:
     dtt config set output <目录>
   - 通知功能需要先配置 webhook_url 或 email:
     dtt config set webhook_url <webhook地址>
     dtt config set email <邮箱地址>
-  - 微信/邮件通知聚合为一条消息，包含三个工具的汇总结果
+  - 微信/邮件通知聚合为一条消息，包含全部 smoke 阶段的汇总结果
 
 更多信息:
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
@@ -1210,6 +1220,41 @@ cmd_smoke() {
         return 1
     fi
 
+    # Validate non-generated prerequisites before env setup creates or mounts
+    # any resources. testdir is checked later because setup writes it.
+    local output="${config_output}"
+    if [[ -z "$output" ]]; then
+        echo "Error: Output directory not set."
+        echo "Please run 'dtt config set output <directory>' first."
+        return 1
+    fi
+    mkdir -p "$output"
+
+    # Prepare one dedicated filesystem for the host-mounted tool phases. The
+    # setup command persists the generated mount path as the new testdir.
+    local exclude_normalized="${exclude//[[:space:]]/}"
+    local prepare_tool_env="no"
+    local smoke_tool
+    for smoke_tool in pjdtest ltp xfstest; do
+        if [[ ",${exclude_normalized}," != *",${smoke_tool},"* ]]; then
+            prepare_tool_env="yes"
+            break
+        fi
+    done
+    if [[ "$prepare_tool_env" == "yes" ]]; then
+        cmd_setup_env env_126_tool || return $?
+        config_testdir=$(load_config testdir)
+        if ! command -v mountpoint >/dev/null 2>&1; then
+            echo "Error: mountpoint command is required to validate env_126_tool."
+            return 1
+        fi
+        if [[ -z "$config_testdir" ]] || ! mountpoint -q "$config_testdir"; then
+            echo "Error: env_126_tool testdir is not an active mount: ${config_testdir:-<empty>}"
+            echo "Smoke container was not started."
+            return 1
+        fi
+    fi
+
     # Validate test directory
     local mount="${config_testdir}"
     if [[ -z "$mount" ]]; then
@@ -1227,15 +1272,6 @@ cmd_smoke() {
     local host_mount container_target container_mount
     read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$mount")"
 
-    # Validate/create output directory
-    local output="${config_output}"
-    if [[ -z "$output" ]]; then
-        echo "Error: Output directory not set."
-        echo "Please run 'dtt config set output <directory>' first."
-        return 1
-    fi
-    mkdir -p "$output"
-
     # Build docker/podman command (omit --rm in debug mode)
     local rm_flag="--rm"
     if [[ -n "$debug" ]]; then
@@ -1246,7 +1282,6 @@ cmd_smoke() {
         $runtime run $rm_flag --privileged --net=host
     )
 
-    local exclude_normalized="${exclude//[[:space:]]/}"
     local run_xfstest="no"
     if [[ -n "$config_xfstest_mds_template" ]] && \
        [[ ",${exclude_normalized}," != *",xfstest,"* ]]; then
@@ -1267,6 +1302,7 @@ cmd_smoke() {
         docker_cmd+=("--user" "$(stat -c '%u:%g' "$mount")")
     fi
     docker_cmd+=(
+        -e "DTT_SMOKE_ENV_READY=1"
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
