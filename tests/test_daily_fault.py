@@ -55,7 +55,7 @@ class DailyFaultTest(unittest.TestCase):
             )
             return result, args, identity
 
-    def test_daily_runs_fault_with_only_requested_chaos_parameters(self):
+    def test_daily_runs_fault_with_external_chaos_paths(self):
         result, args, identity = self._run_daily()
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
@@ -63,15 +63,15 @@ class DailyFaultTest(unittest.TestCase):
         command_tokens = shlex.split(args[-1])
         fault_index = command_tokens.index("fault")
         self.assertEqual(
-            command_tokens[fault_index:fault_index + 6],
+            command_tokens[fault_index:fault_index + 10],
             [
                 "fault", "--env", "env_79_dingofs",
-                "--allow-high-risk-chaos", "--enable-external-chaos",
+                "--chaos-tool-path", "/opt/dingofs-chaos-tool",
+                "--ssh-identity-file", "/root/.ssh/rocky_70",
+                "--enable-external-chaos", "--allow-high-risk-chaos",
                 "mds_manage",
             ],
         )
-        self.assertNotIn("--chaos-tool-path", command_tokens)
-        self.assertNotIn("--ssh-identity-file", command_tokens)
         self.assertNotIn("--case", command_tokens)
 
     def test_daily_stops_before_container_start_when_identity_is_missing(self):
