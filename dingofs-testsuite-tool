@@ -399,7 +399,8 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
 === smoke — 冒烟测试 ===
 
-  dtt smoke [--wechat] [--email] [--exclude <工具列表>]
+  dtt smoke [--wechat] [--email [地址]] [--exclude <工具列表>]
+            [--report-path <路径>] [--report-port <端口>]
 
   示例:
     dtt smoke
@@ -809,7 +810,9 @@ Smoke Test Suite
 选项:
   --env <基础环境>  smoke 基础环境（默认: env_126；例如: env_127）
   --wechat      启用企业微信通知（发送单条聚合通知）
-  --email       启用邮件通知（发送单条聚合通知）
+  --email [地址]  启用邮件通知；未指定地址时使用配置值
+  --report-path <路径>  smoke 输出根目录（默认使用 config output）
+  --report-port <端口>  启动 smoke 输出目录的 HTTP 服务
   --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,xfstest）
                         工具值: pjdtest, ltp, xfstest
                         int 排除全部 11 个集成测试；也可使用 int_<模块名> 排除单个模块
@@ -827,7 +830,7 @@ Smoke Test Suite
   dtt smoke --wechat
 
   # 运行并发送邮件通知
-  dtt smoke --email
+  dtt smoke --email daigy@zetyun.com
 
   # 同时启用微信和邮件通知
   dtt smoke --wechat --email
@@ -1182,9 +1185,12 @@ cmd_smoke() {
         return 0
     fi
 
-    # Parse flags: --env, --wechat, --email, --debug, --exclude, --help
+    # Parse flags: --env, --wechat, --email, --report-path, --report-port,
+    #              --debug, --exclude, --help
     local wechat=""
     local email_to=""
+    local report_path=""
+    local report_port=""
     local debug=""
     local exclude=""
     local smoke_env="env_126"
@@ -1205,8 +1211,30 @@ cmd_smoke() {
                 shift
                 ;;
             --email)
-                email_to="yes"
-                shift
+                if [[ -n "$2" ]] && [[ "$2" != -* ]]; then
+                    email_to="$2"
+                    shift 2
+                else
+                    email_to="yes"
+                    shift
+                fi
+                ;;
+            --report-path)
+                if [[ $# -lt 2 ]] || [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    echo "Error: --report-path requires a directory"
+                    return 1
+                fi
+                report_path="$2"
+                shift 2
+                ;;
+            --report-port)
+                if [[ $# -lt 2 ]] || [[ ! "$2" =~ ^[0-9]+$ ]] || \
+                   [[ "$2" -lt 1 ]] || [[ "$2" -gt 65535 ]]; then
+                    echo "Error: --report-port requires a port from 1 to 65535"
+                    return 1
+                fi
+                report_port="$2"
+                shift 2
                 ;;
             --debug)
                 debug="yes"
@@ -1253,7 +1281,7 @@ cmd_smoke() {
 
     # Validate non-generated prerequisites before env setup creates or mounts
     # any resources. testdir is checked later because setup writes it.
-    local output="${config_output}"
+    local output="${report_path:-${config_output}}"
     if [[ -z "$output" ]]; then
         echo "Error: Output directory not set."
         echo "Please run 'dtt config set output <directory>' first."
@@ -1435,13 +1463,36 @@ cmd_smoke() {
     if [[ -n "$email_to" ]]; then
         echo "  Email:       enabled"
     fi
+    if [[ -n "$report_path" ]]; then
+        echo "  Report path: $report_path -> /output"
+    fi
+    if [[ -n "$report_port" ]]; then
+        echo "  Report port: $report_port"
+    fi
     if [[ -n "$debug" ]]; then
         echo "  Debug:       container will be preserved"
     fi
     echo ""
 
-    # Execute: run container with -t smoke, mounting test/output dirs
-    "${docker_cmd[@]}" "$image" /entrypoint.sh -t smoke -m "$container_mount" -o /output
+    # Execute: run container with -t smoke, mounting test/output dirs. Preserve
+    # its aggregate status while still publishing reports from failed runs.
+    local smoke_exit=0
+    if "${docker_cmd[@]}" "$image" /entrypoint.sh -t smoke -m "$container_mount" -o /output; then
+        smoke_exit=0
+    else
+        smoke_exit=$?
+    fi
+
+    if [[ -n "$report_port" ]]; then
+        if pgrep -f "python.*http.server.*${report_port}" >/dev/null 2>&1; then
+            pkill -f "python.*http.server.*${report_port}" 2>/dev/null || true
+        fi
+        nohup python3 -m http.server "$report_port" --directory "$output" \
+            >/dev/null 2>&1 &
+        echo "  Smoke report: http://$(hostname -I | awk '{print $1}'):${report_port}/"
+    fi
+
+    return "$smoke_exit"
 }
 
 cmd_config() {

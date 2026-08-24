@@ -492,6 +492,14 @@ dtt smoke
 dtt smoke --exclude int
 dtt smoke --exclude pjdtest,xfstest
 dtt smoke --exclude xfstest
+
+# 指定环境、通知和报告服务
+dtt smoke --env env_127 \
+  --exclude int_client,int_cache_node \
+  --email daigy@zetyun.com \
+  --wechat \
+  --report-path /mnt/disk5/daigy/tmp/output \
+  --report-port 8889
 ```
 
 启用 pjdtest、LTP、xfstest 中任一工具测试时，`dtt smoke` 会先执行
@@ -519,6 +527,9 @@ pjdtest all、LTP smoketest 和 xfstest quick；setup 失败时不会启动 smok
 
 任一阶段失败不会阻止后续阶段，最终 JSON、文本和通知汇总会包含全部阶段。
 `--exclude int` 可排除全部集成测试，也可以用 `int_<模块名>` 排除单个模块。
+`--email` 不带地址时使用 `dtt config set email` 保存的地址；`--report-path`
+覆盖本次 smoke 的输出根目录，`--report-port` 在宿主机启动该目录的 HTTP
+服务，并保留 smoke 原始退出码。
 
 ---
 
