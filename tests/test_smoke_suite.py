@@ -20,6 +20,7 @@ class SmokeSuiteTest(unittest.TestCase):
         empty_module="",
         skipped_module="",
         exclude="",
+        smoke_base_env="env_126",
     ):
         source = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
         library = source.rsplit('\nmain "$@"', 1)[0]
@@ -39,6 +40,7 @@ class SmokeSuiteTest(unittest.TestCase):
                 WECHAT_ENABLED=no
                 EMAIL_ENABLED=no
                 SMOKE_EXCLUDE={shlex.quote(exclude)}
+                SMOKE_BASE_ENV={shlex.quote(smoke_base_env)}
                 DTT_SMOKE_ENV_READY=1
                 DINGOFS_META_URL_TEMPLATE='mds://127.0.0.1:6900/{{fsname}}'
                 FAIL_QUOTA_CAPACITY={'yes' if fail_quota_capacity else 'no'}
@@ -249,6 +251,29 @@ class SmokeSuiteTest(unittest.TestCase):
         self.assertEqual(summary["tools"]["int_quota"]["total"], 2)
         self.assertEqual(summary["aggregate"]["status"], "PASS")
         self.assertIn("smoke_rc=0", output)
+
+    def test_env_127_switches_only_the_126_based_integration_environments(self):
+        result, output, _, calls = self.run_smoke(smoke_base_env="env_127")
+
+        environments = [(call[1], call[3]) for call in calls]
+        self.assertEqual(result.returncode, 0, output)
+        self.assertEqual(
+            environments,
+            [
+                ("quota", "env_127_quota"),
+                ("quota", "env_127_quota"),
+                ("basic_file_operation", "env_127_smoke"),
+                ("client", "env_40_dingofs"),
+                ("cache_node", "env_40_dingofs"),
+                ("dirstat", "env_127_dirstat"),
+                ("hot_upgrade", "env_127_hotupgrade_multi"),
+                ("mds_manage", "env_127_mds_manage"),
+                ("mount_subdir", "env_127_mount_subdir"),
+                ("trash", "env_127_trash"),
+                ("warmup", "env_127_warmup"),
+                ("xattr", "env_127_xattr"),
+            ],
+        )
 
     def test_failures_are_aggregated_without_stopping_later_modules(self):
         _, output, summary, calls = self.run_smoke(

@@ -47,6 +47,7 @@ INT_ENV="${INT_ENV:-env_126_smoke}"
 
 # Smoke exclude list (comma-separated tool names)
 SMOKE_EXCLUDE="${SMOKE_EXCLUDE:-}"
+SMOKE_BASE_ENV="${SMOKE_BASE_ENV:-env_126}"
 
 # Source notification script
 if [[ -f "/scripts/notify.sh" ]]; then
@@ -217,23 +218,23 @@ show_smoke_help() {
 冒烟测试 (Smoke Test)
 =====================
 
-宿主命令用法: dtt smoke [--exclude <阶段列表>]
+宿主命令用法: dtt smoke [--env env_<编号>] [--exclude <阶段列表>]
 
 自动串行运行以下 14 个阶段:
   1. pjdtest -s all
   2. ltp -s smoke
   3. xfstest -s quick
-  4. int_quota (env_126_quota，仅两个指定 quota 用例)
-  5. int_basic_file_operation (env_126_smoke，全部用例)
+  4. int_quota (env_<编号>_quota，仅两个指定 quota 用例)
+  5. int_basic_file_operation (env_<编号>_smoke，全部用例)
   6. int_client (env_40_dingofs，run-level smoke)
   7. int_cache_node (env_40_dingofs，run-level smoke)
-  8. int_dirstat (env_126_dirstat，smoke 目录)
-  9. int_hot_upgrade (env_126_hotupgrade_multi，smoke 目录)
- 10. int_mds_manage (env_126_mds_manage，smoke 目录)
- 11. int_mount_subdir (env_126_mount_subdir，仅 verify_mount_subdir.yaml)
- 12. int_trash (env_126_trash，smoke 目录)
- 13. int_warmup (env_126_warmup，smoke 目录)
- 14. int_xattr (env_126_xattr，smoke 目录)
+  8. int_dirstat (env_<编号>_dirstat，smoke 目录)
+  9. int_hot_upgrade (env_<编号>_hotupgrade_multi，smoke 目录)
+ 10. int_mds_manage (env_<编号>_mds_manage，smoke 目录)
+ 11. int_mount_subdir (env_<编号>_mount_subdir，仅 verify_mount_subdir.yaml)
+ 12. int_trash (env_<编号>_trash，smoke 目录)
+ 13. int_warmup (env_<编号>_warmup，smoke 目录)
+ 14. int_xattr (env_<编号>_xattr，smoke 目录)
 
 所有集成测试均使用 --reruns 2。
 
@@ -246,12 +247,15 @@ show_smoke_help() {
   # 运行冒烟测试
   dtt smoke
 
+  # 使用 127 环境运行冒烟测试
+  dtt smoke --env env_127
+
   # 排除全部集成测试
   dtt smoke --exclude int
 
 注意:
   - 建议使用 --privileged 运行以支持 LTP 内核测试
-  - 宿主 dtt smoke 会在启动容器前准备 env_126_tool
+  - 宿主 dtt smoke 会在启动容器前准备 env_<编号>_tool
   - xfstest 要求配置 DINGOFS_META_URL_TEMPLATE
 EOF
 }
@@ -2527,17 +2531,18 @@ SMOKE_INT_MODULES=(
 )
 
 smoke_int_env() {
+    local base_env="${SMOKE_BASE_ENV:-env_126}"
     case "$1" in
-        quota)                echo "env_126_quota" ;;
-        basic_file_operation) echo "env_126_smoke" ;;
+        quota)                echo "${base_env}_quota" ;;
+        basic_file_operation) echo "${base_env}_smoke" ;;
         client|cache_node)    echo "env_40_dingofs" ;;
-        dirstat)              echo "env_126_dirstat" ;;
-        hot_upgrade)          echo "env_126_hotupgrade_multi" ;;
-        mds_manage)           echo "env_126_mds_manage" ;;
-        mount_subdir)         echo "env_126_mount_subdir" ;;
-        trash)                echo "env_126_trash" ;;
-        warmup)               echo "env_126_warmup" ;;
-        xattr)                echo "env_126_xattr" ;;
+        dirstat)              echo "${base_env}_dirstat" ;;
+        hot_upgrade)          echo "${base_env}_hotupgrade_multi" ;;
+        mds_manage)           echo "${base_env}_mds_manage" ;;
+        mount_subdir)         echo "${base_env}_mount_subdir" ;;
+        trash)                echo "${base_env}_trash" ;;
+        warmup)               echo "${base_env}_warmup" ;;
+        xattr)                echo "${base_env}_xattr" ;;
         *) return 1 ;;
     esac
 }
@@ -2651,7 +2656,8 @@ run_smoke_int_phase() {
 
 run_smoke_quota_phase() {
     local smoke_base="$1"
-    local env_name="env_126_quota"
+    local env_name
+    env_name=$(smoke_int_env quota) || return 1
     local -a quota_cases=(
         testcases/quota_test_cases/smoke/verify_fs_capacity.yaml
         testcases/quota_test_cases/smoke/verify_fs_quota.yaml

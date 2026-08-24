@@ -47,6 +47,13 @@ class SmokeXfstestTest(unittest.TestCase):
         if configure_output:
             (config / "output").write_text(f"{output}\n", encoding="utf-8")
         (config / "runtime").write_text(f"{runtime}\n", encoding="utf-8")
+        (config / "mdsaddr").write_text(
+            "172.30.14.126:6900,172.30.14.126:6901,172.30.14.126:6902\n",
+            encoding="utf-8",
+        )
+        (config / "xfstest_mds_template").write_text(
+            "mds://172.30.14.126:6900/{fsname}\n", encoding="utf-8"
+        )
 
         command = textwrap.dedent(
             f"""
@@ -259,6 +266,35 @@ class SmokeXfstestTest(unittest.TestCase):
         self.assertEqual(events, ["setup:env_126_tool", "runtime"])
         self.assertIn(f"{new_mount}:/data", args)
         self.assertIn("DTT_SMOKE_ENV_READY=1", args)
+
+    def test_dtt_smoke_env_127_routes_setup_mds_and_container_environment(self):
+        result, events, args, _, new_mount = self._run_smoke_wrapper_with_setup(
+            smoke_args="--env env_127"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(events, ["setup:env_127_tool", "runtime"])
+        self.assertIn(f"{new_mount}:/data", args)
+        self.assertIn("SMOKE_BASE_ENV=env_127", args)
+        self.assertIn(
+            "MDSADDR=172.30.14.127:6900,172.30.14.127:6901,172.30.14.127:6902",
+            args,
+        )
+        self.assertIn(
+            "DINGOFS_META_URL_TEMPLATE=mds://172.30.14.127:6900/{fsname}",
+            args,
+        )
+
+    def test_dtt_smoke_rejects_invalid_base_environment_before_setup(self):
+        result, events, args, args_file, _ = self._run_smoke_wrapper_with_setup(
+            smoke_args="--env env_127_smoke"
+        )
+
+        self.assertEqual(result.returncode, 1, result.stdout + result.stderr)
+        self.assertIn("Invalid smoke environment", result.stdout + result.stderr)
+        self.assertEqual(events, [])
+        self.assertEqual(args, [])
+        self.assertFalse(args_file.exists())
 
     def test_dtt_smoke_aborts_when_tool_environment_setup_fails(self):
         result, events, args, args_file, _ = self._run_smoke_wrapper_with_setup(

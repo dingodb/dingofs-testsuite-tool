@@ -781,7 +781,7 @@ Smoke Test Suite
   dtt smoke [选项]
 
 说明:
-  运行工具测试前，先自动执行 dtt --setup-env env_126_tool，并使用其更新后的 testdir。
+  运行工具测试前，先自动执行 dtt --setup-env <基础环境>_tool，并使用其更新后的 testdir。
   然后串行执行以下 14 个测试阶段:
     1. pjdtest -s all
     2. ltp -s smoke
@@ -807,6 +807,7 @@ Smoke Test Suite
   测试结果和汇总报告输出到 smoke_<timestamp>/ 目录。
 
 选项:
+  --env <基础环境>  smoke 基础环境（默认: env_126；例如: env_127）
   --wechat      启用企业微信通知（发送单条聚合通知）
   --email       启用邮件通知（发送单条聚合通知）
   --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,xfstest）
@@ -818,6 +819,9 @@ Smoke Test Suite
 示例:
   # 运行冒烟测试
   dtt smoke
+
+  # 使用 127 环境运行冒烟测试
+  dtt smoke --env env_127
 
   # 运行并发送微信通知
   dtt smoke --wechat
@@ -838,7 +842,7 @@ Smoke Test Suite
   dtt smoke --debug
 
 注意:
-  - 需要先配置 output；启用任一工具测试时，env_126_tool setup 会自动更新 testdir:
+  - 需要先配置 output；启用任一工具测试时，<基础环境>_tool setup 会自动更新 testdir:
     dtt config set output <目录>
   - 通知功能需要先配置 webhook_url 或 email:
     dtt config set webhook_url <webhook地址>
@@ -1176,13 +1180,24 @@ cmd_smoke() {
         return 0
     fi
 
-    # Parse flags: --wechat, --email, --debug, --exclude, --help
+    # Parse flags: --env, --wechat, --email, --debug, --exclude, --help
     local wechat=""
     local email_to=""
     local debug=""
     local exclude=""
+    local smoke_env="env_126"
+    local smoke_env_explicit=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --env)
+                if [[ $# -lt 2 ]]; then
+                    echo "Error: --env requires a base environment such as env_127"
+                    return 1
+                fi
+                smoke_env="$2"
+                smoke_env_explicit="yes"
+                shift 2
+                ;;
             --wechat)
                 wechat="yes"
                 shift
@@ -1210,6 +1225,22 @@ cmd_smoke() {
                 ;;
         esac
     done
+
+    if [[ ! "$smoke_env" =~ ^env_([1-9][0-9]{0,2})$ ]] || \
+       (( 10#${BASH_REMATCH[1]:-0} > 254 )); then
+        echo "Error: Invalid smoke environment '$smoke_env'. Expected env_<1-254>."
+        return 1
+    fi
+    local smoke_env_id="${BASH_REMATCH[1]}"
+    local smoke_tool_env="${smoke_env}_tool"
+
+    # An explicit smoke environment selects the matching standard cluster
+    # endpoints instead of reusing host configuration from another cluster.
+    if [[ -n "$smoke_env_explicit" ]]; then
+        local smoke_mds_host="172.30.14.${smoke_env_id}"
+        config_mdsaddr="${smoke_mds_host}:6900,${smoke_mds_host}:6901,${smoke_mds_host}:6902"
+        config_xfstest_mds_template="mds://${smoke_mds_host}:6900/{fsname}"
+    fi
 
     # Validate image is configured
     if [[ -z "$image" ]]; then
@@ -1240,14 +1271,14 @@ cmd_smoke() {
         fi
     done
     if [[ "$prepare_tool_env" == "yes" ]]; then
-        cmd_setup_env env_126_tool || return $?
+        cmd_setup_env "$smoke_tool_env" || return $?
         config_testdir=$(load_config testdir)
         if ! command -v mountpoint >/dev/null 2>&1; then
-            echo "Error: mountpoint command is required to validate env_126_tool."
+            echo "Error: mountpoint command is required to validate ${smoke_tool_env}."
             return 1
         fi
         if [[ -z "$config_testdir" ]] || ! mountpoint -q "$config_testdir"; then
-            echo "Error: env_126_tool testdir is not an active mount: ${config_testdir:-<empty>}"
+            echo "Error: ${smoke_tool_env} testdir is not an active mount: ${config_testdir:-<empty>}"
             echo "Smoke container was not started."
             return 1
         fi
@@ -1301,6 +1332,7 @@ cmd_smoke() {
     fi
     docker_cmd+=(
         -e "DTT_SMOKE_ENV_READY=1"
+        -e "SMOKE_BASE_ENV=$smoke_env"
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
@@ -1376,7 +1408,7 @@ cmd_smoke() {
         int_env="${int_env:-env_126_smoke}"
         docker_cmd+=("-e" "INT_ENV=$int_env")
     fi
-    echo "  Env:         $int_env"
+    echo "  Environment: $smoke_env"
 
     # Smoke exclude list
     if [[ -n "$exclude" ]]; then
