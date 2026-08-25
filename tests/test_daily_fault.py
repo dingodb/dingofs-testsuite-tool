@@ -59,7 +59,7 @@ class DailyFaultTest(unittest.TestCase):
         result, args, identity = self._run_daily()
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
-        self.assertIn(f"{identity}:/root/.ssh/rocky_70:ro", args)
+        self.assertIn(f"{identity}:/tmp/dtt-rocky_70:ro", args)
         command_tokens = shlex.split(args[-1])
         fault_index = command_tokens.index("fault")
         self.assertEqual(
@@ -67,7 +67,7 @@ class DailyFaultTest(unittest.TestCase):
             [
                 "fault", "--env", "env_79_dingofs",
                 "--chaos-tool-path", "/opt/dingofs-chaos-tool",
-                "--ssh-identity-file", "/root/.ssh/rocky_70",
+                "--ssh-identity-file", "/tmp/dtt-rocky_70",
                 "--enable-external-chaos", "--allow-high-risk-chaos",
                 "mds_manage",
             ],

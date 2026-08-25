@@ -1048,7 +1048,7 @@ cmd_daily() {
     docker_cmd+=("-v" "${output}:/output")
 
     if [[ -z "$debug" ]]; then
-        docker_cmd+=("-v" "${fault_identity}:/root/.ssh/rocky_70:ro")
+        docker_cmd+=("-v" "${fault_identity}:/tmp/dtt-rocky_70:ro")
     fi
 
     # Mount custom scenarios directory if configured
@@ -1115,7 +1115,7 @@ cmd_daily() {
         cache_node --env env_40_dingofs \
         fault --env env_79_dingofs \
             --chaos-tool-path /opt/dingofs-chaos-tool \
-            --ssh-identity-file /root/.ssh/rocky_70 \
+            --ssh-identity-file /tmp/dtt-rocky_70 \
             --enable-external-chaos \
             --allow-high-risk-chaos \
         mds_manage --env env_${env}_mds_manage \
