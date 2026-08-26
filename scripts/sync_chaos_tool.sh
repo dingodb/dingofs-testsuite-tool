@@ -4,7 +4,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-CHAOS_TOOL_SRC="${DINGOFS_CHAOS_TOOL_SRC:-/home/jenkins/dgy/github/dingofs-chaos-tool}"
+CHAOS_TOOL_SRC="${DINGOFS_CHAOS_TOOL_SRC:-$PROJECT_ROOT/dingofs-chaos-tool}"
 CHAOS_TOOL_DEST="${DINGOFS_CHAOS_TOOL_DEST:-$PROJECT_ROOT/dingofs-chaos-tool}"
 
 if [[ ! -d "$CHAOS_TOOL_SRC/.git" ]]; then
@@ -23,6 +23,14 @@ if [[ -z "$CHAOS_TOOL_DEST" ]] || [[ "$CHAOS_TOOL_DEST" == "/" ]]; then
 fi
 
 source_head="$(git -C "$CHAOS_TOOL_SRC" rev-parse HEAD)"
+
+source_path="$(realpath "$CHAOS_TOOL_SRC")"
+destination_path="$(realpath -m "$CHAOS_TOOL_DEST")"
+if [[ "$source_path" == "$destination_path" ]]; then
+    echo "Using project-local dingofs-chaos-tool at commit $source_head"
+    exit 0
+fi
+
 mkdir -p "$CHAOS_TOOL_DEST"
 
 rsync -a --delete --delete-excluded \

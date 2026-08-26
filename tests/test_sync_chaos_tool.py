@@ -87,6 +87,41 @@ class SyncChaosToolTest(unittest.TestCase):
             self.assertIn("uncommitted", (result.stdout + result.stderr).lower())
             self.assertEqual(marker.read_text(encoding="utf-8"), "original\n")
 
+    def test_default_source_uses_project_local_chaos_tool_without_overwriting_it(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            scripts = project / "scripts"
+            scripts.mkdir()
+            sync_script = scripts / "sync_chaos_tool.sh"
+            shutil.copy2(SYNC_SCRIPT, sync_script)
+
+            chaos_tool = project / "dingofs-chaos-tool"
+            chaos_tool.mkdir()
+            _git(chaos_tool, "init", "-b", "v5.2")
+            _git(chaos_tool, "config", "user.name", "Test User")
+            _git(chaos_tool, "config", "user.email", "test@example.com")
+            marker = chaos_tool / "chaos_tool.py"
+            marker.write_text("VERSION = 'project-local'\n", encoding="utf-8")
+            _git(chaos_tool, "add", ".")
+            _git(chaos_tool, "commit", "-m", "project-local snapshot")
+            expected_head = _git(chaos_tool, "rev-parse", "HEAD")
+
+            env = os.environ.copy()
+            env.pop("DINGOFS_CHAOS_TOOL_SRC", None)
+            env.pop("DINGOFS_CHAOS_TOOL_DEST", None)
+            result = subprocess.run(
+                ["bash", str(sync_script)],
+                env=env,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertEqual(_git(chaos_tool, "rev-parse", "HEAD"), expected_head)
+            self.assertEqual(marker.read_text(encoding="utf-8"), "VERSION = 'project-local'\n")
+            self.assertEqual(_git(chaos_tool, "status", "--short"), "")
+
     def test_build_synchronizes_chaos_tool_before_docker_build(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
