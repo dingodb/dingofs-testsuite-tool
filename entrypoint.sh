@@ -1497,6 +1497,8 @@ vdbench_run() {
     if [[ -f "$vdbench_raw" ]] && grep -q "Vdbench execution completed successfully" "$vdbench_raw"; then
         vdbench_status="SUCCESS"
         vdbench_exit=0
+    else
+        vdbench_exit=1
     fi
     echo "vdbench status: $vdbench_status"
 
