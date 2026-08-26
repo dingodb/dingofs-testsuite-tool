@@ -190,6 +190,12 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
     block size: 128k, 1m, 4m
     numjobs: 1j, 8j, 16j, 32j
 
+  自定义参数（未指定的维度继续使用预置组合）:
+    --numjobs <数量>       并发 job 数
+    --direct <0|1>         是否使用 direct I/O
+    --file-size <大小>     每个 job 的文件大小，例如 10G
+    --block-size <大小>    I/O 块大小，例如 4K、128K、1M
+
   示例:
     dtt -t fio -s seq_write
     dtt -t fio -s all --bs_size small      # 小块测试 128B-8K
@@ -502,6 +508,10 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   -o, --output <目录>     覆盖输出目录
   --bs_size <类型>        fio 块大小类型: normal / small
   --test_times <次数>     fio perf 重复次数
+  --numjobs <数量>        fio 并发 job 数
+  --direct <0|1>          fio 是否使用 direct I/O
+  --file-size <大小>      fio 每个 job 的文件大小
+  --block-size <大小>     fio I/O 块大小
   --wechat                启用企业微信通知
   --email                 启用邮件通知
   --debug                 调试模式，保留容器不删除
@@ -1670,6 +1680,7 @@ run_testsuite() {
 
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
+    local fio_numjobs="" fio_direct="" fio_file_size="" fio_block_size=""
     local wechat="" email_to=""
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
     local setup_env=""
@@ -1716,6 +1727,22 @@ run_testsuite() {
                 ;;
             --test-times)
                 test_times="$2"
+                shift 2
+                ;;
+            --numjobs)
+                fio_numjobs="$2"
+                shift 2
+                ;;
+            --direct)
+                fio_direct="$2"
+                shift 2
+                ;;
+            --file-size)
+                fio_file_size="$2"
+                shift 2
+                ;;
+            --block-size)
+                fio_block_size="$2"
                 shift 2
                 ;;
             --scale)
@@ -1805,6 +1832,15 @@ run_testsuite() {
 
     if [[ -n "$do_cleanup" ]] && [[ -z "$setup_env" ]]; then
         echo "Error: --cleanup requires --setup-env, or use --cleanup-env <name> directly"
+        return 1
+    fi
+
+    if [[ -n "$fio_numjobs" ]] && [[ ! "$fio_numjobs" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: --numjobs must be a positive integer, got '$fio_numjobs'"
+        return 1
+    fi
+    if [[ -n "$fio_direct" ]] && [[ ! "$fio_direct" =~ ^[01]$ ]]; then
+        echo "Error: --direct must be 0 or 1, got '$fio_direct'"
         return 1
     fi
 
@@ -2184,6 +2220,13 @@ run_testsuite() {
     # Add np for mdtest
     if [[ "$tool" == "mdtest" ]]; then
         entrypoint_cmd+=(-n "$np")
+    fi
+
+    if [[ "$tool" == "fio" ]]; then
+        [[ -n "$fio_numjobs" ]] && entrypoint_cmd+=(--numjobs "$fio_numjobs")
+        [[ -n "$fio_direct" ]] && entrypoint_cmd+=(--direct "$fio_direct")
+        [[ -n "$fio_file_size" ]] && entrypoint_cmd+=(--file-size "$fio_file_size")
+        [[ -n "$fio_block_size" ]] && entrypoint_cmd+=(--block-size "$fio_block_size")
     fi
 
     echo "Running testsuite with image: $image"
@@ -4146,7 +4189,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--scale|--file_count|--gpu_count|--debug)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--scale|--file_count|--gpu_count|--debug)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;

@@ -24,6 +24,10 @@ RUN_TIMESTAMP="${RUN_TIMESTAMP:-}"  # Timestamp for this run (format: YYYYmmdd_H
 MODE="one-shot"      # Mode: one-shot or long-running
 NP=16                # Number of MPI processes for mdtest (default: 16)
 BS_SIZE="${BS_SIZE:-normal}"  # Block size type: normal (128K/1M/4M) or small (128B-8K)
+FIO_NUMJOBS="${FIO_NUMJOBS:-}"
+FIO_DIRECT="${FIO_DIRECT:-}"
+FIO_FILE_SIZE="${FIO_FILE_SIZE:-}"
+FIO_BLOCK_SIZE="${FIO_BLOCK_SIZE:-}"
 
 # Tool paths (from Dockerfile)
 FIO_BIN="/usr/bin/fio"
@@ -75,6 +79,10 @@ Options:
   -n, --np        mdtest MPI 进程数 (默认: 16)
   --bs_size       fio块大小类型: normal (128K/1M/4K), small (128B/256B/512B/1K/2K/4K/8K)
                    默认: normal
+  --numjobs       fio 并发 job 数（正整数）
+  --direct        fio direct I/O 开关（0 或 1）
+  --file-size     fio 每个 job 的文件大小（例如 10G）
+  --block-size    fio I/O 块大小（例如 4K）
   --mode          运行模式: one-shot (默认) 或 long-running
 
 注意: -o 指定的是容器内路径，需要通过 -v 将容器内目录映射到本机路径
@@ -265,7 +273,7 @@ show_fio_help() {
 FIO 存储性能测试
 =================
 
-用法: dtt -t fio -s <场景> [-m <挂载点>] [-o <输出目录>] [--bs_size <类型>]
+用法: dtt -t fio -s <场景> [-m <挂载点>] [-o <输出目录>] [fio 参数]
 
 场景类型:
   seq_read    - 顺序读
@@ -284,6 +292,13 @@ FIO 存储性能测试
   iodepth:   1 (固定)
   size:      每个job 8G
 
+自定义参数（仅覆盖指定维度，其他维度继续使用预置组合）:
+  --numjobs <数量>       并发 job 数，必须为正整数
+  --direct <0|1>         0=buffered I/O，1=direct I/O
+  --file-size <大小>     每个 job 的文件大小，例如 10G
+  --block-size <大小>    I/O 块大小，例如 4K、128K、1M
+  适用于普通内置场景和自定义 .fio 文件，不作用于 perf/debug 脚本。
+
 示例:
   # 运行所有顺序读场景 (normal块大小: 24个测试)
   dtt -t fio -s seq_read
@@ -296,6 +311,12 @@ FIO 存储性能测试
 
   # 运行单个场景
   dtt -t fio -s rand_read_0d_128k_1j
+
+  # 固定并发度，继续遍历 direct 和块大小
+  dtt -t fio -s seq_write --numjobs 64
+
+  # 四个维度全部固定，只运行一个组合（总数据量约为 64 x 10G）
+  dtt -t fio -s seq_write --numjobs 64 --direct 1 --file-size 10G --block-size 4K
 
 自定义场景:
   将 .fio 文件放入自定义场景目录（通过 dtt config set custom 配置）
@@ -575,6 +596,15 @@ validate_params() {
         error=1
     fi
 
+    if [[ -n "$FIO_NUMJOBS" ]] && [[ ! "$FIO_NUMJOBS" =~ ^[1-9][0-9]*$ ]]; then
+        echo "Error: --numjobs must be a positive integer, got '$FIO_NUMJOBS'"
+        error=1
+    fi
+    if [[ -n "$FIO_DIRECT" ]] && [[ ! "$FIO_DIRECT" =~ ^[01]$ ]]; then
+        echo "Error: --direct must be 0 or 1, got '$FIO_DIRECT'"
+        error=1
+    fi
+
     if [[ $error -eq 1 ]]; then
         echo ""
         echo "Run 'entrypoint.sh --help' for usage information."
@@ -776,7 +806,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,numjobs:,direct:,file-size:,block-size: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -837,6 +867,22 @@ parse_args() {
                 ;;
             -n|--np)
                 NP="$2"
+                shift 2
+                ;;
+            --numjobs)
+                FIO_NUMJOBS="$2"
+                shift 2
+                ;;
+            --direct)
+                FIO_DIRECT="$2"
+                shift 2
+                ;;
+            --file-size)
+                FIO_FILE_SIZE="$2"
+                shift 2
+                ;;
+            --block-size)
+                FIO_BLOCK_SIZE="$2"
                 shift 2
                 ;;
             --mode)
@@ -1067,6 +1113,41 @@ dispatch_tool() {
     esac
 }
 
+build_effective_fio_config() {
+    local source_config="$1"
+    local target_config="$2"
+
+    awk \
+        -v strip_numjobs="${FIO_NUMJOBS:+yes}" \
+        -v strip_direct="${FIO_DIRECT:+yes}" \
+        -v strip_size="${FIO_FILE_SIZE:+yes}" \
+        -v strip_bs="${FIO_BLOCK_SIZE:+yes}" \
+        '
+        {
+            lower = tolower($0)
+            if (strip_numjobs == "yes" && lower ~ /^[[:space:]]*numjobs[[:space:]]*=/) next
+            if (strip_direct == "yes" && lower ~ /^[[:space:]]*direct[[:space:]]*=/) next
+            if (strip_size == "yes" && lower ~ /^[[:space:]]*size[[:space:]]*=/) next
+            if (strip_bs == "yes" && lower ~ /^[[:space:]]*bs[[:space:]]*=/) next
+            print
+        }
+        ' "$source_config" > "$target_config"
+}
+
+get_effective_fio_scenario_name() {
+    local scenario_name="$1"
+    if [[ "$scenario_name" =~ ^(seq_read|seq_write|rand_read|rand_write)_([01])d_([^_]+)_([0-9]+)j$ ]]; then
+        local mode="${BASH_REMATCH[1]}"
+        local direct="${FIO_DIRECT:-${BASH_REMATCH[2]}}"
+        local block_size="${FIO_BLOCK_SIZE:-${BASH_REMATCH[3]}}"
+        local numjobs="${FIO_NUMJOBS:-${BASH_REMATCH[4]}}"
+        printf '%s_%sd_%s_%sj\n' \
+            "$mode" "$direct" "${block_size,,}" "$numjobs"
+        return
+    fi
+    printf '%s\n' "$scenario_name"
+}
+
 fio_run() {
     local fio_run_start=$(date +%s)
     # Get all matching scenario paths
@@ -1085,6 +1166,31 @@ fio_run() {
     SCENARIOS_DIR="${fio_base_dir}"
     scenario_paths=$(get_scenario_paths fio "$SCENARIO")
     SCENARIOS_DIR="$orig_scenarios_dir"
+
+    # CLI overrides collapse only the dimensions they replace. For example,
+    # --numjobs=64 keeps the direct x block-size matrix while removing the
+    # now-equivalent built-in numjobs variants.
+    if [[ -n "$FIO_NUMJOBS$FIO_DIRECT$FIO_BLOCK_SIZE" ]]; then
+        local filtered_paths=""
+        local config filename mode direct block_size numjobs effective_key
+        declare -A seen_effective_combinations=()
+        while IFS= read -r config; do
+            [[ -z "$config" ]] && continue
+            filename=$(basename "$config" .fio)
+            if [[ "$filename" =~ ^(seq_read|seq_write|rand_read|rand_write)_([01])d_([^_]+)_([0-9]+)j$ ]]; then
+                mode="${BASH_REMATCH[1]}"
+                direct="${FIO_DIRECT:-${BASH_REMATCH[2]}}"
+                block_size="${FIO_BLOCK_SIZE:-${BASH_REMATCH[3]}}"
+                block_size="${block_size,,}"
+                numjobs="${FIO_NUMJOBS:-${BASH_REMATCH[4]}}"
+                effective_key="${mode}|${direct}|${block_size}|${numjobs}"
+                [[ -n "${seen_effective_combinations[$effective_key]:-}" ]] && continue
+                seen_effective_combinations[$effective_key]=1
+            fi
+            filtered_paths+="${config}"$'\n'
+        done <<< "$scenario_paths"
+        scenario_paths="${filtered_paths%$'\n'}"
+    fi
 
     local path_count
     path_count=$(echo "$scenario_paths" | grep -c "^" || true)
@@ -1121,6 +1227,7 @@ echo ""
         run_num=$((run_num + 1))
         local scenario_name
         scenario_name=$(get_scenario_name "$config")
+        scenario_name=$(get_effective_fio_scenario_name "$scenario_name")
 
         # For "all" scenario, group by scenario type (seq_read, seq_write, etc.)
         # For specific scenario, also use subdirectory for each variant
@@ -1174,13 +1281,24 @@ echo ""
             )
             local fio_exit=${PIPESTATUS[0]}
         else
+            local effective_config="$config"
+            if [[ -n "$FIO_NUMJOBS$FIO_DIRECT$FIO_FILE_SIZE$FIO_BLOCK_SIZE" ]]; then
+                effective_config="$scenario_output/$scenario_name.fio"
+                build_effective_fio_config "$config" "$effective_config"
+                echo "Effective config: $effective_config"
+            fi
+
             # Build fio command
-            local fio_cmd=("$FIO_BIN" "$config" "--output-format=json")
+            local fio_cmd=("$FIO_BIN" "$effective_config" "--output-format=json")
 
             # Override directory if MOUNT is specified
             if [[ -d "$MOUNT" ]]; then
                 fio_cmd+=("--directory=$MOUNT")
             fi
+            [[ -n "$FIO_NUMJOBS" ]] && fio_cmd+=("--numjobs=$FIO_NUMJOBS")
+            [[ -n "$FIO_DIRECT" ]] && fio_cmd+=("--direct=$FIO_DIRECT")
+            [[ -n "$FIO_FILE_SIZE" ]] && fio_cmd+=("--size=$FIO_FILE_SIZE")
+            [[ -n "$FIO_BLOCK_SIZE" ]] && fio_cmd+=("--bs=$FIO_BLOCK_SIZE")
 
             echo "Executing: ${fio_cmd[*]}"
 

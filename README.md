@@ -51,7 +51,7 @@ dingofs-testsuite-tool help
 
 | 工具 | 说明 | 必填参数 | 可选参数 |
 |------|------|---------|---------|
-| `fio` | Flexible I/O 存储性能测试 | `-s <场景>` | `--bs_size` |
+| `fio` | Flexible I/O 存储性能测试 | `-s <场景>` | `--bs_size`, `--numjobs`, `--direct`, `--file-size`, `--block-size` |
 | `vdbench` | Oracle 存储性能测试 | `-s <场景>` | — |
 | `mdtest` | MPI 文件系统元数据测试 | `-n <进程数>` | `-s <场景>`（默认 all） |
 | `pjdtest` | POSIX 文件系统一致性测试 | `-s <场景>` | — |
@@ -68,6 +68,10 @@ dingofs-testsuite-tool help
 | `--email <地址>` | 邮件通知地址 |
 | `--bs_size <类型>` | fio 块大小类型: normal (128K/1M/4M), small (128B-8K) |
 | `--test_times <次数>` | fio perf 重复次数 |
+| `--numjobs <数量>` | fio 并发 job 数，必须为正整数 |
+| `--direct <0或1>` | fio buffered/direct I/O 开关 |
+| `--file-size <大小>` | fio 每个 job 的文件大小，例如 `10G` |
+| `--block-size <大小>` | fio I/O 块大小，例如 `4K`、`128K`、`1M` |
 
 ---
 
@@ -98,6 +102,14 @@ FIO (Flexible I/O Tester) 是最常用的存储性能基准测试工具，支持
 | iodepth | 1 (固定) |
 | size | 8G per job |
 
+自定义参数只覆盖指定的维度，未指定维度仍遍历预置组合。例如，只指定
+`--numjobs 64` 时，normal 场景仍运行 2 种 direct × 3 种块大小，共 6 组；
+四项全部指定时只运行 1 组。`--file-size` 表示每个 job 的大小，因此总数据量
+约为 `numjobs × file-size`。
+
+这些覆盖参数适用于普通内置场景和自定义 `.fio` 文件，不作用于
+`perf/debug` 性能脚本。
+
 ### 使用示例
 
 ```bash
@@ -109,6 +121,13 @@ dtt -t fio -s all --bs_size small
 
 # 运行单个场景
 dtt -t fio -s rand_read_0d_128k_1j
+
+# 固定并发度，继续遍历 direct 和块大小（共 6 组）
+dtt -t fio -s seq_write --numjobs 64
+
+# 四项全部固定，只运行一个组合
+dtt -t fio -s seq_write \
+  --numjobs 64 --direct 1 --file-size 10G --block-size 4K
 
 # 自定义场景（从 ~/my_scenarios/ 加载）
 dtt config set custom ~/my_scenarios
@@ -888,6 +907,10 @@ dtt -t fio --help
 | `-m, --mount` | 被测存储的挂载点 (例如: /mnt/test) |
 | `-o, --output` | 测试结果输出目录 (例如: /output) |
 | `-n, --np` | mdtest MPI 进程数 (默认: 16) |
+| `--numjobs` | fio 并发 job 数 |
+| `--direct` | fio direct I/O 开关，取值 0 或 1 |
+| `--file-size` | fio 每个 job 的文件大小 |
+| `--block-size` | fio I/O 块大小 |
 
 ---
 
