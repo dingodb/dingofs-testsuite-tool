@@ -510,8 +510,12 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
   --test_times <次数>     fio perf 重复次数
   --numjobs <数量>        fio 并发 job 数
   --direct <0|1>          fio 是否使用 direct I/O
-  --file-size <大小>      fio 每个 job 的文件大小
-  --block-size <大小>     fio I/O 块大小
+  --file-size <大小>      fio 每个 job 或 elbencho 每个文件的大小
+  --block-size <大小>     fio 或 elbencho I/O 块大小
+  --file-count <数量>     elbencho 每线程、每目录的文件数
+  --dir-count <数量>      elbencho 每个线程的目录数
+  --threads <数量>        elbencho I/O 并发线程数
+  --operation <类型>      elbencho 操作类型: read 或 write
   --wechat                启用企业微信通知
   --email                 启用邮件通知
   --debug                 调试模式，保留容器不删除
@@ -542,7 +546,7 @@ elbencho — 分布式存储基准测试
 ============================
 
 用法:
-  dtt -t elbencho [-s <场景>]
+  dtt -t elbencho [-s <场景>] [参数]
 
 场景:
   all           运行所有场景：顺序写+读、随机读+写 (默认)
@@ -551,13 +555,55 @@ elbencho — 分布式存储基准测试
   rand_read     随机读
   rand_write    随机写
 
+参数:
+  --file-size <大小>     每个文件的大小，例如 10G
+  --file-count <数量>    每线程、每目录的文件数
+  --block-size <大小>    单次 I/O 块大小，例如 4M
+  --dir-count <数量>     每个线程的目录数
+  --threads <数量>       I/O 并发线程数
+  --operation <类型>     只运行 read 或 write
+
+默认值:
+  未指定 --file-count/--dir-count 时使用原有大文件模式：
+    4 个共享文件，file-size=1G，block-size=4M，threads=8，direct I/O
+
+  指定 --file-count 或 --dir-count 后启用目录模式，未指定项默认：
+    file-count=4，dir-count=1，file-size=1G，block-size=4M，threads=8
+
+目录模式对象数量:
+  总目录数 = threads × dir-count
+  总文件数 = threads × dir-count × file-count
+
+操作筛选:
+  -s all --operation write  只运行顺序写和随机写
+  -s all --operation read   只运行顺序读和随机读
+  场景与操作不能冲突，例如 seq_read 不能搭配 --operation write
+
+注意:
+  自定义参数适用于 all、seq_write、seq_read、rand_write、rand_read。
+  small、full、custom 脚本场景使用脚本自身参数，不接受这些覆盖参数。
+  单独执行读测试前，需要先使用相同的数据参数完成写测试。
+
 示例:
   dtt -t elbencho -s all
   dtt -t elbencho -s seq_write
   dtt -t elbencho -s rand_read
+  dtt -t elbencho -s seq_write --file-size 10G --file-count 100 \
+      --block-size 4M --dir-count 2 --threads 16 --operation write
+
+  # 小规模快速验证：先写后读
+  dtt -t elbencho -s seq_write --file-size 10M --file-count 2 \
+      --block-size 1M --dir-count 1 --threads 2 --operation write
+  dtt -t elbencho -s seq_read --file-size 10M --file-count 2 \
+      --block-size 1M --dir-count 1 --threads 2 --operation read
 
 结果保存在 output/elbencho_<timestamp>/:
-  各场景的 JSON 和日志，邮件/微信通知含性能指标
+  <场景>.json                                  elbencho JSON Lines 指标
+  <场景>.log                                   原始输出
+  <场景>.command                               实际执行命令
+  elbencho_<场景>_summary_<timestamp>.md       Markdown 汇总报告
+
+Markdown 报告包含实际参数、完整命令、First Done/Last Done 指标和原始数据路径。
 
 EOF
 }
@@ -1681,12 +1727,21 @@ run_testsuite() {
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local fio_numjobs="" fio_direct="" fio_file_size="" fio_block_size=""
+    local elbencho_file_count="" elbencho_dir_count="" elbencho_threads="" elbencho_operation=""
     local wechat="" email_to=""
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
     local setup_env=""
     local do_cleanup=""
 
     while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --file-size|--file-count|--block-size|--dir-count|--threads|--operation)
+                if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:-}" == -* ]]; then
+                    echo "Error: $1 requires a value"
+                    return 1
+                fi
+                ;;
+        esac
         case "$1" in
             -m|--mount)
                 mount="$2"
@@ -1743,6 +1798,22 @@ run_testsuite() {
                 ;;
             --block-size)
                 fio_block_size="$2"
+                shift 2
+                ;;
+            --file-count)
+                elbencho_file_count="$2"
+                shift 2
+                ;;
+            --dir-count)
+                elbencho_dir_count="$2"
+                shift 2
+                ;;
+            --threads)
+                elbencho_threads="$2"
+                shift 2
+                ;;
+            --operation)
+                elbencho_operation="$2"
                 shift 2
                 ;;
             --scale)
@@ -1842,6 +1913,42 @@ run_testsuite() {
     if [[ -n "$fio_direct" ]] && [[ ! "$fio_direct" =~ ^[01]$ ]]; then
         echo "Error: --direct must be 0 or 1, got '$fio_direct'"
         return 1
+    fi
+    if [[ "$tool" == "elbencho" ]]; then
+        local elbencho_count_name elbencho_count_value
+        for elbencho_count_name in file-count dir-count threads; do
+            case "$elbencho_count_name" in
+                file-count) elbencho_count_value="$elbencho_file_count" ;;
+                dir-count) elbencho_count_value="$elbencho_dir_count" ;;
+                threads) elbencho_count_value="$elbencho_threads" ;;
+            esac
+            if [[ -n "$elbencho_count_value" ]] && [[ ! "$elbencho_count_value" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: --$elbencho_count_name must be a positive integer, got '$elbencho_count_value'"
+                return 1
+            fi
+        done
+        if [[ -n "$fio_file_size" ]] && [[ ! "$fio_file_size" =~ ^[1-9][0-9]*([KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
+            echo "Error: --file-size must be a positive size such as 10G, got '$fio_file_size'"
+            return 1
+        fi
+        if [[ -n "$fio_block_size" ]] && [[ ! "$fio_block_size" =~ ^[1-9][0-9]*([KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
+            echo "Error: --block-size must be a positive size such as 4M, got '$fio_block_size'"
+            return 1
+        fi
+        if [[ -n "$elbencho_operation" ]] && [[ ! "$elbencho_operation" =~ ^(read|write)$ ]]; then
+            echo "Error: --operation must be read or write, got '$elbencho_operation'"
+            return 1
+        fi
+        if [[ "$elbencho_operation" == "write" && "$scenario" =~ _read$ ]] || \
+           [[ "$elbencho_operation" == "read" && "$scenario" =~ _write$ ]]; then
+            echo "Error: scenario '$scenario' conflicts with --operation '$elbencho_operation'"
+            return 1
+        fi
+        if [[ "$scenario" =~ ^(small|full|custom)$ ]] && \
+           [[ -n "$fio_file_size$fio_block_size$elbencho_file_count$elbencho_dir_count$elbencho_threads$elbencho_operation" ]]; then
+            echo "Error: elbencho custom parameters are supported by all/seq/rand scenarios, not '$scenario'"
+            return 1
+        fi
     fi
 
     # Use config values if not provided via command line
@@ -2227,6 +2334,13 @@ run_testsuite() {
         [[ -n "$fio_direct" ]] && entrypoint_cmd+=(--direct "$fio_direct")
         [[ -n "$fio_file_size" ]] && entrypoint_cmd+=(--file-size "$fio_file_size")
         [[ -n "$fio_block_size" ]] && entrypoint_cmd+=(--block-size "$fio_block_size")
+    elif [[ "$tool" == "elbencho" ]]; then
+        [[ -n "$fio_file_size" ]] && entrypoint_cmd+=(--file-size "$fio_file_size")
+        [[ -n "$elbencho_file_count" ]] && entrypoint_cmd+=(--file-count "$elbencho_file_count")
+        [[ -n "$fio_block_size" ]] && entrypoint_cmd+=(--block-size "$fio_block_size")
+        [[ -n "$elbencho_dir_count" ]] && entrypoint_cmd+=(--dir-count "$elbencho_dir_count")
+        [[ -n "$elbencho_threads" ]] && entrypoint_cmd+=(--threads "$elbencho_threads")
+        [[ -n "$elbencho_operation" ]] && entrypoint_cmd+=(--operation "$elbencho_operation")
     fi
 
     echo "Running testsuite with image: $image"
@@ -4189,7 +4303,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--scale|--file_count|--gpu_count|--debug)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;

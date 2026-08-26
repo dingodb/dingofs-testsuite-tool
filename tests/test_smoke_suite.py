@@ -403,8 +403,10 @@ class SmokeSuiteTest(unittest.TestCase):
                 exit 0
                 """
             )
+            script = Path(temp_dir) / "run-smoke-test.sh"
+            script.write_text(library + "\n" + harness, encoding="utf-8")
             result = subprocess.run(
-                ["bash", "-c", library + "\n" + harness],
+                ["bash", str(script)],
                 text=True,
                 capture_output=True,
                 check=False,

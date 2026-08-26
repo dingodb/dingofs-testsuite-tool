@@ -47,7 +47,7 @@ dingofs-testsuite-tool help
 
 ## 测试工具总览
 
-`dtt -t` 支持以下 7 种测试工具：
+`dtt -t` 支持以下测试工具：
 
 | 工具 | 说明 | 必填参数 | 可选参数 |
 |------|------|---------|---------|
@@ -58,6 +58,7 @@ dingofs-testsuite-tool help
 | `ltp` | Linux Test Project 内核测试 | `-s <场景>` | — |
 | `int` | DingoFS 集成测试 | `-s <场景>` | — |
 | `mlperf` | MLPerf Storage 基准测试 | `-s <场景>` | `--scale`, `--gpu_count`, `--file_count` |
+| `elbencho` | 多线程文件系统性能测试 | `-s <场景>`（默认 all） | `--file-size`, `--file-count`, `--block-size`, `--dir-count`, `--threads`, `--operation` |
 
 ### 通用可选参数
 
@@ -70,8 +71,12 @@ dingofs-testsuite-tool help
 | `--test_times <次数>` | fio perf 重复次数 |
 | `--numjobs <数量>` | fio 并发 job 数，必须为正整数 |
 | `--direct <0或1>` | fio buffered/direct I/O 开关 |
-| `--file-size <大小>` | fio 每个 job 的文件大小，例如 `10G` |
-| `--block-size <大小>` | fio I/O 块大小，例如 `4K`、`128K`、`1M` |
+| `--file-size <大小>` | fio 每个 job 或 elbencho 每个文件的大小，例如 `10G` |
+| `--block-size <大小>` | fio 或 elbencho I/O 块大小，例如 `4K`、`128K`、`1M` |
+| `--file-count <数量>` | elbencho 每线程、每目录的文件数 |
+| `--dir-count <数量>` | elbencho 每个线程的目录数 |
+| `--threads <数量>` | elbencho I/O 并发线程数 |
+| `--operation <类型>` | elbencho 操作类型：`read` 或 `write` |
 
 ---
 
@@ -424,6 +429,59 @@ dtt -t xfstest -s generic/001
 |-----------|------|
 | `check.log` | 完整测试执行日志 |
 | `generic/` | 各测试用例输出（`.out` 预期、`.bad` 差异） |
+
+---
+
+## 9. ELBENCHO — 多线程文件系统性能测试
+
+内置场景包括 `seq_write`、`seq_read`、`rand_write`、`rand_read` 和 `all`。
+未指定覆盖参数时继续使用原有默认值。
+这些覆盖参数适用于上述标准场景；`small`、`full` 和 `custom` 脚本场景继续使用脚本自身的参数。
+
+| 参数 | 对应 elbencho 参数 | 说明 |
+|------|-------------------|------|
+| `--file-size` | `-s` | 每个文件的大小，例如 `10G` |
+| `--file-count` | `-N` | 每线程、每目录的文件数 |
+| `--block-size` | `-b` | 单次 I/O 块大小，例如 `4M` |
+| `--dir-count` | `-n` | 每个线程的目录数 |
+| `--threads` | `-t` | I/O 并发线程数 |
+| `--operation` | `-r` / `-w` | 只执行 `read` 或 `write` |
+
+指定 `--file-count` 或 `--dir-count` 时启用 elbencho 目录模式：
+
+```text
+总目录数 = threads × dir-count
+总文件数 = threads × dir-count × file-count
+```
+
+示例：
+
+```bash
+dtt -t elbencho -s seq_write \
+  --file-size 10G \
+  --file-count 100 \
+  --block-size 4M \
+  --dir-count 2 \
+  --threads 16 \
+  --operation write
+
+# all 场景只运行顺序写和随机写
+dtt -t elbencho -s all --operation write
+```
+
+标准场景结束后会在本次运行目录生成一份 Markdown 汇总报告：
+
+```text
+output/elbencho_<timestamp>/
+├── <场景>.json
+├── <场景>.log
+├── <场景>.command
+└── elbencho_<场景>_summary_<timestamp>.md
+```
+
+报告包含实际参数、完整执行命令、最终状态，以及各阶段的 First Done/Last Done
+耗时、条目速率、IOPS、吞吐量、完成条目数、数据量和 CPU 使用率。`-s all`
+选择多个场景时，这些场景汇总在同一份报告中。
 
 ---
 
@@ -902,15 +960,19 @@ dtt -t fio --help
 
 | 选项 | 说明 |
 |------|------|
-| `-t, --tool` | 测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf |
+| `-t, --tool` | 测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, elbencho |
 | `-s, --scenario` | 测试场景 |
 | `-m, --mount` | 被测存储的挂载点 (例如: /mnt/test) |
 | `-o, --output` | 测试结果输出目录 (例如: /output) |
 | `-n, --np` | mdtest MPI 进程数 (默认: 16) |
 | `--numjobs` | fio 并发 job 数 |
 | `--direct` | fio direct I/O 开关，取值 0 或 1 |
-| `--file-size` | fio 每个 job 的文件大小 |
-| `--block-size` | fio I/O 块大小 |
+| `--file-size` | fio 每个 job 或 elbencho 每个文件的大小 |
+| `--block-size` | fio 或 elbencho I/O 块大小 |
+| `--file-count` | elbencho 每线程、每目录的文件数 |
+| `--dir-count` | elbencho 每个线程的目录数 |
+| `--threads` | elbencho I/O 并发线程数 |
+| `--operation` | elbencho 操作类型：`read` 或 `write` |
 
 ---
 

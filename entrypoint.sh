@@ -28,6 +28,12 @@ FIO_NUMJOBS="${FIO_NUMJOBS:-}"
 FIO_DIRECT="${FIO_DIRECT:-}"
 FIO_FILE_SIZE="${FIO_FILE_SIZE:-}"
 FIO_BLOCK_SIZE="${FIO_BLOCK_SIZE:-}"
+ELBENCHO_FILE_SIZE="${ELBENCHO_FILE_SIZE:-}"
+ELBENCHO_FILE_COUNT="${ELBENCHO_FILE_COUNT:-}"
+ELBENCHO_BLOCK_SIZE="${ELBENCHO_BLOCK_SIZE:-}"
+ELBENCHO_DIR_COUNT="${ELBENCHO_DIR_COUNT:-}"
+ELBENCHO_THREADS="${ELBENCHO_THREADS:-}"
+ELBENCHO_OPERATION="${ELBENCHO_OPERATION:-}"
 
 # Tool paths (from Dockerfile)
 FIO_BIN="/usr/bin/fio"
@@ -36,6 +42,7 @@ VDBENCH_DIR="/opt/vdbench"
 MDTEST_BIN="/usr/local/bin/mdtest"
 INTEGRATION_DIR="/dingofs-integration-test"
 XFSTESTS_DIR="/xfstests-dev"
+REPORT_GENERATOR="${REPORT_GENERATOR:-/scripts/generate_report.py}"
 
 # Scenario directories
 SCENARIOS_DIR="/scenarios"
@@ -71,7 +78,7 @@ Usage:
   docker run dingofs-testsuite-tools -t <tool> -s <scenario> -m <mount> -o <output>
 
 Options:
-  -t, --tool      测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, smoke
+  -t, --tool      测试工具: fio, vdbench, mdtest, pjdtest, ltp, int, mlperf, xfstest, smoke, elbencho
   -s, --scenario  测试场景
   -m, --mount     被测存储的挂载点 (例如: /mnt/test)
   --scratch-mnt   xfstest scratch 挂载点 (默认: /scratch)
@@ -81,8 +88,12 @@ Options:
                    默认: normal
   --numjobs       fio 并发 job 数（正整数）
   --direct        fio direct I/O 开关（0 或 1）
-  --file-size     fio 每个 job 的文件大小（例如 10G）
-  --block-size    fio I/O 块大小（例如 4K）
+  --file-size     fio 每个 job 或 elbencho 每个文件的大小（例如 10G）
+  --block-size    fio 或 elbencho I/O 块大小（例如 4K）
+  --file-count    elbencho 每线程、每目录的文件数
+  --dir-count     elbencho 每个线程的目录数
+  --threads       elbencho I/O 并发线程数
+  --operation     elbencho 操作类型: read 或 write
   --mode          运行模式: one-shot (默认) 或 long-running
 
 注意: -o 指定的是容器内路径，需要通过 -v 将容器内目录映射到本机路径
@@ -604,6 +615,42 @@ validate_params() {
         echo "Error: --direct must be 0 or 1, got '$FIO_DIRECT'"
         error=1
     fi
+    if [[ "$TOOL" == "elbencho" ]]; then
+        local elbencho_count_name elbencho_count_value
+        for elbencho_count_name in file-count dir-count threads; do
+            case "$elbencho_count_name" in
+                file-count) elbencho_count_value="$ELBENCHO_FILE_COUNT" ;;
+                dir-count) elbencho_count_value="$ELBENCHO_DIR_COUNT" ;;
+                threads) elbencho_count_value="$ELBENCHO_THREADS" ;;
+            esac
+            if [[ -n "$elbencho_count_value" ]] && [[ ! "$elbencho_count_value" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: --$elbencho_count_name must be a positive integer, got '$elbencho_count_value'"
+                error=1
+            fi
+        done
+        if [[ -n "$ELBENCHO_FILE_SIZE" ]] && [[ ! "$ELBENCHO_FILE_SIZE" =~ ^[1-9][0-9]*([KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
+            echo "Error: --file-size must be a positive size such as 10G, got '$ELBENCHO_FILE_SIZE'"
+            error=1
+        fi
+        if [[ -n "$ELBENCHO_BLOCK_SIZE" ]] && [[ ! "$ELBENCHO_BLOCK_SIZE" =~ ^[1-9][0-9]*([KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
+            echo "Error: --block-size must be a positive size such as 4M, got '$ELBENCHO_BLOCK_SIZE'"
+            error=1
+        fi
+        if [[ -n "$ELBENCHO_OPERATION" ]] && [[ ! "$ELBENCHO_OPERATION" =~ ^(read|write)$ ]]; then
+            echo "Error: --operation must be read or write, got '$ELBENCHO_OPERATION'"
+            error=1
+        fi
+        if [[ "$SCENARIO" =~ ^(small|full|custom)$ ]] && \
+           [[ -n "$ELBENCHO_FILE_SIZE$ELBENCHO_BLOCK_SIZE$ELBENCHO_FILE_COUNT$ELBENCHO_DIR_COUNT$ELBENCHO_THREADS$ELBENCHO_OPERATION" ]]; then
+            echo "Error: elbencho custom parameters are supported by all/seq/rand scenarios, not '$SCENARIO'"
+            error=1
+        fi
+        if [[ "$ELBENCHO_OPERATION" == "write" && "$SCENARIO" =~ _read$ ]] || \
+           [[ "$ELBENCHO_OPERATION" == "read" && "$SCENARIO" =~ _write$ ]]; then
+            echo "Error: scenario '$SCENARIO' conflicts with --operation '$ELBENCHO_OPERATION'"
+            error=1
+        fi
+    fi
 
     if [[ $error -eq 1 ]]; then
         echo ""
@@ -806,7 +853,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,numjobs:,direct:,file-size:,block-size: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -879,10 +926,28 @@ parse_args() {
                 ;;
             --file-size)
                 FIO_FILE_SIZE="$2"
+                ELBENCHO_FILE_SIZE="$2"
                 shift 2
                 ;;
             --block-size)
                 FIO_BLOCK_SIZE="$2"
+                ELBENCHO_BLOCK_SIZE="$2"
+                shift 2
+                ;;
+            --file-count)
+                ELBENCHO_FILE_COUNT="$2"
+                shift 2
+                ;;
+            --dir-count)
+                ELBENCHO_DIR_COUNT="$2"
+                shift 2
+                ;;
+            --threads)
+                ELBENCHO_THREADS="$2"
+                shift 2
+                ;;
+            --operation)
+                ELBENCHO_OPERATION="$2"
                 shift 2
                 ;;
             --mode)
@@ -2355,10 +2420,14 @@ elbencho_run() {
 
     # Default parameters
     local elb_threads="${ELBENCHO_THREADS:-8}"
-    local elb_bs="${ELBENCHO_BS:-4M}"
-    local elb_size="${ELBENCHO_SIZE:-1G}"
-    local elb_files="${ELBENCHO_FILES:-4}"
-    local elb_direct="--direct"
+    local elb_bs="${ELBENCHO_BLOCK_SIZE:-${ELBENCHO_BS:-4M}}"
+    local elb_size="${ELBENCHO_FILE_SIZE:-${ELBENCHO_SIZE:-1G}}"
+    local elb_files="${ELBENCHO_FILE_COUNT:-${ELBENCHO_FILES:-4}}"
+    local elb_dirs="${ELBENCHO_DIR_COUNT:-1}"
+    local elb_directory_mode=""
+    if [[ -n "$ELBENCHO_FILE_COUNT" ]] || [[ -n "$ELBENCHO_DIR_COUNT" ]]; then
+        elb_directory_mode="yes"
+    fi
     local json_file="$elb_output/elbencho.json"
 
     # Run selected scenario(s)
@@ -2393,6 +2462,17 @@ elbencho_run() {
     if [[ "$scenarios_to_run" == "all" ]]; then
         scenarios_to_run="seq_write seq_read rand_read rand_write"
     fi
+    if [[ -n "$ELBENCHO_OPERATION" ]]; then
+        local filtered_scenarios=""
+        local candidate
+        for candidate in $scenarios_to_run; do
+            if [[ "$ELBENCHO_OPERATION" == "read" && "$candidate" == *_read ]] || \
+               [[ "$ELBENCHO_OPERATION" == "write" && "$candidate" == *_write ]]; then
+                filtered_scenarios+=" $candidate"
+            fi
+        done
+        scenarios_to_run="${filtered_scenarios# }"
+    fi
 
     local overall_exit=0
     local metrics_summary=""
@@ -2402,29 +2482,29 @@ elbencho_run() {
         local sc_start=$(date +%s)
         local sc_json="$elb_output/${sc}.json"
 
-        case "$sc" in
-            seq_write)
-                elbencho -w -b "$elb_bs" -t "$elb_threads" $elb_direct \
-                    -s "$elb_size" --jsonfile "$sc_json" \
-                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
-                ;;
-            seq_read)
-                elbencho -r -b "$elb_bs" -t "$elb_threads" $elb_direct \
-                    -s "$elb_size" --jsonfile "$sc_json" \
-                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
-                ;;
-            rand_read)
-                elbencho -r -b "$elb_bs" -t "$elb_threads" $elb_direct --rand \
-                    -s "$elb_size" --jsonfile "$sc_json" \
-                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
-                ;;
-            rand_write)
-                elbencho -w -b "$elb_bs" -t "$elb_threads" $elb_direct --rand \
-                    -s "$elb_size" --jsonfile "$sc_json" \
-                    "$MOUNT/elbencho_test_file[1-${elb_files}]" 2>&1 | tee "$elb_output/${sc}.log"
-                ;;
-        esac
+        local op_flag="-r"
+        [[ "$sc" == *_write ]] && op_flag="-w"
+        local elb_cmd=(elbencho "$op_flag" -b "$elb_bs" -t "$elb_threads" --direct)
+        [[ "$sc" == rand_* ]] && elb_cmd+=(--rand)
+        elb_cmd+=(-s "$elb_size" --jsonfile "$sc_json")
+        if [[ "$elb_directory_mode" == "yes" ]]; then
+            elb_cmd+=(-n "$elb_dirs" -N "$elb_files")
+            [[ "$op_flag" == "-w" ]] && elb_cmd+=(-d)
+            elb_cmd+=("$MOUNT")
+        else
+            elb_cmd+=("$MOUNT/elbencho_test_file[1-${elb_files}]")
+        fi
+        printf 'Executing:'
+        printf ' %q' "${elb_cmd[@]}"
+        printf '\n'
+        {
+            printf '%q' "${elb_cmd[0]}"
+            printf ' %q' "${elb_cmd[@]:1}"
+            printf '\n'
+        } > "$elb_output/${sc}.command"
+        "${elb_cmd[@]}" 2>&1 | tee "$elb_output/${sc}.log"
         local sc_exit=${PIPESTATUS[0]}
+        printf '%s\n' "$sc_exit" > "$elb_output/${sc}.exitcode"
 
         # Extract metrics from JSON
         local bw_val="-"
@@ -2445,6 +2525,14 @@ print(f'{bw:.1f}MiB/s')
         fi
         echo "  $sc done: $bw_val"
     done
+
+    case "$SCENARIO" in
+        all|seq_write|seq_read|rand_write|rand_read)
+            echo "Generating elbencho Markdown report..."
+            python3 "$REPORT_GENERATOR" --tool elbencho --output-dir "$elb_output" \
+                --scenario "$SCENARIO" --mount "$MOUNT"
+            ;;
+    esac
 
     # Notification
     if [[ $overall_exit -eq 0 ]]; then local elb_status="SUCCESS"; else local elb_status="FAIL"; fi

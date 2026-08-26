@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 DingoFS Storage Testsuite Tools - Report Generation Script
-Parses fio JSON, vdbench text, and mdtest text outputs to generate HTML and text reports.
+Parses fio, vdbench, mdtest, and elbencho outputs to generate reports.
 """
 
 import argparse
@@ -25,7 +25,7 @@ def parse_args():
     parser.add_argument(
         "--tool",
         required=True,
-        choices=["fio", "vdbench", "mdtest"],
+        choices=["fio", "vdbench", "mdtest", "elbencho"],
         help="Storage testing tool used"
     )
     parser.add_argument(
@@ -61,6 +61,239 @@ def parse_args():
         help="Block size category: normal (128K/1M/4M) or small (128B-8K) (default: normal)"
     )
     return parser.parse_args()
+
+
+# ==============================================================================
+# Elbencho JSON Lines Parser and Markdown Report
+# ==============================================================================
+
+def _parse_elbencho_json_lines(path):
+    """Parse elbencho's JSON Lines output into phase dictionaries."""
+    phases = []
+    with open(path, "r", encoding="utf-8") as source:
+        for line_number, line in enumerate(source, 1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                value = json.loads(line)
+            except json.JSONDecodeError as error:
+                raise ValueError(
+                    f"Invalid elbencho JSON in {path}:{line_number}: {error}"
+                ) from error
+            if isinstance(value, dict):
+                phases.append(value)
+            elif isinstance(value, list):
+                phases.extend(item for item in value if isinstance(item, dict))
+    return phases
+
+
+def parse_elbencho_results(output_dir):
+    """Load all standard elbencho scenario results from one run directory."""
+    results = []
+    errors = []
+    output_path = Path(output_dir)
+
+    scenario_names = set()
+    # A failed scenario can lack JSON, but entrypoint always records its command
+    # and exit code. Do not discover scenarios from *.log because result.log is
+    # the framework summary, not an elbencho workload.
+    for suffix in ("json", "command", "exitcode"):
+        scenario_names.update(path.stem for path in output_path.glob(f"*.{suffix}"))
+
+    for scenario in sorted(scenario_names):
+        json_path = output_path / f"{scenario}.json"
+        phases = []
+        if json_path.exists():
+            try:
+                phases = _parse_elbencho_json_lines(json_path)
+            except (OSError, ValueError) as error:
+                errors.append(str(error))
+
+        command_path = output_path / f"{scenario}.command"
+        command = ""
+        if command_path.exists():
+            command = command_path.read_text(encoding="utf-8").strip()
+        if not command and phases:
+            command = str(phases[-1].get("config", {}).get("command", "")).strip()
+
+        exit_code = None
+        exit_path = output_path / f"{scenario}.exitcode"
+        if exit_path.exists():
+            try:
+                exit_code = int(exit_path.read_text(encoding="utf-8").strip())
+            except ValueError:
+                errors.append(f"Invalid exit code in {exit_path}")
+
+        results.append({
+            "scenario": scenario,
+            "phases": phases,
+            "command": command,
+            "exit_code": exit_code,
+            "json_file": json_path.name if json_path.exists() else None,
+            "log_file": (
+                f"{scenario}.log"
+                if (output_path / f"{scenario}.log").exists()
+                else None
+            ),
+        })
+
+    return results, "; ".join(errors) if errors else None
+
+
+def _human_bytes(value):
+    try:
+        size = float(value)
+    except (TypeError, ValueError):
+        return "-"
+
+    units = ("B", "KiB", "MiB", "GiB", "TiB", "PiB")
+    unit = units[0]
+    for unit in units:
+        if abs(size) < 1024 or unit == units[-1]:
+            break
+        size /= 1024
+    return f"{size:.2f} {unit}"
+
+
+def _elbencho_status(exit_code):
+    if exit_code is None:
+        return "UNKNOWN"
+    return "PASS" if exit_code == 0 else "FAIL"
+
+
+def _metric_value(metrics, key, transform=None, suffix=""):
+    value = metrics.get(key)
+    if value in (None, ""):
+        return "-"
+    if transform:
+        try:
+            return transform(value)
+        except (TypeError, ValueError):
+            return "-"
+    return f"{value}{suffix}"
+
+
+def generate_elbencho_markdown(output_dir, results, scenario, mount, txt_filename):
+    """Generate one Markdown summary for all standard scenarios in a run."""
+    generated_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    known_codes = [item["exit_code"] for item in results if item["exit_code"] is not None]
+    if any(code != 0 for code in known_codes):
+        overall_status = "FAIL"
+    elif results and len(known_codes) == len(results):
+        overall_status = "PASS"
+    else:
+        overall_status = "UNKNOWN"
+
+    lines = [
+        "# DingoFS 存储性能测试报告",
+        "",
+        "## 测试配置",
+        "",
+        "| 参数 | 值 |",
+        "|------|----|",
+        "| 工具 | ELBENCHO |",
+        f"| 场景 | {scenario or 'N/A'} |",
+        f"| 状态 | {overall_status} |",
+        f"| 挂载点 | {mount} |",
+        f"| 输出目录 | {output_dir} |",
+        f"| 生成时间 | {generated_at} |",
+        "",
+        "## 场景结果",
+        "",
+    ]
+
+    if not results:
+        lines.extend(["*无可解析的 elbencho JSON 指标数据*", ""])
+
+    config_labels = (
+        ("threads", "并发线程数", None),
+        ("dirs", "每线程目录数", None),
+        ("files", "每目录文件数", None),
+        ("file_size", "文件大小", _human_bytes),
+        ("block_size", "块大小", _human_bytes),
+        ("direct_io", "Direct I/O", None),
+        ("random_offsets", "随机访问", None),
+        ("io_depth", "I/O Depth", None),
+        ("path_type", "路径类型", None),
+        ("hosts", "主机数", None),
+        ("version", "elbencho 版本", None),
+    )
+
+    for result in results:
+        phases = result["phases"]
+        config = phases[-1].get("config", {}) if phases else {}
+        lines.extend([
+            f"### {result['scenario']}",
+            "",
+            "| 参数 | 值 |",
+            "|------|----|",
+            f"| 状态 | {_elbencho_status(result['exit_code'])} |",
+            "",
+            "#### 实际执行命令",
+            "",
+            "```bash",
+            result["command"] or "N/A",
+            "```",
+            "",
+            "#### 实际参数",
+            "",
+            "| 参数 | 值 |",
+            "|------|----|",
+        ])
+        for key, label, formatter in config_labels:
+            value = config.get(key, "-")
+            if formatter and value != "-":
+                value = formatter(value)
+            lines.append(f"| {label} | {value} |")
+
+        lines.extend([
+            "",
+            "#### 关键性能指标",
+            "",
+            "| 阶段 | 结果 | 耗时 (ms) | 条目/s | IOPS | 吞吐量 (MiB/s) | 完成条目 | 数据量 | CPU |",
+            "|------|------|-----------|--------|------|------------------|----------|--------|-----|",
+        ])
+        if not phases:
+            lines.append("| - | - | - | - | - | - | - | - | - |")
+            lines.extend(["", "*无可解析的 JSON 指标数据*"])
+        for phase in phases:
+            phase_type = phase.get("phase_type", "UNKNOWN")
+            for result_key, result_label in (
+                ("first_done", "First Done"),
+                ("last_done", "Last Done"),
+            ):
+                metrics = phase.get(result_key, {})
+                elapsed = _metric_value(metrics, "elapsed_time_ms")
+                entries_rate = _metric_value(metrics, "entries/s")
+                iops = _metric_value(metrics, "iops")
+                bandwidth = _metric_value(
+                    metrics, "bytes/s", lambda value: f"{float(value) / 1048576:.2f}"
+                )
+                entries = _metric_value(metrics, "entries")
+                data_size = _metric_value(metrics, "bytes", _human_bytes)
+                cpu = _metric_value(metrics, "cpu%", suffix="%")
+                lines.append(
+                    f"| {phase_type} | {result_label} | {elapsed} | {entries_rate} | "
+                    f"{iops} | {bandwidth} | {entries} | {data_size} | {cpu} |"
+                )
+
+        lines.extend(["", "#### 原始数据参考", ""])
+        if result["json_file"]:
+            lines.append(f"- JSON 输出: `{result['json_file']}`")
+        if result["log_file"]:
+            lines.append(f"- 原始输出: `{result['log_file']}`")
+        lines.append("")
+
+    lines.extend([
+        "## 报告文件",
+        "",
+        f"- 本报告: `{txt_filename}`",
+        "",
+        "---",
+        "*由 DingoFS 存储性能测试工具生成*",
+    ])
+    return "\n".join(lines)
 
 
 # ==============================================================================
@@ -1419,6 +1652,19 @@ def main():
     txt_filename = f"{tool}_{scenario_str}_summary_{timestamp}.md"
     txt_path = os.path.join(output_dir, txt_filename)
     html_path = os.path.join(output_dir, "report.html")
+
+    if tool == "elbencho":
+        results, error = parse_elbencho_results(output_dir)
+        if error:
+            print(f"Warning: {error}", file=sys.stderr)
+        report = generate_elbencho_markdown(
+            output_dir, results, scenario, mount, txt_filename
+        )
+        with open(txt_path, "w", encoding="utf-8") as report_file:
+            report_file.write(report)
+        print(f"Text summary generated: {txt_path}")
+        print("\nReport generation complete.")
+        return 0
 
     if not (is_combined and tool in ("mdtest", "fio")):
         # For combined mdtest/fio, skip single-report generation (use aggregate below)

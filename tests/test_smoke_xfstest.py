@@ -442,8 +442,10 @@ class SmokeXfstestTest(unittest.TestCase):
                     /output/smoke_fixed/xfstest fixed /data
                 """
             )
+            script = temp / "install-helper-test.sh"
+            script.write_text(library + "\n" + harness, encoding="utf-8")
             subprocess.run(
-                ["bash", "-c", library + "\n" + harness],
+                ["bash", str(script)],
                 check=True,
                 capture_output=True,
             )
