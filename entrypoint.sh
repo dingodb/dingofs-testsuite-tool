@@ -617,17 +617,27 @@ validate_params() {
     fi
     if [[ "$TOOL" == "elbencho" ]]; then
         local elbencho_count_name elbencho_count_value
-        for elbencho_count_name in file-count dir-count threads; do
+        for elbencho_count_name in file-count dir-count; do
             case "$elbencho_count_name" in
                 file-count) elbencho_count_value="$ELBENCHO_FILE_COUNT" ;;
                 dir-count) elbencho_count_value="$ELBENCHO_DIR_COUNT" ;;
-                threads) elbencho_count_value="$ELBENCHO_THREADS" ;;
             esac
             if [[ -n "$elbencho_count_value" ]] && [[ ! "$elbencho_count_value" =~ ^[1-9][0-9]*$ ]]; then
                 echo "Error: --$elbencho_count_name must be a positive integer, got '$elbencho_count_value'"
                 error=1
             fi
         done
+        if [[ -n "$ELBENCHO_THREADS" ]]; then
+            if [[ "$SCENARIO" == "small" ]]; then
+                if [[ ! "$ELBENCHO_THREADS" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]]; then
+                    echo "Error: --threads must be comma-separated positive integers for small, got '$ELBENCHO_THREADS'"
+                    error=1
+                fi
+            elif [[ ! "$ELBENCHO_THREADS" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: --threads must be a positive integer, got '$ELBENCHO_THREADS'"
+                error=1
+            fi
+        fi
         if [[ -n "$ELBENCHO_FILE_SIZE" ]] && [[ ! "$ELBENCHO_FILE_SIZE" =~ ^[1-9][0-9]*([KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
             echo "Error: --file-size must be a positive size such as 10G, got '$ELBENCHO_FILE_SIZE'"
             error=1
@@ -640,9 +650,13 @@ validate_params() {
             echo "Error: --operation must be read or write, got '$ELBENCHO_OPERATION'"
             error=1
         fi
-        if [[ "$SCENARIO" =~ ^(small|full|custom)$ ]] && \
+        if [[ "$SCENARIO" =~ ^(full|custom)$ ]] && \
            [[ -n "$ELBENCHO_FILE_SIZE$ELBENCHO_BLOCK_SIZE$ELBENCHO_FILE_COUNT$ELBENCHO_DIR_COUNT$ELBENCHO_THREADS$ELBENCHO_OPERATION" ]]; then
-            echo "Error: elbencho custom parameters are supported by all/seq/rand scenarios, not '$SCENARIO'"
+            echo "Error: elbencho custom parameters are supported by all/seq/rand/small scenarios, not '$SCENARIO'"
+            error=1
+        fi
+        if [[ "$SCENARIO" == "small" ]] && [[ -n "$ELBENCHO_DIR_COUNT$ELBENCHO_OPERATION" ]]; then
+            echo "Error: small supports --file-size, --file-count, --block-size, and --threads only"
             error=1
         fi
         if [[ "$ELBENCHO_OPERATION" == "write" && "$SCENARIO" =~ _read$ ]] || \
@@ -2436,8 +2450,17 @@ elbencho_run() {
     # Handle script-based scenarios
     if [[ "$SCENARIO" == "small" ]] || [[ "$SCENARIO" == "full" ]]; then
         local script="/scenarios/elbencho/${SCENARIO}.sh"
-        echo "Executing: bash $script $MOUNT $OUTPUT"
-        bash "$script" "$MOUNT" "$OUTPUT" 2>&1 | tee "$elb_output/${SCENARIO}.log"
+        local script_args=("$MOUNT" "$OUTPUT")
+        if [[ "$SCENARIO" == "small" ]]; then
+            [[ -n "$ELBENCHO_FILE_SIZE" ]] && script_args+=(--file-size "$ELBENCHO_FILE_SIZE")
+            [[ -n "$ELBENCHO_FILE_COUNT" ]] && script_args+=(--file-count "$ELBENCHO_FILE_COUNT")
+            [[ -n "$ELBENCHO_BLOCK_SIZE" ]] && script_args+=(--block-size "$ELBENCHO_BLOCK_SIZE")
+            [[ -n "$ELBENCHO_THREADS" ]] && script_args+=(--threads "$ELBENCHO_THREADS")
+        fi
+        printf 'Executing: bash %q' "$script"
+        printf ' %q' "${script_args[@]}"
+        echo
+        bash "$script" "${script_args[@]}" 2>&1 | tee "$elb_output/${SCENARIO}.log"
         local sc_exit=${PIPESTATUS[0]}
         log_result "elbencho" "$SCENARIO" "$sc_exit" "" "$elb_output"
 

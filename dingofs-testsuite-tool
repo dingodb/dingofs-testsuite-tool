@@ -336,7 +336,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
     seq_read         顺序读大文件
     rand_read        随机读大文件
     rand_write       随机写大文件
-    small            小文件多并发测试 (100m/256files, 1-32线程)
+    small            小文件多并发测试 (默认4m/256files, 并发度可配置)
     full             综合测试 (4M+4K, 1-64线程, 写/读/删)
     custom           从 custom 目录加载自定义脚本
 
@@ -554,13 +554,16 @@ elbencho — 分布式存储基准测试
   seq_read      顺序读
   rand_read     随机读
   rand_write    随机写
+  small         小文件写读测试，支持自定义文件和并发参数
+  full          综合测试脚本
+  custom        自定义测试脚本
 
 参数:
   --file-size <大小>     每个文件的大小，例如 10G
   --file-count <数量>    每线程、每目录的文件数
   --block-size <大小>    单次 I/O 块大小，例如 4M
   --dir-count <数量>     每个线程的目录数
-  --threads <数量>       I/O 并发线程数
+  --threads <数量>       I/O 并发线程数；small 支持逗号分隔多个值
   --operation <类型>     只运行 read 或 write
 
 默认值:
@@ -581,7 +584,9 @@ elbencho — 分布式存储基准测试
 
 注意:
   自定义参数适用于 all、seq_write、seq_read、rand_write、rand_read。
-  small、full、custom 脚本场景使用脚本自身参数，不接受这些覆盖参数。
+  small 支持 --file-size、--file-count、--block-size、--threads。
+  full、custom 脚本场景不接受这些覆盖参数。
+  small 的 --threads 可指定多个值，例如 1,4,8,16。
   单独执行读测试前，需要先使用相同的数据参数完成写测试。
 
 示例:
@@ -596,6 +601,10 @@ elbencho — 分布式存储基准测试
       --block-size 1M --dir-count 1 --threads 2 --operation write
   dtt -t elbencho -s seq_read --file-size 10M --file-count 2 \
       --block-size 1M --dir-count 1 --threads 2 --operation read
+
+  # small 自定义参数：每个并发度依次执行写和读
+  dtt -t elbencho -s small --file-size 10M --file-count 100 \
+      --block-size 1M --threads 1,4,8,16
 
 结果保存在 output/elbencho_<timestamp>/:
   <场景>.json                                  elbencho JSON Lines 指标
@@ -1916,17 +1925,27 @@ run_testsuite() {
     fi
     if [[ "$tool" == "elbencho" ]]; then
         local elbencho_count_name elbencho_count_value
-        for elbencho_count_name in file-count dir-count threads; do
+        for elbencho_count_name in file-count dir-count; do
             case "$elbencho_count_name" in
                 file-count) elbencho_count_value="$elbencho_file_count" ;;
                 dir-count) elbencho_count_value="$elbencho_dir_count" ;;
-                threads) elbencho_count_value="$elbencho_threads" ;;
             esac
             if [[ -n "$elbencho_count_value" ]] && [[ ! "$elbencho_count_value" =~ ^[1-9][0-9]*$ ]]; then
                 echo "Error: --$elbencho_count_name must be a positive integer, got '$elbencho_count_value'"
                 return 1
             fi
         done
+        if [[ -n "$elbencho_threads" ]]; then
+            if [[ "$scenario" == "small" ]]; then
+                if [[ ! "$elbencho_threads" =~ ^[1-9][0-9]*(,[1-9][0-9]*)*$ ]]; then
+                    echo "Error: --threads must be comma-separated positive integers for small, got '$elbencho_threads'"
+                    return 1
+                fi
+            elif [[ ! "$elbencho_threads" =~ ^[1-9][0-9]*$ ]]; then
+                echo "Error: --threads must be a positive integer, got '$elbencho_threads'"
+                return 1
+            fi
+        fi
         if [[ -n "$fio_file_size" ]] && [[ ! "$fio_file_size" =~ ^[1-9][0-9]*([KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
             echo "Error: --file-size must be a positive size such as 10G, got '$fio_file_size'"
             return 1
@@ -1944,9 +1963,13 @@ run_testsuite() {
             echo "Error: scenario '$scenario' conflicts with --operation '$elbencho_operation'"
             return 1
         fi
-        if [[ "$scenario" =~ ^(small|full|custom)$ ]] && \
+        if [[ "$scenario" =~ ^(full|custom)$ ]] && \
            [[ -n "$fio_file_size$fio_block_size$elbencho_file_count$elbencho_dir_count$elbencho_threads$elbencho_operation" ]]; then
-            echo "Error: elbencho custom parameters are supported by all/seq/rand scenarios, not '$scenario'"
+            echo "Error: elbencho custom parameters are supported by all/seq/rand/small scenarios, not '$scenario'"
+            return 1
+        fi
+        if [[ "$scenario" == "small" ]] && [[ -n "$elbencho_dir_count$elbencho_operation" ]]; then
+            echo "Error: small supports --file-size, --file-count, --block-size, and --threads only"
             return 1
         fi
     fi

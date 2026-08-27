@@ -118,6 +118,42 @@ class ElbenchoCliTest(unittest.TestCase):
             }
         return result, [shlex.split(call) for call in calls]
 
+    def _run_small_entrypoint(self, elbencho_args):
+        source = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
+        library = source.rsplit('\nmain "$@"', 1)[0]
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            output = temp / "output"
+            mount = temp / "mount"
+            args_file = temp / "small-script-args"
+            output.mkdir()
+            mount.mkdir()
+
+            harness = textwrap.dedent(
+                f"""
+                bash() {{ printf '%s\n' "$@" > {shlex.quote(str(args_file))}; }}
+                log_result() {{ :; }}
+                elbencho_notify() {{ :; }}
+                OUTPUT={shlex.quote(str(output))}
+                MOUNT={shlex.quote(str(mount))}
+                RUN_TIMESTAMP=test-run
+                parse_args -t elbencho -s small {elbencho_args}
+                validate_params
+                elbencho_run
+                """
+            )
+            script = temp / "run-small-entrypoint.sh"
+            script.write_text(library + "\n" + harness, encoding="utf-8")
+            result = subprocess.run(
+                ["bash", str(script)], text=True, capture_output=True, check=False
+            )
+            args = (
+                args_file.read_text(encoding="utf-8").splitlines()
+                if args_file.exists()
+                else []
+            )
+        return result, args
+
     def test_wrapper_passes_elbencho_overrides_to_container_entrypoint(self):
         result, args = self._run_wrapper(
             "--file-size 10G --file-count 100 --block-size 4M "
@@ -185,12 +221,61 @@ class ElbenchoCliTest(unittest.TestCase):
                 self.assertEqual(args, [])
                 self.assertIn("size", result.stdout + result.stderr)
 
-    def test_wrapper_rejects_overrides_for_script_scenarios(self):
-        result, args = self._run_wrapper("--threads 16", scenario="small")
+    def test_wrapper_passes_small_overrides_to_container_entrypoint(self):
+        result, args = self._run_wrapper(
+            "--file-size 10m --file-count 100 --block-size 1m "
+            "--threads 1,4,8,16",
+            scenario="small",
+        )
 
-        self.assertNotEqual(result.returncode, 0)
-        self.assertEqual(args, [])
-        self.assertIn("all/seq/rand", result.stdout + result.stderr)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        file_size_index = args.index("--file-size")
+        self.assertEqual(
+            args[file_size_index:],
+            [
+                "--file-size", "10m",
+                "--file-count", "100",
+                "--block-size", "1m",
+                "--threads", "1,4,8,16",
+            ],
+        )
+
+    def test_entrypoint_passes_small_overrides_to_script(self):
+        result, args = self._run_small_entrypoint(
+            "--file-size 10m --file-count 100 --block-size 1m "
+            "--threads 1,4,8,16"
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(
+            args[3:],
+            [
+                "--file-size", "10m",
+                "--file-count", "100",
+                "--block-size", "1m",
+                "--threads", "1,4,8,16",
+            ],
+        )
+
+    def test_wrapper_rejects_small_only_overrides_for_other_script_scenarios(self):
+        for scenario in ("full", "custom"):
+            with self.subTest(scenario=scenario):
+                result, args = self._run_wrapper("--threads 16", scenario=scenario)
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(args, [])
+                self.assertIn("all/seq/rand/small", result.stdout + result.stderr)
+
+    def test_wrapper_rejects_invalid_small_thread_lists(self):
+        for threads in ("1,,4", "1,0,4", "1,a,4", ",1,4", "1,4,"):
+            with self.subTest(threads=threads):
+                result, args = self._run_wrapper(
+                    f"--threads {shlex.quote(threads)}", scenario="small"
+                )
+
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(args, [])
+                self.assertIn("comma-separated positive integers", result.stdout + result.stderr)
 
     def test_custom_parameters_map_to_elbencho_directory_mode(self):
         result, calls = self._run_entrypoint(
