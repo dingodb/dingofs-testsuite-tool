@@ -41,7 +41,17 @@ echo "      Cloned to $SCRIPT_DIR/dingofs-integration-test"
 
 # Step 2: Synchronize dingofs-chaos-tool to build context
 echo ""
-echo "[2/6] Synchronizing dingofs-chaos-tool..."
+echo "[2/6] Updating and synchronizing dingofs-chaos-tool..."
+CHAOS_TOOL_DIR="$SCRIPT_DIR/dingofs-chaos-tool"
+if [[ ! -d "$CHAOS_TOOL_DIR/.git" ]]; then
+    echo "Error: dingofs-chaos-tool is not a Git repository: $CHAOS_TOOL_DIR" >&2
+    exit 1
+fi
+if [[ -n "$(git -C "$CHAOS_TOOL_DIR" status --porcelain --untracked-files=normal)" ]]; then
+    echo "Error: dingofs-chaos-tool has uncommitted changes: $CHAOS_TOOL_DIR" >&2
+    exit 1
+fi
+git -C "$CHAOS_TOOL_DIR" pull --ff-only
 "$SCRIPT_DIR/scripts/sync_chaos_tool.sh"
 
 # Step 3: Copy dingo binary to build context
