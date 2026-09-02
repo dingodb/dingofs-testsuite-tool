@@ -135,6 +135,218 @@ resolve_mount_target() {
     echo "$1" "/data" "/data"
 }
 
+_smoke_report_server_start_ticks() {
+    local pid="$1"
+    [[ "$pid" =~ ^[0-9]+$ ]] || return 1
+    [[ -r "/proc/${pid}/stat" ]] || return 1
+    awk '{print $22}' "/proc/${pid}/stat" 2>/dev/null
+}
+
+_smoke_report_server_identity_matches() {
+    local pid="$1"
+    local expected_ticks="$2"
+    local current_ticks
+
+    kill -0 "$pid" 2>/dev/null || return 1
+    current_ticks=$(_smoke_report_server_start_ticks "$pid") || return 1
+    [[ "$current_ticks" == "$expected_ticks" ]]
+}
+
+_smoke_report_server_matches() {
+    local pid="$1"
+    local expected_ticks="$2"
+    local port="$3"
+    local bind_host="$4"
+    local serve_dir="$5"
+    local python_bin="$6"
+    _smoke_report_server_identity_matches "$pid" "$expected_ticks" || return 1
+
+    local -a argv=()
+    local argument
+    while IFS= read -r -d '' argument; do
+        argv+=("$argument")
+    done < "/proc/${pid}/cmdline"
+
+    [[ ${#argv[@]} -eq 8 ]] && \
+        [[ "${argv[0]}" == "$python_bin" ]] && \
+        [[ "${argv[1]}" == "-m" ]] && \
+        [[ "${argv[2]}" == "http.server" ]] && \
+        [[ "${argv[3]}" == "$port" ]] && \
+        [[ "${argv[4]}" == "--bind" ]] && \
+        [[ "${argv[5]}" == "$bind_host" ]] && \
+        [[ "${argv[6]}" == "--directory" ]] && \
+        [[ "${argv[7]}" == "$serve_dir" ]]
+}
+
+_wait_smoke_report_server_exec() {
+    local pid="$1"
+    local start_ticks="$2"
+    local port="$3"
+    local bind_host="$4"
+    local serve_dir="$5"
+    local python_bin="$6"
+    local attempt
+
+    for ((attempt = 0; attempt < 40; attempt++)); do
+        _smoke_report_server_identity_matches "$pid" "$start_ticks" || return 1
+        if _smoke_report_server_matches \
+            "$pid" "$start_ticks" "$port" "$bind_host" "$serve_dir" "$python_bin"; then
+            return 0
+        fi
+        sleep 0.05
+    done
+    return 1
+}
+
+_probe_owned_smoke_report_server() {
+    local pid="$1"
+    local start_ticks="$2"
+    local port="$3"
+    local bind_host="$4"
+    local serve_dir="$5"
+    local python_bin="$6"
+    local probe_python="${7:-$python_bin}"
+    local probe_file probe_name probe_content
+
+    probe_file=$(mktemp "${serve_dir}/.dtt-smoke-report-probe.XXXXXX") || return 1
+    probe_name="${probe_file##*/}"
+    probe_content="dtt-smoke-report-$$-$RANDOM-$RANDOM"
+    if ! printf '%s' "$probe_content" > "$probe_file" || \
+       ! chmod 0600 "$probe_file"; then
+        rm -f "$probe_file"
+        return 1
+    fi
+
+    local attempt
+    local ready=1
+    for ((attempt = 0; attempt < 20; attempt++)); do
+        if ! _smoke_report_server_identity_matches "$pid" "$start_ticks"; then
+            break
+        fi
+        if _smoke_report_server_matches \
+               "$pid" "$start_ticks" "$port" "$bind_host" "$serve_dir" "$python_bin" && \
+           "$probe_python" -c '
+import sys
+import urllib.request
+
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+with opener.open(sys.argv[1], timeout=0.5) as response:
+    body = response.read().decode("utf-8")
+raise SystemExit(0 if body == sys.argv[2] else 1)
+' "http://${bind_host}:${port}/${probe_name}" "$probe_content" \
+            >/dev/null 2>&1; then
+            ready=0
+            break
+        fi
+        sleep 0.1
+    done
+    rm -f "$probe_file"
+    return "$ready"
+}
+
+# Start or reuse a server for the dedicated public Allure directory. Ownership
+# is proven by PID start time and exact argv. Unknown listeners are never killed.
+start_smoke_report_server() {
+    local requested_dir="$1"
+    local port="$2"
+    local bind_host="$3"
+    local serve_dir python_bin
+    serve_dir=$(readlink -f "$requested_dir") || return 1
+    python_bin=$(command -v python3) || return 1
+    python_bin=$(readlink -f "$python_bin") || return 1
+
+    local state_root="${CONFIG_DIR}/smoke-report-servers"
+    if ! (umask 077; mkdir -p "$state_root") || ! chmod 0700 "$state_root"; then
+        echo "WARNING: cannot create private smoke report server state directory." >&2
+        return 1
+    fi
+    if ! command -v flock >/dev/null 2>&1; then
+        echo "WARNING: flock is required to manage the smoke report server safely." >&2
+        return 1
+    fi
+
+    local state_file="${state_root}/${port}.state"
+    local lock_file="${state_root}/${port}.lock"
+    local log_file="${state_root}/${port}.log"
+
+    (
+        if ! flock -n 9; then
+            echo "WARNING: smoke report server port ${port} is being configured by another dtt process." >&2
+            return 1
+        fi
+
+        if [[ -f "$state_file" ]]; then
+            local -a state=()
+            mapfile -t state < "$state_file"
+            if [[ ${#state[@]} -ge 6 ]] && \
+               _smoke_report_server_matches \
+                   "${state[0]}" "${state[1]}" "${state[2]}" \
+                   "${state[3]}" "${state[4]}" "${state[5]}"; then
+                if [[ "${state[2]}" != "$port" ]] || \
+                   [[ "${state[4]}" != "$serve_dir" ]]; then
+                    echo "WARNING: DTT port ${port} already serves another report location." >&2
+                    return 1
+                fi
+                # The validated existing service may use an older bind address
+                # or Python path. Probe it using the values that own its state.
+                _probe_owned_smoke_report_server \
+                    "${state[0]}" "${state[1]}" "${state[2]}" "${state[3]}" \
+                    "${state[4]}" "${state[5]}" "$python_bin"
+                return $?
+            fi
+            rm -f "$state_file"
+        fi
+
+        nohup "$python_bin" -m http.server "$port" \
+            --bind "$bind_host" --directory "$serve_dir" \
+            </dev/null >"$log_file" 2>&1 9>&- &
+        local server_pid=$!
+        local start_ticks=""
+        local attempt
+        for ((attempt = 0; attempt < 10; attempt++)); do
+            start_ticks=$(_smoke_report_server_start_ticks "$server_pid") || true
+            [[ -n "$start_ticks" ]] && break
+            sleep 0.02
+        done
+
+        if [[ -z "$start_ticks" ]] || \
+           ! _wait_smoke_report_server_exec \
+               "$server_pid" "$start_ticks" "$port" "$bind_host" \
+               "$serve_dir" "$python_bin"; then
+            echo "WARNING: smoke report server did not complete startup on port ${port}." >&2
+            return 1
+        fi
+
+        # Persist ownership before HTTP readiness. If readiness is delayed, a
+        # later dtt run can safely re-probe this exact process instead of
+        # treating it as an unknown listener.
+        local temp_state="${state_file}.tmp.$$.$RANDOM"
+        if ! (umask 077; printf '%s\n' \
+            "$server_pid" "$start_ticks" "$port" "$bind_host" \
+            "$serve_dir" "$python_bin" > "$temp_state") || \
+           ! mv -f "$temp_state" "$state_file"; then
+            rm -f "$temp_state"
+            echo "WARNING: could not persist smoke report server ownership state." >&2
+            return 1
+        fi
+        if ! _probe_owned_smoke_report_server \
+            "$server_pid" "$start_ticks" "$port" "$bind_host" \
+            "$serve_dir" "$python_bin"; then
+            echo "WARNING: smoke report server did not pass HTTP readiness on port ${port}." >&2
+            return 1
+        fi
+        return 0
+    ) 9> "$lock_file"
+}
+
+smoke_report_server_bound_host() {
+    local port="$1"
+    local state_file="${CONFIG_DIR}/smoke-report-servers/${port}.state"
+    [[ -f "$state_file" ]] || return 1
+    sed -n '4p' "$state_file"
+}
+
+
 show_help() {
     cat << EOF
 dingofs-Testsuite-tools (dtt)
@@ -870,14 +1082,15 @@ Smoke Test Suite
   env_126_tool 初始化失败时不会启动 smoke 容器。
   xfstest 要求先配置 xfstest_mds_template；未配置时该项失败，不回退到本地文件模式。
   可通过 --exclude 排除指定工具。
-  测试结果和汇总报告输出到 smoke_<timestamp>/ 目录。
+  测试结果和汇总报告输出到 smoke_<timestamp>/ 目录；所有 int_* 模块会生成
+  一份聚合 Allure 报告。
 
 选项:
   --env <基础环境>  smoke 基础环境（默认: env_126；例如: env_127）
   --wechat      启用企业微信通知（发送单条聚合通知）
   --email [地址]  启用邮件通知；未指定地址时使用配置值
   --report-path <路径>  smoke 输出根目录（默认使用 config output）
-  --report-port <端口>  启动 smoke 输出目录的 HTTP 服务
+  --report-port <端口>  Allure 报告 HTTP 服务端口（默认: 8888）
   --exclude <工具列表>  排除指定工具，逗号分隔（如: int / pjdtest,xfstest）
                         工具值: pjdtest, ltp, xfstest
                         int 排除全部 11 个集成测试；也可使用 int_<模块名> 排除单个模块
@@ -916,6 +1129,9 @@ Smoke Test Suite
     dtt config set webhook_url <webhook地址>
     dtt config set email <邮箱地址>
   - 微信/邮件通知聚合为一条消息，包含全部 smoke 阶段的汇总结果
+  - HTTP 服务只发布聚合 Allure 静态副本；服务或发布失败不改变 smoke 退出码
+  - Allure 仅汇总 int_* 模块，最新报告地址:
+    http://<宿主机IP>:<report-port>/allure-smoke-report-latest/index.html
 
 更多信息:
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
@@ -1255,7 +1471,7 @@ cmd_smoke() {
     local wechat=""
     local email_to=""
     local report_path=""
-    local report_port=""
+    local report_port="8888"
     local debug=""
     local exclude=""
     local smoke_env="env_126"
@@ -1396,6 +1612,50 @@ cmd_smoke() {
     local host_mount container_target container_mount
     read -r host_mount container_target container_mount <<< "$(resolve_mount_target "$mount")"
 
+    # Start and verify the host service before the container sends a
+    # notification. Only a dedicated public Allure directory is exposed.
+    local report_host_ip
+    report_host_ip=$(hostname -I | awk '
+        {
+            for (i = 1; i <= NF; i++) {
+                if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+                    print $i
+                    exit
+                }
+            }
+        }
+    ')
+    report_host_ip="${report_host_ip:-127.0.0.1}"
+    local smoke_report_public_base="${CONFIG_DIR}/smoke-report-public"
+    local smoke_report_public_root="${smoke_report_public_base}/live"
+    local smoke_report_stage_root="${smoke_report_public_base}/staging"
+    local smoke_report_url=""
+    local report_url_host_file=""
+    local report_url_ready_file=""
+    if mkdir -p "$smoke_report_public_root" "$smoke_report_stage_root" && \
+       start_smoke_report_server \
+           "$smoke_report_public_root" "$report_port" "$report_host_ip"; then
+        local active_report_host
+        active_report_host=$(smoke_report_server_bound_host "$report_port") || \
+            active_report_host="$report_host_ip"
+        smoke_report_url="http://${active_report_host}:${report_port}/allure-smoke-report-latest/index.html"
+        local report_run_id="$(date +%s)-$$-$RANDOM"
+        report_url_host_file="${output}/.dtt-smoke-report-url-${report_run_id}"
+        report_url_ready_file="${report_url_host_file}.ready"
+        local report_url_temp_file="${report_url_host_file}.tmp"
+        if ! printf '%s\n' "$smoke_report_url" > "$report_url_temp_file" || \
+           ! chmod 0644 "$report_url_temp_file" || \
+           ! mv "$report_url_temp_file" "$report_url_host_file"; then
+            echo "WARNING: Smoke Allure report URL metadata could not be prepared."
+            rm -f "$report_url_temp_file" "$report_url_host_file" 2>/dev/null || true
+            smoke_report_url=""
+            report_url_host_file=""
+            report_url_ready_file=""
+        fi
+    else
+        echo "WARNING: Smoke Allure report service is unavailable; notifications will omit the link."
+    fi
+
     # Build docker/podman command (omit --rm in debug mode)
     local rm_flag="--rm"
     if [[ -n "$debug" ]]; then
@@ -1431,6 +1691,13 @@ cmd_smoke() {
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
+    if [[ -n "$report_url_host_file" ]]; then
+        docker_cmd+=(
+            -e "DTT_SMOKE_REPORT_URL_FILE=/output/${report_url_host_file##*/}"
+            -e "DTT_SMOKE_PUBLIC_REPORT_ROOT=/dtt-smoke-report-public"
+            -v "${smoke_report_public_base}:/dtt-smoke-report-public"
+        )
+    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
@@ -1548,13 +1815,18 @@ cmd_smoke() {
         smoke_exit=$?
     fi
 
-    if [[ -n "$report_port" ]]; then
-        if pgrep -f "python.*http.server.*${report_port}" >/dev/null 2>&1; then
-            pkill -f "python.*http.server.*${report_port}" 2>/dev/null || true
-        fi
-        nohup python3 -m http.server "$report_port" --directory "$output" \
-            >/dev/null 2>&1 &
-        echo "  Smoke report: http://$(hostname -I | awk '{print $1}'):${report_port}/"
+    local ready_report_url=""
+    if [[ -n "$report_url_ready_file" ]] && \
+       [[ -s "$report_url_ready_file" ]] && \
+       [[ -s "${smoke_report_public_root}/allure-smoke-report-latest/index.html" ]] && \
+       IFS= read -r ready_report_url < "$report_url_ready_file" && \
+       [[ "$ready_report_url" == "$smoke_report_url" ]]; then
+        echo "  Smoke Allure report: $smoke_report_url"
+    elif [[ -n "$smoke_report_url" ]]; then
+        echo "WARNING: Smoke Allure report was not published; no report link is available for this run."
+    fi
+    if [[ -n "$report_url_host_file" ]]; then
+        rm -f "$report_url_host_file" "$report_url_ready_file" 2>/dev/null || true
     fi
 
     return "$smoke_exit"

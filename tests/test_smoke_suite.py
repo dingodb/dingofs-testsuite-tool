@@ -21,16 +21,18 @@ class SmokeSuiteTest(unittest.TestCase):
         skipped_module="",
         exclude="",
         smoke_base_env="env_126",
+        report_generator_failure=False,
+        report_copy_failure=False,
+        initial_latest=False,
+        report_url_ready=True,
     ):
         source = (ROOT / "entrypoint.sh").read_text(encoding="utf-8")
         library = source.rsplit('\nmain "$@"', 1)[0]
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
-            integration = temp / "integration"
-            integration.mkdir()
             harness = textwrap.dedent(
                 f"""
-                INTEGRATION_DIR={integration}
+                INTEGRATION_DIR={shlex.quote(str(ROOT / 'dingofs-integration-test'))}
                 OUTPUT={temp / 'output'}
                 RUN_TIMESTAMP=test-run
                 INT_ENV=unused
@@ -48,8 +50,34 @@ class SmokeSuiteTest(unittest.TestCase):
                 SUITE_ERROR_MODULE={shlex.quote(suite_error_module)}
                 EMPTY_MODULE={shlex.quote(empty_module)}
                 SKIPPED_MODULE={shlex.quote(skipped_module)}
+                REPORT_GENERATOR_FAILURE={'yes' if report_generator_failure else 'no'}
+                REPORT_COPY_FAILURE={'yes' if report_copy_failure else 'no'}
+                INITIAL_LATEST={'yes' if initial_latest else 'no'}
+                REPORT_URL_READY={'yes' if report_url_ready else 'no'}
+                REAL_PYTHON3=$(type -P python3)
+                REAL_CP=$(type -P cp)
+
+                mkdir -p "$OUTPUT"
+                DTT_SMOKE_REPORT_URL_FILE="$OUTPUT/.dtt-smoke-report-url-test"
+                printf '%s\n' \
+                    'http://192.0.2.10:8888/allure-smoke-report-latest/index.html' \
+                    > "$DTT_SMOKE_REPORT_URL_FILE"
+                SMOKE_REPORT_URL='http://stale.invalid/previous-report'
+                export DTT_SMOKE_REPORT_URL_FILE SMOKE_REPORT_URL
+                if [[ "$INITIAL_LATEST" == yes ]]; then
+                    mkdir -p "$OUTPUT/allure-smoke-report-latest"
+                    printf 'previous report' > \
+                        "$OUTPUT/allure-smoke-report-latest/index.html"
+                fi
 
                 python3() {{
+                    if [[ "$1" == "-c" ]]; then
+                        if [[ "$REPORT_GENERATOR_FAILURE" == yes ]]; then
+                            return 23
+                        fi
+                        "$REAL_PYTHON3" "$@"
+                        return $?
+                    fi
                     if [[ "$*" == *tests/test_env_setup.py* ]]; then
                         echo "unexpected_internal_setup"
                         echo "DINGOFS_TEMP_MOUNTDIR=/tmp/wrong-mount"
@@ -59,18 +87,36 @@ class SmokeSuiteTest(unittest.TestCase):
                     printf 'python3_call:'
                     printf ' %q' "$@"
                     echo
+                    local command_line="$*"
+                    local report_dir=""
+                    local previous=""
+                    local argument
+                    for argument in "$@"; do
+                        if [[ "$previous" == "--report-dir" ]]; then
+                            report_dir="$argument"
+                            break
+                        fi
+                        previous="$argument"
+                    done
+                    if [[ -n "$report_dir" ]]; then
+                        local result_name
+                        result_name=$(basename "$(dirname "$report_dir")")
+                        mkdir -p "$report_dir"
+                        printf '{{"name":"%s","status":"passed"}}\n' \
+                            "$result_name" > "$report_dir/${{result_name}}-result.json"
+                    fi
                     local failed=no
                     if [[ "$FAIL_QUOTA_CAPACITY" == yes ]] && \
-                       [[ "$*" == *verify_fs_capacity.yaml* ]]; then
+                       [[ "$command_line" == *verify_fs_capacity.yaml* ]]; then
                         failed=yes
                     fi
                     if [[ "$FAIL_HOT_UPGRADE" == yes ]] && \
-                       [[ "$*" == *"run_tests.py hot_upgrade "* ]]; then
+                       [[ "$command_line" == *"run_tests.py hot_upgrade "* ]]; then
                         failed=yes
                     fi
                     echo "TEST SUITE SUMMARY"
                     if [[ -n "$EMPTY_MODULE" ]] && \
-                       [[ "$*" == *"run_tests.py $EMPTY_MODULE "* ]]; then
+                       [[ "$command_line" == *"run_tests.py $EMPTY_MODULE "* ]]; then
                         echo "Total Cases: 0"
                         echo "Passed: 0"
                         echo "Failed: 0"
@@ -79,7 +125,7 @@ class SmokeSuiteTest(unittest.TestCase):
                         return 0
                     fi
                     if [[ -n "$SKIPPED_MODULE" ]] && \
-                       [[ "$*" == *"run_tests.py $SKIPPED_MODULE "* ]]; then
+                       [[ "$command_line" == *"run_tests.py $SKIPPED_MODULE "* ]]; then
                         echo "Total Cases: 1"
                         echo "Passed: 0"
                         echo "Failed: 0"
@@ -89,7 +135,7 @@ class SmokeSuiteTest(unittest.TestCase):
                     fi
                     echo "Total Cases: 1"
                     if [[ -n "$SUITE_ERROR_MODULE" ]] && \
-                       [[ "$*" == *"run_tests.py $SUITE_ERROR_MODULE "* ]]; then
+                       [[ "$command_line" == *"run_tests.py $SUITE_ERROR_MODULE "* ]]; then
                         echo "Passed: 0"
                         echo "Failed: 0"
                         echo "Suite Errors: 1"
@@ -108,6 +154,16 @@ class SmokeSuiteTest(unittest.TestCase):
                     echo "Suite Errors: 0"
                     echo "Skipped: 0"
                     return 0
+                }}
+                cp() {{
+                    if [[ "$REPORT_COPY_FAILURE" == yes ]] && \
+                       [[ "$*" == *allure-smoke-report-history* ]]; then
+                        return 24
+                    fi
+                    "$REAL_CP" "$@"
+                }}
+                smoke_report_url_is_ready() {{
+                    [[ "$REPORT_URL_READY" == yes ]]
                 }}
                 pjdtest_run() {{
                     echo "pjdtest_call scenario=$SCENARIO mount=$MOUNT"
@@ -128,7 +184,10 @@ class SmokeSuiteTest(unittest.TestCase):
                     echo "xfstest_call scenario=$SCENARIO mount=$MOUNT"
                     return 0
                 }}
-                send_smoke_notification() {{ :; }}
+                send_smoke_notification() {{
+                    echo "notify_report_url=${{SMOKE_REPORT_URL:-}}"
+                    return 0
+                }}
 
                 set +e
                 smoke_run
@@ -145,6 +204,40 @@ class SmokeSuiteTest(unittest.TestCase):
             )
             summary_path = temp / "output" / "smoke_test-run" / "smoke_summary.json"
             summary = json.loads(summary_path.read_text(encoding="utf-8"))
+            smoke_base = temp / "output" / "smoke_test-run"
+            aggregate_results = smoke_base / "allure-results"
+            persistent_latest = temp / "output" / "allure-smoke-report-latest"
+            persistent_history = (
+                temp
+                / "output"
+                / "allure-smoke-report-history"
+                / "allure-report-test-run"
+            )
+            latest_index = persistent_latest / "index.html"
+            self.last_smoke_artifacts = {
+                "result_files": sorted(
+                    path.name for path in aggregate_results.glob("*-result.json")
+                ),
+                "run_latest": (smoke_base / "allure-report-latest" / "index.html").is_file(),
+                "persistent_latest": (persistent_latest / "index.html").is_file(),
+                "persistent_history": (persistent_history / "index.html").is_file(),
+                "public_latest": (
+                    temp
+                    / "output"
+                    / ".dtt-smoke-report-public"
+                    / "live"
+                    / "allure-smoke-report-latest"
+                    / "index.html"
+                ).is_file(),
+                "latest_content": (
+                    latest_index.read_text(encoding="utf-8")
+                    if latest_index.is_file()
+                    else None
+                ),
+                "report_url_ready": Path(
+                    f"{temp / 'output' / '.dtt-smoke-report-url-test'}.ready"
+                ).is_file(),
+            }
             output = result.stdout + result.stderr
             calls = [
                 shlex.split(line.removeprefix("python3_call:").strip())
@@ -152,6 +245,81 @@ class SmokeSuiteTest(unittest.TestCase):
                 if line.startswith("python3_call:")
             ]
             return result, output, summary, calls
+
+    def test_generates_one_aggregate_allure_report_for_executed_int_modules(self):
+        result, output, _, calls = self.run_smoke(
+            exclude="int_client,int_cache_node,xfstest"
+        )
+
+        self.assertEqual(result.returncode, 0, output)
+        self.assertEqual(len(calls), 10)
+        self.assertEqual(
+            self.last_smoke_artifacts["result_files"],
+            [
+                "basic_file_operation-result.json",
+                "dirstat-result.json",
+                "hot_upgrade-result.json",
+                "mds_manage-result.json",
+                "mount_subdir-result.json",
+                "trash-result.json",
+                "verify_fs_capacity-result.json",
+                "verify_fs_quota-result.json",
+                "warmup-result.json",
+                "xattr-result.json",
+            ],
+        )
+        self.assertTrue(self.last_smoke_artifacts["run_latest"])
+        self.assertTrue(self.last_smoke_artifacts["persistent_latest"])
+        self.assertTrue(self.last_smoke_artifacts["persistent_history"])
+        self.assertTrue(self.last_smoke_artifacts["public_latest"])
+        self.assertTrue(self.last_smoke_artifacts["report_url_ready"])
+        self.assertIn(
+            "notify_report_url=http://192.0.2.10:8888/"
+            "allure-smoke-report-latest/index.html",
+            output,
+        )
+        self.assertIn("Allure report:", output)
+
+    def test_report_generation_failure_preserves_test_exit_and_previous_latest(self):
+        _, output, summary, _ = self.run_smoke(
+            fail_hot_upgrade=True,
+            report_generator_failure=True,
+            initial_latest=True,
+        )
+
+        self.assertEqual(summary["aggregate"]["exit_code"], 1)
+        self.assertIn("smoke_rc=1", output)
+        self.assertIn("notify_report_url=", output)
+        self.assertNotIn("notify_report_url=http", output)
+        self.assertEqual(self.last_smoke_artifacts["latest_content"], "previous report")
+        self.assertFalse(self.last_smoke_artifacts["report_url_ready"])
+
+    def test_report_copy_failure_preserves_test_exit_and_previous_latest(self):
+        _, output, summary, _ = self.run_smoke(
+            fail_hot_upgrade=True,
+            report_copy_failure=True,
+            initial_latest=True,
+        )
+
+        self.assertEqual(summary["aggregate"]["exit_code"], 1)
+        self.assertIn("smoke_rc=1", output)
+        self.assertIn("notify_report_url=", output)
+        self.assertNotIn("notify_report_url=http", output)
+        self.assertEqual(self.last_smoke_artifacts["latest_content"], "previous report")
+        self.assertFalse(self.last_smoke_artifacts["report_url_ready"])
+
+    def test_final_http_readiness_failure_omits_link_and_preserves_test_exit(self):
+        _, output, summary, _ = self.run_smoke(
+            fail_hot_upgrade=True,
+            report_url_ready=False,
+        )
+
+        self.assertEqual(summary["aggregate"]["exit_code"], 1)
+        self.assertIn("smoke_rc=1", output)
+        self.assertTrue(self.last_smoke_artifacts["public_latest"])
+        self.assertFalse(self.last_smoke_artifacts["report_url_ready"])
+        self.assertNotIn("notify_report_url=http", output)
+        self.assertIn("final readiness check", output)
 
     def test_runs_the_exact_tool_and_integration_smoke_matrix(self):
         result, output, summary, calls = self.run_smoke()
@@ -326,6 +494,8 @@ class SmokeSuiteTest(unittest.TestCase):
                 self.assertEqual(result["excluded"], 1, name)
         self.assertEqual(summary["aggregate"]["status"], "PASS")
         self.assertIn("smoke_rc=0", output)
+        self.assertTrue(self.last_smoke_artifacts["run_latest"])
+        self.assertTrue(self.last_smoke_artifacts["persistent_latest"])
 
     def test_exclude_single_integration_module_continues_with_later_modules(self):
         _, output, summary, calls = self.run_smoke(exclude="int_hot_upgrade")

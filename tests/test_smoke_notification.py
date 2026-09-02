@@ -38,6 +38,10 @@ class SmokeNotificationTest(unittest.TestCase):
                     "EMAIL_TO": "smoke@example.com",
                     "NOTIFY_ARGS_FILE": str(captured),
                     "SMOKE_DETAILS": details,
+                    "SMOKE_REPORT_URL": (
+                        "http://192.0.2.10:8888/"
+                        "allure-smoke-report-latest/index.html"
+                    ),
                 }
             )
             result = subprocess.run(
@@ -51,6 +55,10 @@ class SmokeNotificationTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             rendered = captured.read_text(encoding="utf-8")
             self.assertIn("错误 (Error)", rendered)
+            self.assertIn(
+                "http://192.0.2.10:8888/allure-smoke-report-latest/index.html",
+                rendered,
+            )
             self.assertRegex(
                 rendered,
                 re.compile(
@@ -67,6 +75,48 @@ class SmokeNotificationTest(unittest.TestCase):
                     re.DOTALL,
                 ),
             )
+
+    def test_smoke_wechat_includes_allure_report_url(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            fake_bin = temp / "bin"
+            fake_bin.mkdir()
+            captured = temp / "curl-args"
+            curl = fake_bin / "curl"
+            curl.write_text(
+                "#!/bin/bash\nprintf '%s\\n' \"$@\" > \"$NOTIFY_ARGS_FILE\"\n"
+                "echo '{\"errcode\":0}'\n",
+                encoding="utf-8",
+            )
+            curl.chmod(0o755)
+            report_url = (
+                "http://192.0.2.10:8888/"
+                "allure-smoke-report-latest/index.html"
+            )
+            command = (
+                f"source {ROOT / 'scripts' / 'notify.sh'}; "
+                "send_wechat_notification smoke smoke SUCCESS 1s ''"
+            )
+            env = os.environ.copy()
+            env.update(
+                {
+                    "PATH": f"{fake_bin}:{env['PATH']}",
+                    "WECHAT": "yes",
+                    "WEBHOOK_URL": "https://example.invalid/webhook",
+                    "NOTIFY_ARGS_FILE": str(captured),
+                    "SMOKE_REPORT_URL": report_url,
+                }
+            )
+            result = subprocess.run(
+                ["bash", "-c", command],
+                text=True,
+                capture_output=True,
+                check=False,
+                env=env,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+            self.assertIn(report_url, captured.read_text(encoding="utf-8"))
 
 
 if __name__ == "__main__":

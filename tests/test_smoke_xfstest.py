@@ -68,6 +68,7 @@ class SmokeXfstestTest(unittest.TestCase):
             }}
             mountpoint() {{ return {0 if mount_ready else 1}; }}
             _is_rootless() {{ return 0; }}
+            start_smoke_report_server() {{ return 0; }}
             cmd_smoke {smoke_args}
             """
         )
@@ -212,6 +213,7 @@ class SmokeXfstestTest(unittest.TestCase):
                 cmd_setup_env() {{ :; }}
                 mountpoint() {{ return 0; }}
                 _is_rootless() {{ return 1; }}
+                start_smoke_report_server() {{ return 0; }}
                 cmd_smoke
                 """
             )
@@ -225,6 +227,7 @@ class SmokeXfstestTest(unittest.TestCase):
                 cmd_setup_env() {{ :; }}
                 mountpoint() {{ return 0; }}
                 _is_rootless() {{ return 1; }}
+                start_smoke_report_server() {{ return 0; }}
                 cmd_smoke --exclude xfstest
                 """
             )
@@ -240,6 +243,7 @@ class SmokeXfstestTest(unittest.TestCase):
                 cmd_setup_env() {{ :; }}
                 mountpoint() {{ return 0; }}
                 _is_rootless() {{ return 0; }}
+                start_smoke_report_server() {{ return 0; }}
                 cmd_smoke
                 """
             )

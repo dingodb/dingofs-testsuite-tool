@@ -250,6 +250,11 @@ ${read_rows}    </table>"
 </table>"
     fi
 
+    if [[ "$tool" == "smoke" ]] && [[ -n "${SMOKE_REPORT_URL:-}" ]]; then
+        html_content="${html_content}
+<p><b>Allure 报告：</b><a href='${SMOKE_REPORT_URL}'>${SMOKE_REPORT_URL}</a></p>"
+    fi
+
     html_content="${html_content}
 </body>
 </html>"
@@ -384,6 +389,12 @@ send_wechat_notification() {
 | Tool | Scenario | Duration | Status |
 |------|----------|----------|--------|
 | ${tool} | ${scenario} | ${duration} | ${status} |"
+
+    if [[ "$tool" == "smoke" ]] && [[ -n "${SMOKE_REPORT_URL:-}" ]]; then
+        content+="
+
+Allure 报告：${SMOKE_REPORT_URL}"
+    fi
 
     # Add details if provided
     if [[ -n "$details" ]]; then

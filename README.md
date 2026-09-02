@@ -605,8 +605,19 @@ pjdtest all、LTP smoketest 和 xfstest quick；setup 失败时不会启动 smok
 任一阶段失败不会阻止后续阶段，最终 JSON、文本和通知汇总会包含全部阶段。
 `--exclude int` 可排除全部集成测试，也可以用 `int_<模块名>` 排除单个模块。
 `--email` 不带地址时使用 `dtt config set email` 保存的地址；`--report-path`
-覆盖本次 smoke 的输出根目录，`--report-port` 在宿主机启动该目录的 HTTP
-服务，并保留 smoke 原始退出码。
+覆盖本次 smoke 的输出根目录。所有已执行 `int_*` 模块的 Allure 结果会合并到
+一份报告中；`pjdtest`、LTP 和 xfstest 仍保留在 smoke JSON/文本汇总中。
+宿主机默认使用端口 `8888` 提供报告服务，`--report-port` 可覆盖端口，并保留
+smoke 原始退出码。HTTP 服务只暴露聚合 Allure 的静态副本，不暴露 smoke 日志；
+若端口占用或报告发布失败，本轮通知会省略链接，但不会改变测试退出码。最新报告地址为：
+
+```text
+http://<宿主机IP>:<report-port>/allure-smoke-report-latest/index.html
+```
+
+报告同时保存在 `smoke_<timestamp>/allure-report-latest/`、
+`allure-smoke-report-latest/` 和 `allure-smoke-report-history/`；启用邮件或企业微信
+后，通知中会包含最新报告链接。
 
 ---
 

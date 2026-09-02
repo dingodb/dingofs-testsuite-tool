@@ -2817,6 +2817,281 @@ smoke_int_status() {
     fi
 }
 
+# Merge one run_tests.py invocation's raw Allure files into the smoke-wide
+# results directory. Allure result and attachment names are UUID based, so the
+# independent module processes can safely share one flattened result set.
+collect_smoke_allure_results() {
+    local source_dir="$1"
+    local aggregate_dir="$2"
+
+    if [[ ! -d "$source_dir" ]] || [[ -z "$(ls -A "$source_dir" 2>/dev/null)" ]]; then
+        return 0
+    fi
+
+    if ! mkdir -p "$aggregate_dir"; then
+        return 1
+    fi
+    cp -a "$source_dir"/. "$aggregate_dir"/
+}
+
+# Replace a report directory without destroying the previous target if the
+# final move fails. The source and target must be on the same filesystem.
+publish_smoke_report_directory() {
+    local source_dir="$1"
+    local target_dir="$2"
+    local backup_dir="${target_dir}.previous.$$.$RANDOM"
+
+    if [[ ! -s "${source_dir}/index.html" ]]; then
+        return 1
+    fi
+
+    if [[ -e "$target_dir" ]] || [[ -L "$target_dir" ]]; then
+        if ! mv -T "$target_dir" "$backup_dir"; then
+            return 1
+        fi
+    fi
+
+    if mv -T "$source_dir" "$target_dir"; then
+        if [[ -e "$backup_dir" ]] || [[ -L "$backup_dir" ]]; then
+            rm -rf "$backup_dir" || \
+                echo "WARNING: could not remove old smoke report backup: $backup_dir"
+        fi
+        return 0
+    fi
+
+    if [[ -e "$backup_dir" ]] || [[ -L "$backup_dir" ]]; then
+        mv -T "$backup_dir" "$target_dir" || \
+            echo "ERROR: could not restore previous smoke report: $target_dir"
+    fi
+    return 1
+}
+
+# Point persistent latest at one immutable history directory. Once latest is a
+# symlink, mv replaces it atomically. A legacy latest directory is backed up
+# during the one-time migration and restored if switching fails.
+publish_smoke_latest_link() {
+    local link_target="$1"
+    local latest_path="$2"
+    local temp_link="${latest_path}.next.$$.$RANDOM"
+    local backup_path="${latest_path}.previous.$$.$RANDOM"
+
+    if ! ln -s "$link_target" "$temp_link"; then
+        return 1
+    fi
+
+    if [[ -e "$latest_path" ]] && [[ ! -L "$latest_path" ]]; then
+        if ! mv "$latest_path" "$backup_path"; then
+            rm -f "$temp_link"
+            return 1
+        fi
+        if mv -T "$temp_link" "$latest_path"; then
+            rm -rf "$backup_path" || \
+                echo "WARNING: could not remove old latest report backup: $backup_path"
+            return 0
+        fi
+        mv "$backup_path" "$latest_path" || \
+            echo "ERROR: could not restore previous latest smoke report."
+        rm -f "$temp_link"
+        return 1
+    fi
+
+    if mv -Tf "$temp_link" "$latest_path"; then
+        return 0
+    fi
+    rm -f "$temp_link"
+    return 1
+}
+
+# Generate one browsable report for all executed int_* smoke modules. The new
+# report is validated in staging before history and latest are published.
+generate_smoke_allure_report() {
+    local smoke_base="$1"
+    local results_dir="${smoke_base}/allure-results"
+    local run_report="${smoke_base}/allure-report-latest"
+    local publication_id="${RUN_TIMESTAMP}-$$-$RANDOM"
+    local run_stage="${smoke_base}/.allure-report-stage-${publication_id}"
+    local history_root="${OUTPUT}/allure-smoke-report-history"
+    local history_report="${history_root}/allure-report-${RUN_TIMESTAMP}"
+    local history_stage="${history_root}/.allure-report-stage-${publication_id}"
+    local latest_report="${OUTPUT}/allure-smoke-report-latest"
+    local public_base="${DTT_SMOKE_PUBLIC_REPORT_ROOT:-${OUTPUT}/.dtt-smoke-report-public}"
+    local public_live_root="${public_base}/live"
+    local public_stage_root="${public_base}/staging"
+    local public_history_root="${public_live_root}/allure-smoke-report-history"
+    local public_history_report=""
+    local public_report="${public_live_root}/allure-smoke-report-latest"
+    local public_stage="${public_stage_root}/.allure-report-stage-${publication_id}"
+
+    if [[ ${SMOKE_ALLURE_COLLECTION_FAILED:-0} -ne 0 ]]; then
+        echo "WARNING: aggregate smoke Allure results are incomplete; report was not published."
+        return 1
+    fi
+    if ! mkdir -p "$results_dir" "$history_root" \
+        "$public_live_root" "$public_stage_root" "$public_history_root"; then
+        echo "WARNING: could not create aggregate smoke Allure directories."
+        return 1
+    fi
+    if [[ -e "$history_report" ]] || [[ -L "$history_report" ]]; then
+        history_report="${history_report}-$$"
+    fi
+    public_history_report="${public_history_root}/$(basename "$history_report")"
+
+    local report_mode
+    if ! report_mode=$(
+        cd "$INTEGRATION_DIR" || exit $?
+        python3 -c '
+import importlib.util
+import sys
+
+spec = importlib.util.spec_from_file_location("dtt_report_generator", sys.argv[1])
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+generated, mode = module.generate_report(sys.argv[2], sys.argv[3])
+print(mode)
+raise SystemExit(0 if generated else 1)
+' "$INTEGRATION_DIR/src/test_runner/report_generator.py" "$results_dir" "$run_stage"
+    ); then
+        echo "WARNING: failed to generate aggregate smoke Allure report."
+        rm -rf "$run_stage" "$history_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    if [[ ! -s "${run_stage}/index.html" ]]; then
+        echo "WARNING: aggregate smoke Allure staging report has no index.html."
+        rm -rf "$run_stage" "$history_stage" 2>/dev/null || true
+        return 1
+    fi
+    if ! publish_smoke_report_directory "$run_stage" "$run_report"; then
+        echo "WARNING: failed to publish run-local smoke Allure report."
+        rm -rf "$run_stage" "$history_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    if ! mkdir -p "$history_stage" || \
+       ! cp -a "$run_report"/. "$history_stage"/ || \
+       [[ ! -s "${history_stage}/index.html" ]]; then
+        echo "WARNING: failed to stage persistent smoke Allure history."
+        rm -rf "$history_stage" 2>/dev/null || true
+        return 1
+    fi
+    if ! publish_smoke_report_directory "$history_stage" "$history_report"; then
+        echo "WARNING: failed to publish persistent smoke Allure history."
+        rm -rf "$history_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    if ! mkdir -p "$public_stage" || \
+       ! cp -a "$history_report"/. "$public_stage"/ || \
+       [[ ! -s "${public_stage}/index.html" ]]; then
+        echo "WARNING: failed to stage the public smoke Allure report."
+        rm -rf "$public_stage" 2>/dev/null || true
+        return 1
+    fi
+    local public_symlink
+    public_symlink=$(find "$public_stage" -type l -print -quit 2>/dev/null) || {
+        echo "WARNING: failed to validate the public smoke Allure report."
+        rm -rf "$public_stage" 2>/dev/null || true
+        return 1
+    }
+    if [[ -n "$public_symlink" ]]; then
+        echo "WARNING: public smoke Allure report contains a symbolic link: $public_symlink"
+        rm -rf "$public_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    local latest_target="allure-smoke-report-history/$(basename "$history_report")"
+    if ! publish_smoke_latest_link "$latest_target" "$latest_report"; then
+        echo "WARNING: failed to switch the latest smoke Allure report."
+        rm -rf "$public_stage" 2>/dev/null || true
+        return 1
+    fi
+    if [[ ! -s "${latest_report}/index.html" ]]; then
+        echo "WARNING: latest smoke Allure report is not readable after publication."
+        rm -rf "$public_stage" 2>/dev/null || true
+        return 1
+    fi
+
+    if ! publish_smoke_report_directory "$public_stage" "$public_history_report"; then
+        echo "WARNING: failed to publish immutable public smoke Allure history."
+        rm -rf "$public_stage" 2>/dev/null || true
+        return 1
+    fi
+    local public_latest_target="allure-smoke-report-history/$(basename "$public_history_report")"
+    if ! publish_smoke_latest_link "$public_latest_target" "$public_report" || \
+       [[ ! -s "${public_report}/index.html" ]]; then
+        echo "WARNING: failed to switch the public smoke Allure report."
+        return 1
+    fi
+
+    echo "Allure report: ${run_report}/index.html [${report_mode}]"
+    echo "Latest smoke Allure report: ${latest_report}/index.html"
+    return 0
+}
+
+smoke_report_url_is_ready() {
+    local report_url="$1"
+    python3 -c '
+import sys
+import urllib.request
+
+opener = urllib.request.build_opener(urllib.request.ProxyHandler({}))
+with opener.open(sys.argv[1], timeout=2) as response:
+    if response.status != 200 or not response.read(1):
+        raise SystemExit(1)
+' "$report_url" >/dev/null 2>&1
+}
+
+# Promote the host-provided candidate URL only after this run successfully
+# publishes latest. The .ready rename is also the host wrapper's run-specific
+# proof that it may print the URL after the container exits.
+prepare_smoke_report_notification_url() {
+    local output_root="$1"
+    local report_published="$2"
+    local candidate_file="${DTT_SMOKE_REPORT_URL_FILE:-}"
+
+    SMOKE_REPORT_URL=""
+    export SMOKE_REPORT_URL
+    [[ -n "$candidate_file" ]] || return 0
+
+    case "$candidate_file" in
+        "$output_root"/.dtt-smoke-report-url-*) ;;
+        *)
+            echo "WARNING: ignoring invalid smoke report URL metadata path: $candidate_file"
+            return 1
+            ;;
+    esac
+
+    local ready_file="${candidate_file}.ready"
+    local public_base="${DTT_SMOKE_PUBLIC_REPORT_ROOT:-${output_root}/.dtt-smoke-report-public}"
+    if [[ "$report_published" != "yes" ]] || \
+       [[ ! -s "${output_root}/allure-smoke-report-latest/index.html" ]] || \
+       [[ ! -s "${public_base}/live/allure-smoke-report-latest/index.html" ]]; then
+        rm -f "$candidate_file" "$ready_file" 2>/dev/null || true
+        return 0
+    fi
+
+    local candidate_url
+    if ! IFS= read -r candidate_url < "$candidate_file" || \
+       [[ ! "$candidate_url" =~ ^https?://[^[:space:]]+$ ]]; then
+        echo "WARNING: smoke report URL metadata is missing or invalid."
+        rm -f "$candidate_file" "$ready_file" 2>/dev/null || true
+        return 1
+    fi
+    if ! smoke_report_url_is_ready "$candidate_url"; then
+        echo "WARNING: smoke Allure report URL did not pass its final readiness check."
+        rm -f "$candidate_file" "$ready_file" 2>/dev/null || true
+        return 1
+    fi
+    if ! mv "$candidate_file" "$ready_file"; then
+        echo "WARNING: could not mark the smoke Allure URL as ready."
+        return 1
+    fi
+
+    SMOKE_REPORT_URL="$candidate_url"
+    export SMOKE_REPORT_URL
+    return 0
+}
+
 # Run one run_tests.py command and expose its parsed result through
 # SMOKE_INT_LAST_{PASS,FAIL,ERROR,SKIP,TOTAL,EXIT}.
 run_smoke_int_command() {
@@ -2856,6 +3131,11 @@ run_smoke_int_command() {
         SMOKE_INT_LAST_EXIT=$?
     fi
 
+    if ! collect_smoke_allure_results \
+        "$report_dir" "${smoke_base}/allure-results"; then
+        echo "WARNING: failed to collect Allure results for int_${module}."
+        SMOKE_ALLURE_COLLECTION_FAILED=1
+    fi
     parse_int_smoke_output "$log_file" "SMOKE_INT_LAST"
     return 0
 }
@@ -3181,6 +3461,12 @@ smoke_run() {
 
     local smoke_base="$OUTPUT/smoke_${RUN_TIMESTAMP}"
     mkdir -p "$smoke_base"
+    SMOKE_ALLURE_COLLECTION_FAILED=0
+    if ! rm -rf "${smoke_base}/allure-results" || \
+       ! mkdir -p "${smoke_base}/allure-results"; then
+        echo "WARNING: could not initialize aggregate smoke Allure results."
+        SMOKE_ALLURE_COLLECTION_FAILED=1
+    fi
     export SMOKE_MODE=1
 
     local pjdtest_exit=0
@@ -3346,8 +3632,21 @@ smoke_run() {
     MOUNT="$orig_mount"
     unset SMOKE_MODE
 
-    generate_smoke_summary "$smoke_base" "$aggregate_exit"
-    send_smoke_notification "$smoke_base" "$aggregate_exit" "$smoke_start_ts"
+    local test_exit="$aggregate_exit"
+    local smoke_allure_published="no"
+    if ! generate_smoke_summary "$smoke_base" "$test_exit"; then
+        echo "WARNING: failed to generate smoke summary reports."
+    fi
+    if generate_smoke_allure_report "$smoke_base"; then
+        smoke_allure_published="yes"
+    fi
+    if ! prepare_smoke_report_notification_url \
+        "$orig_output" "$smoke_allure_published"; then
+        echo "WARNING: smoke notification will omit the Allure report link."
+    fi
+    if ! send_smoke_notification "$smoke_base" "$test_exit" "$smoke_start_ts"; then
+        echo "WARNING: failed to send the combined smoke notification."
+    fi
 
     echo "=============================================="
     echo "Smoke Test Suite Complete"
@@ -3358,12 +3657,16 @@ smoke_run() {
     for module in "${SMOKE_INT_MODULES[@]}"; do
         echo "  int_${module}: $(smoke_int_status "$module") pass=$(smoke_int_get "$module" PASS) fail=$(smoke_int_get "$module" FAIL) error=$(smoke_int_get "$module" ERROR) skip=$(smoke_int_get "$module" SKIP) excluded=$(smoke_int_get "$module" SKIPPED) total=$(smoke_int_get "$module" TOTAL) (exit=$(smoke_int_get "$module" EXIT))"
     done
-    echo "  aggregate exit: $aggregate_exit"
+    echo "  aggregate exit: $test_exit"
     echo "  Output: $smoke_base"
-    echo "  Reports: smoke_summary.json, smoke_summary.txt"
+    if [[ "$smoke_allure_published" == "yes" ]]; then
+        echo "  Reports: smoke_summary.json, smoke_summary.txt, allure-report-latest/index.html"
+    else
+        echo "  Reports: smoke_summary.json, smoke_summary.txt (Allure publication failed)"
+    fi
     echo "=============================================="
 
-    return "$aggregate_exit"
+    return "$test_exit"
 }
 
 # ==============================================================================
