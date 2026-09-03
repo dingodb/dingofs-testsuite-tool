@@ -122,12 +122,16 @@ class SyncChaosToolTest(unittest.TestCase):
             self.assertEqual(marker.read_text(encoding="utf-8"), "VERSION = 'project-local'\n")
             self.assertEqual(_git(chaos_tool, "status", "--short"), "")
 
-    def test_build_synchronizes_chaos_tool_before_docker_build(self):
+    def test_build_synchronizes_chaos_tool_and_refreshes_installed_cli(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
             build_script = temp / "build.sh"
             shutil.copy2(ROOT / "build.sh", build_script)
+            cli_source = temp / "dingofs-testsuite-tool"
+            cli_source.write_text("#!/bin/bash\necho current-cli\n", encoding="utf-8")
+            cli_source.chmod(0o755)
             (temp / "dingofs-integration-test").mkdir()
+            (temp / "dingofs-chaos-tool" / ".git").mkdir(parents=True)
             scripts = temp / "scripts"
             scripts.mkdir()
             sync_marker = temp / "sync-complete"
@@ -161,6 +165,8 @@ class SyncChaosToolTest(unittest.TestCase):
 
             env = os.environ.copy()
             env["PATH"] = f"{fake_bin}:{env['PATH']}"
+            install_dir = temp / "install-bin"
+            env["DTT_INSTALL_DIR"] = str(install_dir)
             result = subprocess.run(
                 [str(build_script), "--debug"],
                 env=env,
@@ -171,6 +177,14 @@ class SyncChaosToolTest(unittest.TestCase):
 
             self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
             self.assertTrue(sync_marker.exists())
+            installed_cli = install_dir / "dingofs-testsuite-tool"
+            self.assertTrue(installed_cli.exists(), "build did not refresh the installed CLI")
+            self.assertEqual(
+                installed_cli.read_text(encoding="utf-8"),
+                "#!/bin/bash\necho current-cli\n",
+            )
+            self.assertTrue(os.access(installed_cli, os.X_OK))
+            self.assertEqual(os.readlink(install_dir / "dtt"), str(installed_cli))
 
 
 if __name__ == "__main__":

@@ -60,16 +60,19 @@ class DailyFaultTest(unittest.TestCase):
 
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertIn(f"{identity}:/tmp/dtt-rocky_70:ro", args)
+        self.assertIn(
+            "dingofs-chaos-tool-data:/opt/dingofs-chaos-tool/var:rw",
+            args,
+        )
         command_tokens = shlex.split(args[-1])
         fault_index = command_tokens.index("fault")
         self.assertEqual(
-            command_tokens[fault_index:fault_index + 10],
+            command_tokens[fault_index:fault_index + 9],
             [
                 "fault", "--env", "env_79_dingofs",
                 "--chaos-tool-path", "/opt/dingofs-chaos-tool",
                 "--ssh-identity-file", "/tmp/dtt-rocky_70",
                 "--enable-external-chaos", "--allow-high-risk-chaos",
-                "mds_manage",
             ],
         )
         self.assertNotIn("--case", command_tokens)

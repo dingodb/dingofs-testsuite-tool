@@ -917,6 +917,9 @@ export PATH="$PATH:/path/to/dingofs-storage-testsuite-tools"
 dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
 ```
 
+`dingofs-chaos-tool` 的程序和内置配置始终来自当前镜像。运行历史、日志和报告保存在
+`dingofs-chaos-tool-data` volume 中，因此重新构建镜像后不会再被旧 volume 中的代码覆盖。
+
 > install.sh 参数：
 > - `-n, --no-build`: 跳过镜像构建，只配置环境变量和设置镜像
 

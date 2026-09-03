@@ -28,6 +28,9 @@ XFSTEST_MDS_TEMPLATE_FILE="$CONFIG_DIR/xfstest_mds_template"
 # Default image
 DEFAULT_IMAGE="localhost/dingofs-testsuite-tools:latest"
 
+# Persistent runtime data volume. Program code always comes from the image.
+: "${DINGOFS_CHAOS_TOOL_VOLUME:=dingofs-chaos-tool-data}"
+
 # Default webhook URL for WeChat
 DEFAULT_WEBHOOK_URL="https://qyapi.weixin.qq.com/cgi-bin/webhook/send?key=9051ba90-dd37-4023-b49f-5db8ce78ac31"
 
@@ -346,6 +349,33 @@ smoke_report_server_bound_host() {
     sed -n '4p' "$state_file"
 }
 
+# Mounting a new named volume on var/ seeds its runtime layout from the image.
+# The program and built-in configuration remain in the image, so rebuilding the
+# image cannot be masked by stale code in a persistent volume.
+prepare_chaos_tool_volume() {
+    local image="$1"
+    local run_uid="$2"
+    local run_gid="$3"
+    local runtime
+    runtime=$(load_config runtime)
+
+    echo "Preparing persistent chaos-tool data volume: $DINGOFS_CHAOS_TOOL_VOLUME"
+    $runtime run --rm --user 0:0 \
+        -v "${DINGOFS_CHAOS_TOOL_VOLUME}:/opt/dingofs-chaos-tool/var:rw" \
+        --entrypoint /bin/bash "$image" \
+        -c 'set -e
+            chaos_dir=/opt/dingofs-chaos-tool
+            test -f "$chaos_dir/chaos_clients/chaos_tool.py"
+            data_dir="$chaos_dir/var"
+            mkdir -p "$data_dir/history" "$data_dir/runs" "$data_dir/logs" \
+                "$data_dir/reports" "$data_dir/catalog"
+            if [ ! -e "$data_dir/catalog/custom.yaml" ]; then
+                printf "{}\n" > "$data_dir/catalog/custom.yaml"
+            fi
+            chown -R "$1:$2" "$data_dir"
+            chmod -R u+rwX "$data_dir"' \
+        dtt-chaos-volume "$run_uid" "$run_gid"
+}
 
 show_help() {
     cat << EOF
@@ -1304,6 +1334,16 @@ cmd_daily() {
         return 1
     fi
 
+    # Use the same identity as the daily container when preparing the
+    # persistent chaos-tool runtime data volume.
+    local chaos_uid=0
+    local chaos_gid=0
+    if [[ -n "$mount" ]] && ! _is_rootless; then
+        chaos_uid=$(stat -c '%u' "$mount")
+        chaos_gid=$(stat -c '%g' "$mount")
+    fi
+    prepare_chaos_tool_volume "$image" "$chaos_uid" "$chaos_gid" || return 1
+
     # commit_info.yaml file path
     local commit_info_file="__USER_HOME__/jenkins_workdir/script-main/commit_info.yaml"
 
@@ -1327,6 +1367,7 @@ cmd_daily() {
     fi
 
     docker_cmd+=("-v" "${output}:/output")
+    docker_cmd+=("-v" "${DINGOFS_CHAOS_TOOL_VOLUME}:/opt/dingofs-chaos-tool/var:rw")
 
     if [[ -z "$debug" ]]; then
         docker_cmd+=("-v" "${fault_identity}:/tmp/dtt-rocky_70:ro")
@@ -1439,6 +1480,7 @@ cmd_daily() {
         echo "  Test dir:    $mount -> $container_mount"
     fi
     echo "  Output dir:  $output -> /output"
+    echo "  Chaos data:  volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
     if [[ -n "$report_path" ]]; then
         echo "  Report path: $report_path -> /allure-report"
     fi
@@ -1914,11 +1956,20 @@ cmd_debug() {
         return 1
     fi
 
+    local chaos_uid=0
+    local chaos_gid=0
+    if [[ -n "$testdir" ]] && ! _is_rootless; then
+        chaos_uid=$(stat -c '%u' "$testdir")
+        chaos_gid=$(stat -c '%g' "$testdir")
+    fi
+    prepare_chaos_tool_volume "$image" "$chaos_uid" "$chaos_gid" || return 1
+
     echo "Starting debug shell with image: $image"
     echo "Testdir: ${testdir:-<not set>}"
     echo "Output: ${output:-<not set>}"
     echo "MDSAddr: ${mdsaddr:-<not set>}"
     echo "Custom: ${custom:-<not set>}"
+    echo "Chaos data: volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
     echo ""
     echo "Type 'exit' to leave the container"
     echo ""
@@ -1944,6 +1995,8 @@ cmd_debug() {
         mkdir -p "$custom"
         docker_cmd+=("-v" "${custom}:/custom")
     fi
+
+    docker_cmd+=("-v" "${DINGOFS_CHAOS_TOOL_VOLUME}:/opt/dingofs-chaos-tool/var:rw")
 
     if [[ -n "$mdsaddr" ]]; then
         local -a added_ips=()
@@ -2486,6 +2539,18 @@ run_testsuite() {
     # Create output directory if it doesn't exist
     mkdir -p "$output"
 
+    local use_chaos_volume="no"
+    if [[ "$tool" == "int" && "$scenario" == "fault" ]]; then
+        local chaos_uid=0
+        local chaos_gid=0
+        if ! _is_rootless; then
+            chaos_uid=$(stat -c '%u' "$mount")
+            chaos_gid=$(stat -c '%g' "$mount")
+        fi
+        prepare_chaos_tool_volume "$image" "$chaos_uid" "$chaos_gid" || return 1
+        use_chaos_volume="yes"
+    fi
+
     # Build docker command (omit --rm in debug mode to preserve container)
     local rm_flag="--rm"
     if [[ -n "$debug" ]]; then
@@ -2518,6 +2583,12 @@ run_testsuite() {
         -v "${host_mount}:${container_target}"
         -v "${output}:/output"
     )
+
+    if [[ "$use_chaos_volume" == "yes" ]]; then
+        docker_cmd+=("-v" "${DINGOFS_CHAOS_TOOL_VOLUME}:/opt/dingofs-chaos-tool/var:rw")
+        docker_cmd+=("-e" "INT_ENABLE_EXT_CHAOS=1")
+        docker_cmd+=("-e" "INT_CHAOS_PATH=/opt/dingofs-chaos-tool")
+    fi
 
     # Mount custom scenarios directory if configured
     if [[ -n "$config_custom" ]]; then
@@ -2644,6 +2715,9 @@ run_testsuite() {
     echo "Tool: $tool"
     if [[ -n "$scenario" ]]; then
         echo "Scenario: $scenario"
+    fi
+    if [[ "$use_chaos_volume" == "yes" ]]; then
+        echo "Chaos data: volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
     fi
     if [[ "$tool" == "mdtest" ]]; then
         echo "NP: $np"

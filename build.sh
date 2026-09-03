@@ -10,6 +10,16 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 IMAGE_NAME="dingofs-testsuite-tools:latest"
 HARBOR_IMAGE="harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest"
 
+install_local_cli() {
+    local install_dir="${DTT_INSTALL_DIR:-$HOME/.local/bin}"
+    local installed_cli="$install_dir/dingofs-testsuite-tool"
+
+    mkdir -p "$install_dir"
+    install -m 0755 "$SCRIPT_DIR/dingofs-testsuite-tool" "$installed_cli"
+    ln -sfn "$installed_cli" "$install_dir/dtt"
+    echo "      Updated local CLI: $installed_cli"
+}
+
 # Check for --debug flag
 DEBUG_MODE=false
 if [[ "$1" == "--debug" ]]; then
@@ -100,6 +110,7 @@ fi
 
 echo ""
 echo "      Docker image built successfully."
+install_local_cli
 
 if [[ "$DEBUG_MODE" == "true" ]]; then
     # Skip tagging and push in debug mode
