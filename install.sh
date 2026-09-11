@@ -8,7 +8,10 @@
 
 set -e
 
-TESTSUITE_TOOL_URL="https://raw.githubusercontent.com/dingodb/dingofs-testsuite-tool/refs/heads/main/dingofs-testsuite-tool"
+RAW_BASE_URL="https://raw.githubusercontent.com/dingodb/dingofs-testsuite-tool/refs/heads/main"
+TESTSUITE_TOOL_URL="$RAW_BASE_URL/dingofs-testsuite-tool"
+AI_ANALYZER_URL="$RAW_BASE_URL/dtt-ai-analyze"
+AI_SCHEMA_URL="$RAW_BASE_URL/analysis.schema.json"
 IMAGE_NAME="${IMAGE_NAME:-harbor.zetyun.cn/dingofs/dingofs-testsuite-tools:latest}"
 SKIP_BUILD=false
 
@@ -57,26 +60,34 @@ fi
 echo "Detected container runtime: $RUNTIME"
 echo ""
 
-# Step 1: Download dingofs-testsuite-tool from GitHub
-echo "[1/4] Downloading dingofs-testsuite-tool from GitHub..."
-echo "      URL: $TESTSUITE_TOOL_URL"
+# Step 1: Download the host CLI companions before installing any of them.
+echo "[1/4] Downloading DTT host commands from GitHub..."
 echo ""
 
-TEMP_FILE=$(mktemp)
-DOWNLOAD_SUCCESS=false
+INSTALL_TEMP_DIR=$(mktemp -d)
+trap 'rm -rf -- "$INSTALL_TEMP_DIR"' EXIT
 
-# Try direct download first, then with proxy if it fails
-if curl -fsSL "$TESTSUITE_TOOL_URL" -o "$TEMP_FILE" 2>&1; then
-    DOWNLOAD_SUCCESS=true
-elif curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$TESTSUITE_TOOL_URL" -o "$TEMP_FILE" 2>&1; then
-    DOWNLOAD_SUCCESS=true
-fi
+download_component() {
+    local url="$1"
+    local destination="$2"
+    local label="$3"
+    echo "      $label: $url"
+    if curl -fsSL "$url" -o "$destination" 2>&1; then
+        return 0
+    fi
+    if curl -fsSL --proxy http://hproxy.it.zetyun.cn:1080 "$url" -o "$destination" 2>&1; then
+        return 0
+    fi
+    echo "Error: Failed to download $label"
+    return 1
+}
 
-if [[ "$DOWNLOAD_SUCCESS" != "true" ]]; then
-    echo "Error: Failed to download dingofs-testsuite-tool"
-    rm -f "$TEMP_FILE"
-    exit 1
-fi
+TEMP_WRAPPER="$INSTALL_TEMP_DIR/dingofs-testsuite-tool"
+TEMP_ANALYZER="$INSTALL_TEMP_DIR/dtt-ai-analyze"
+TEMP_SCHEMA="$INSTALL_TEMP_DIR/analysis.schema.json"
+download_component "$TESTSUITE_TOOL_URL" "$TEMP_WRAPPER" "dingofs-testsuite-tool" || exit 1
+download_component "$AI_ANALYZER_URL" "$TEMP_ANALYZER" "dtt-ai-analyze" || exit 1
+download_component "$AI_SCHEMA_URL" "$TEMP_SCHEMA" "analysis.schema.json" || exit 1
 
 echo "      Downloaded successfully"
 
@@ -88,19 +99,38 @@ else
 fi
 
 DEST_FILE="$INSTALL_DIR/dingofs-testsuite-tool"
+ANALYZER_DEST="$INSTALL_DIR/dtt-ai-analyze"
+LIB_DIR="$(dirname "$INSTALL_DIR")/lib/dingofs-testsuite-tool"
+SCHEMA_DEST="$LIB_DIR/analysis.schema.json"
 
-# Move temp file to install location (use sudo if needed)
-if cp "$TEMP_FILE" "$DEST_FILE" 2>/dev/null; then
-    chmod +x "$DEST_FILE"
-    echo "      Installed to $DEST_FILE"
-elif sudo cp "$TEMP_FILE" "$DEST_FILE" && sudo chmod +x "$DEST_FILE"; then
-    echo "      Installed to $DEST_FILE (sudo)"
-else
-    echo "Error: Failed to install to $DEST_FILE"
-    rm -f "$TEMP_FILE"
-    exit 1
-fi
-rm -f "$TEMP_FILE"
+install_component() {
+    local source="$1"
+    local destination="$2"
+    local mode="$3"
+    local destination_dir staging
+    destination_dir=$(dirname "$destination")
+    staging="${destination}.tmp.$$"
+
+    if mkdir -p "$destination_dir" 2>/dev/null && \
+       install -m "$mode" "$source" "$staging" 2>/dev/null && \
+       mv -f "$staging" "$destination" 2>/dev/null; then
+        echo "      Installed to $destination"
+        return 0
+    fi
+    rm -f "$staging" 2>/dev/null || true
+    if sudo mkdir -p "$destination_dir" && \
+       sudo install -m "$mode" "$source" "$staging" && \
+       sudo mv -f "$staging" "$destination"; then
+        echo "      Installed to $destination (sudo)"
+        return 0
+    fi
+    echo "Error: Failed to install to $destination"
+    return 1
+}
+
+install_component "$TEMP_WRAPPER" "$DEST_FILE" 0755 || exit 1
+install_component "$TEMP_ANALYZER" "$ANALYZER_DEST" 0755 || exit 1
+install_component "$TEMP_SCHEMA" "$SCHEMA_DEST" 0644 || exit 1
 
 # Create symlink for dtt shortcut
 if ln -sf "$DEST_FILE" "$INSTALL_DIR/dtt" 2>/dev/null; then

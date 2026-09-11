@@ -69,6 +69,170 @@ load_config() {
     fi
 }
 
+new_ai_run_id() {
+    local suffix
+    suffix=$(od -An -N3 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
+    if [[ ! "$suffix" =~ ^[0-9a-f]{6}$ ]]; then
+        echo "Error: Failed to generate AI analysis run ID" >&2
+        return 1
+    fi
+    printf '%s-%s\n' "$(date +%Y%m%d-%H%M%S)" "$suffix"
+}
+
+resolve_ai_analyzer() {
+    if [[ -n "${DTT_AI_ANALYZER:-}" ]] && [[ -x "$DTT_AI_ANALYZER" ]]; then
+        printf '%s\n' "$DTT_AI_ANALYZER"
+        return 0
+    fi
+
+    local wrapper_path wrapper_dir beside
+    wrapper_path=$(readlink -f "${BASH_SOURCE[0]}" 2>/dev/null || printf '%s' "${BASH_SOURCE[0]}")
+    wrapper_dir=$(dirname "$wrapper_path")
+    beside="$wrapper_dir/dtt-ai-analyze"
+    if [[ -x "$beside" ]]; then
+        printf '%s\n' "$beside"
+        return 0
+    fi
+    command -v dtt-ai-analyze 2>/dev/null
+}
+
+prepare_ai_run() {
+    local report_root="$1"
+    local mode="$2"
+    local command_text="$3"
+    local work_root run_id run_dir
+
+    if [[ -z "$report_root" ]] || [[ -z "$mode" ]] || [[ -z "$command_text" ]]; then
+        echo "Error: prepare_ai_run requires report root, mode, and command" >&2
+        return 1
+    fi
+    work_root="${report_root%/}/.dtt-ai-work"
+    run_id=$(new_ai_run_id) || return 1
+    run_dir="$work_root/$run_id"
+    mkdir -p "$run_dir" || return 1
+    chmod 0700 "$work_root" "$run_dir" || return 1
+
+    export DTT_AI_RUN_ID="$run_id"
+    export DTT_AI_MODE="$mode"
+    export DTT_AI_COMMAND="$command_text"
+    export DTT_AI_HOST_RUN_DIR="$run_dir"
+}
+
+_remove_ai_workdir() {
+    local run_dir="$1"
+    local resolved parent run_id
+    resolved=$(readlink -f "$run_dir" 2>/dev/null) || return 1
+    parent=$(basename "$(dirname "$resolved")")
+    run_id=$(basename "$resolved")
+    if [[ "$parent" != ".dtt-ai-work" ]] || \
+       [[ ! "$run_id" =~ ^[0-9]{8}-[0-9]{6}-[0-9a-f]{6}$ ]]; then
+        echo "WARNING: Refusing to remove invalid AI work directory: $run_dir" >&2
+        return 1
+    fi
+    rm -rf -- "$resolved"
+}
+
+run_deferred_notification() {
+    local manifest_path="$1"
+    local original_report_url="$2"
+    local ai_report_url="$3"
+    local ai_status_text="$4"
+    local email_to="$5"
+    local wechat="$6"
+
+    if [[ -z "$email_to" ]] && [[ -z "$wechat" ]]; then
+        return 0
+    fi
+    if [[ ! -f "$manifest_path" ]]; then
+        echo "WARNING: Cannot send deferred notification; manifest not found: $manifest_path" >&2
+        return 1
+    fi
+
+    local runtime image manifest_dir manifest_name
+    runtime=$(load_config runtime)
+    image=$(load_config image)
+    manifest_dir=$(dirname "$manifest_path")
+    manifest_name=$(basename "$manifest_path")
+    local -a notify_cmd=(
+        $runtime run --rm
+        -v "${manifest_dir}:/dtt-ai-run:ro"
+        -e "DTT_DEFER_NOTIFICATIONS=no"
+        -e "DTT_ORIGINAL_REPORT_URL=$original_report_url"
+        -e "DTT_AI_REPORT_URL=$ai_report_url"
+        -e "DTT_AI_STATUS_TEXT=$ai_status_text"
+    )
+    if [[ -n "$email_to" ]]; then
+        local resolved_email="$email_to"
+        [[ "$resolved_email" == "yes" ]] && resolved_email=$(load_config email)
+        notify_cmd+=( -e "EMAIL=yes" -e "EMAIL_TO=$resolved_email" )
+    fi
+    if [[ -n "$wechat" ]]; then
+        notify_cmd+=(
+            -e "WECHAT=yes"
+            -e "WEBHOOK_URL=$(load_config webhook_url)"
+        )
+    fi
+    notify_cmd+=(
+        "$image" /bin/bash -c
+        "source /scripts/notify.sh && send_ai_manifest_notification /dtt-ai-run/$manifest_name"
+    )
+    "${notify_cmd[@]}"
+}
+
+finalize_ai_run() {
+    local run_dir="$1"
+    local publish_root="$2"
+    local base_url="$3"
+    local original_report_url="$4"
+    local email_to="$5"
+    local wechat="$6"
+    local analyzer analysis_exit ai_status_text ai_report_url=""
+
+    analyzer=$(resolve_ai_analyzer 2>/dev/null || true)
+    if [[ -z "$analyzer" ]]; then
+        analysis_exit=4
+        ai_status_text="AI 分析生成失败：未找到 dtt-ai-analyze"
+        echo "WARNING: $ai_status_text" >&2
+    else
+        local -a analyzer_args=(
+            --run-dir "$run_dir"
+            --publish-root "$publish_root"
+        )
+        if [[ -n "$base_url" ]]; then
+            analyzer_args+=(--base-url "$base_url")
+        fi
+        if "$analyzer" "${analyzer_args[@]}"; then
+            analysis_exit=0
+        else
+            analysis_exit=$?
+        fi
+        case "$analysis_exit" in
+            0) ai_status_text="分析成功" ;;
+            3) ai_status_text="AI 分析未调用（本次无最终 FAIL/ERROR）" ;;
+            *) ai_status_text="AI 分析生成失败，原始测试结果不受影响" ;;
+        esac
+    fi
+
+    if [[ "$analysis_exit" != "3" ]] && [[ -n "${DTT_AI_RUN_ID:-}" ]]; then
+        if [[ -n "$base_url" ]]; then
+            ai_report_url="${base_url%/}/history/${DTT_AI_RUN_ID}/index.html"
+        elif [[ -f "$publish_root/history/${DTT_AI_RUN_ID}/index.html" ]]; then
+            ai_report_url="$publish_root/history/${DTT_AI_RUN_ID}/index.html"
+        fi
+    fi
+
+    run_deferred_notification \
+        "$run_dir/run_manifest.json" \
+        "$original_report_url" \
+        "$ai_report_url" \
+        "$ai_status_text" \
+        "$email_to" \
+        "$wechat" || echo "WARNING: deferred notification failed; test exit is unchanged." >&2
+    _remove_ai_workdir "$run_dir" || true
+    echo "AI analysis status: $ai_status_text"
+    return 0
+}
+
 save_config() {
     local key="$1"
     local value="$2"
@@ -387,6 +551,9 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 用法:
   dtt <命令> [选项]
   dtt -t <工具> -s <场景> [选项]
+
+通用 AI 选项:
+  --ai-analysis       仅在最终 FAIL/ERROR 时使用宿主机 Codex 生成失败分析；默认关闭
 
 命令:
   config <子命令>    管理配置（testdir, output, image 等）
@@ -1943,6 +2110,14 @@ cmd_config() {
 }
 
 cmd_debug() {
+    if [[ "${1:-}" == "--ai-analysis" ]]; then
+        echo "Error: dtt debug does not run a test, so --ai-analysis is not supported"
+        return 1
+    fi
+    if [[ $# -gt 0 ]]; then
+        echo "Error: Unknown option '$1'"
+        return 1
+    fi
     local image=$(load_config image)
     local testdir=$(load_config testdir)
     local output=$(load_config output)
@@ -4649,7 +4824,8 @@ dingofs-testsuite-tool() {
             cmd_config "$@"
             ;;
         debug)
-            cmd_debug
+            shift
+            cmd_debug "$@"
             ;;
         install)
             shift
@@ -4672,7 +4848,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug)
+        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;
