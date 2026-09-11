@@ -1,0 +1,23 @@
+{
+  "schema_version": 1,
+  "run_id": "20260911-210000-ab12cd",
+  "failures": [
+    {
+      "name": "vdbench.stability",
+      "status": "ERROR",
+      "error": "data_errors=1",
+      "command": "dtt -t vdbench -s stability --ai-analysis",
+      "snippets": [
+        {
+          "source": "execution.log",
+          "line_start": 1,
+          "line_end": 2,
+          "content": "java.lang.RuntimeException: data_errors=1\nvdbench status: FAIL",
+          "truncated": false
+        }
+      ]
+    }
+  ],
+  "redactions": {},
+  "truncated": false
+}

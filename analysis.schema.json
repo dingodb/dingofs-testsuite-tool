@@ -1,0 +1,57 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["summary", "failure_groups", "known_bugs", "limitations"],
+  "properties": {
+    "summary": {"type": "string"},
+    "failure_groups": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "title",
+          "category",
+          "affected_cases",
+          "root_cause",
+          "confidence",
+          "facts",
+          "inferences",
+          "evidence",
+          "recommendations",
+          "reproduce_command"
+        ],
+        "properties": {
+          "title": {"type": "string"},
+          "category": {
+            "type": "string",
+            "enum": ["product", "testcase", "environment", "framework", "dependency", "unknown"]
+          },
+          "affected_cases": {"type": "array", "items": {"type": "string"}},
+          "root_cause": {"type": "string"},
+          "confidence": {"type": "string", "enum": ["high", "medium", "low"]},
+          "facts": {"type": "array", "items": {"type": "string"}},
+          "inferences": {"type": "array", "items": {"type": "string"}},
+          "evidence": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": ["source", "line", "fact"],
+              "properties": {
+                "source": {"type": "string"},
+                "line": {"type": "integer", "minimum": 1},
+                "fact": {"type": "string"}
+              }
+            }
+          },
+          "recommendations": {"type": "array", "items": {"type": "string"}},
+          "reproduce_command": {"type": "string"}
+        }
+      }
+    },
+    "known_bugs": {"type": "array", "items": {"type": "string"}},
+    "limitations": {"type": "array", "items": {"type": "string"}}
+  }
+}
