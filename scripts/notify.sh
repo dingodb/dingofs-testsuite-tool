@@ -20,6 +20,10 @@ log_notify() {
     echo "[$(date +'%Y-%m-%d %H:%M:%S')] $1"
 }
 
+html_escape_notify() {
+    python3 -c 'import html, sys; print(html.escape(sys.argv[1], quote=True), end="")' "${1:-}"
+}
+
 # Send email notification
 # Usage: send_email_notification <tool> <scenario> <status> <duration> [details] [test_date] [test_ip]
 # Mount point is read from TEST_MOUNT env var (set by entrypoint.sh)
@@ -32,6 +36,11 @@ send_email_notification() {
     local test_date="${6:-$(date '+%Y-%m-%d %H:%M:%S')}"
     local test_ip="${7:-$(hostname -I | awk '{print $1}')}"
     local mount="${TEST_MOUNT:-}"
+
+    if [[ "${DTT_DEFER_NOTIFICATIONS:-no}" == "yes" ]]; then
+        log_notify "Notification deferred until host AI analysis completes"
+        return 0
+    fi
 
     # Skip if email is not enabled
     if [[ "$EMAIL_ENABLED" != "yes" ]]; then
@@ -69,12 +78,12 @@ send_email_notification() {
 </table>
 <br>"
 
-    if [[ "$tool" == "smoke" ]]; then
+    if [[ "$tool" == "smoke" || "$tool" == "daily" ]]; then
         # Smoke details format: one tool per line, with optional
         # pass/fail/error/skip/total counters.
         # Build a multi-tool HTML table from the smoke-specific format
         html_content="${html_content}
-<h3>冒烟测试结果详情</h3>
+<h3>$([[ "$tool" == "daily" ]] && echo "集成测试结果详情" || echo "冒烟测试结果详情")</h3>
 <table border='1' cellpadding='5' cellspacing='0'>
 <tr><th>工具</th><th>状态</th><th>通过 (Pass)</th><th>失败 (Fail)</th><th>错误 (Error)</th><th>跳过 (Skip)</th><th>总计 (Total)</th></tr>"
 
@@ -255,6 +264,25 @@ ${read_rows}    </table>"
 <p><b>Allure 报告：</b><a href='${SMOKE_REPORT_URL}'>${SMOKE_REPORT_URL}</a></p>"
     fi
 
+    if [[ -n "${DTT_ORIGINAL_REPORT_URL:-}" ]]; then
+        local original_report_url_html
+        original_report_url_html=$(html_escape_notify "$DTT_ORIGINAL_REPORT_URL")
+        html_content="${html_content}
+<p><b>原始测试报告：</b><a href='${original_report_url_html}'>${original_report_url_html}</a></p>"
+    fi
+    if [[ -n "${DTT_AI_REPORT_URL:-}" ]]; then
+        local ai_report_url_html
+        ai_report_url_html=$(html_escape_notify "$DTT_AI_REPORT_URL")
+        html_content="${html_content}
+<p><b>AI 失败分析：</b><a href='${ai_report_url_html}'>${ai_report_url_html}</a></p>"
+    fi
+    if [[ -n "${DTT_AI_STATUS_TEXT:-}" ]]; then
+        local ai_status_html
+        ai_status_html=$(html_escape_notify "$DTT_AI_STATUS_TEXT")
+        html_content="${html_content}
+<p><b>AI 分析状态：</b>${ai_status_html}</p>"
+    fi
+
     html_content="${html_content}
 </body>
 </html>"
@@ -349,6 +377,11 @@ send_wechat_notification() {
     local test_ip="${7:-$(hostname -I | awk '{print $1}')}"
     local mount="${TEST_MOUNT:-}"
 
+    if [[ "${DTT_DEFER_NOTIFICATIONS:-no}" == "yes" ]]; then
+        log_notify "Notification deferred until host AI analysis completes"
+        return 0
+    fi
+
     # Skip if WeChat is not enabled
     if [[ "$WECHAT_ENABLED" != "yes" ]]; then
         log_notify "WeChat notification disabled (WECHAT_ENABLED=$WECHAT_ENABLED)"
@@ -394,6 +427,22 @@ send_wechat_notification() {
         content+="
 
 Allure 报告：${SMOKE_REPORT_URL}"
+    fi
+
+    if [[ -n "${DTT_ORIGINAL_REPORT_URL:-}" ]]; then
+        content+="
+
+原始测试报告：${DTT_ORIGINAL_REPORT_URL}"
+    fi
+    if [[ -n "${DTT_AI_REPORT_URL:-}" ]]; then
+        content+="
+
+AI 失败分析：${DTT_AI_REPORT_URL}"
+    fi
+    if [[ -n "${DTT_AI_STATUS_TEXT:-}" ]]; then
+        content+="
+
+AI 分析状态：${DTT_AI_STATUS_TEXT}"
     fi
 
     # Add details if provided
@@ -479,15 +528,12 @@ ${details}"
     fi
 
     # Send to WeChat webhook
-    local payload=$(cat <<EOF
-{
-    "msgtype": "markdown",
-    "markdown": {
-        "content": "${content}"
-    }
-}
-EOF
-)
+    local payload
+    if ! command -v jq >/dev/null 2>&1; then
+        log_notify "jq is required to build the WeChat notification payload"
+        return 1
+    fi
+    payload=$(jq -n --arg content "$content" '{msgtype:"markdown", markdown:{content:$content}}')
 
     log_notify "Sending WeChat notification..."
     log_notify "Webhook URL: $WEBHOOK_URL"
@@ -515,4 +561,60 @@ EOF
         log_notify "Response: $response"
         return 1
     fi
+}
+
+# Reconstruct and send one final notification from an AI run manifest.
+# Usage: send_ai_manifest_notification <run_manifest.json>
+send_ai_manifest_notification() {
+    local manifest_path="$1"
+    if ! command -v jq >/dev/null 2>&1; then
+        log_notify "jq is required for AI manifest notifications"
+        return 1
+    fi
+    if [[ ! -f "$manifest_path" ]]; then
+        log_notify "AI manifest not found: $manifest_path"
+        return 1
+    fi
+    if ! jq -e '.suites | type == "array"' "$manifest_path" >/dev/null 2>&1; then
+        log_notify "AI manifest has no valid suites array"
+        return 1
+    fi
+
+    local mode tool scenario status details test_date
+    mode=$(jq -r '.mode // "tool"' "$manifest_path")
+    case "$mode" in
+        daily)
+            tool="daily"
+            scenario="integration"
+            ;;
+        smoke)
+            tool="smoke"
+            scenario="smoke"
+            ;;
+        *)
+            tool=$(jq -r '.tool // "tool"' "$manifest_path")
+            scenario=$(jq -r '.scenario // ""' "$manifest_path")
+            ;;
+    esac
+    test_date=$(jq -r '.started_at // ""' "$manifest_path")
+    details=$(jq -r '
+        .suites[] |
+        ((.fail // 0) + (.error // 0)) as $bad |
+        (if $bad > 0 then "FAIL" elif (.total // 0) == 0 then "SKIP" else "PASS" end) as $status |
+        "\(.name)[\($status)] pass:\(.pass // 0) fail:\(.fail // 0) error:\(.error // 0) skip:\(.skip // 0) total:\(.total // 0)"
+    ' "$manifest_path")
+    if jq -e 'any(.suites[]; ((.fail // 0) + (.error // 0)) > 0)' "$manifest_path" >/dev/null; then
+        status="FAIL"
+    else
+        status="SUCCESS"
+    fi
+
+    local email_status=0
+    local wechat_status=0
+    send_email_notification "$tool" "$scenario" "$status" "completed" "$details" "$test_date" || email_status=$?
+    send_wechat_notification "$tool" "$scenario" "$status" "completed" "$details" "$test_date" || wechat_status=$?
+    if [[ $email_status -ne 0 || $wechat_status -ne 0 ]]; then
+        return 1
+    fi
+    return 0
 }
