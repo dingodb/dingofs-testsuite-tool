@@ -1295,6 +1295,7 @@ Smoke Test Suite
                         工具值: pjdtest, ltp, xfstest
                         int 排除全部 11 个集成测试；也可使用 int_<模块名> 排除单个模块
   --debug       调试模式，容器执行完毕后保留不删除
+  --ai-analysis 最终 FAIL/ERROR 时在宿主机生成 AI 失败分析
   --help, -h    显示此帮助信息
 
 示例:
@@ -1835,6 +1836,13 @@ cmd_daily() {
 }
 
 cmd_smoke() {
+    local smoke_command="dtt smoke"
+    local command_arg command_arg_quoted
+    for command_arg in "$@"; do
+        printf -v command_arg_quoted ' %q' "$command_arg"
+        smoke_command+="$command_arg_quoted"
+    done
+
     local image=$(load_config image)
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
@@ -1860,6 +1868,7 @@ cmd_smoke() {
     local exclude=""
     local smoke_env="env_126"
     local smoke_env_explicit=""
+    local ai_analysis=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --env)
@@ -1908,6 +1917,10 @@ cmd_smoke() {
             --exclude)
                 exclude="$2"
                 shift 2
+                ;;
+            --ai-analysis)
+                ai_analysis="yes"
+                shift
                 ;;
             --help|-h)
                 show_smoke_help
@@ -2014,12 +2027,12 @@ cmd_smoke() {
     local smoke_report_public_root="${smoke_report_public_base}/live"
     local smoke_report_stage_root="${smoke_report_public_base}/staging"
     local smoke_report_url=""
+    local active_report_host=""
     local report_url_host_file=""
     local report_url_ready_file=""
     if mkdir -p "$smoke_report_public_root" "$smoke_report_stage_root" && \
        start_smoke_report_server \
            "$smoke_report_public_root" "$report_port" "$report_host_ip"; then
-        local active_report_host
         active_report_host=$(smoke_report_server_bound_host "$report_port") || \
             active_report_host="$report_host_ip"
         smoke_report_url="http://${active_report_host}:${report_port}/allure-smoke-report-latest/index.html"
@@ -2049,6 +2062,17 @@ cmd_smoke() {
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
     )
+
+    if [[ -n "$ai_analysis" ]]; then
+        prepare_ai_run "$output" "smoke" "$smoke_command" || return 1
+        docker_cmd+=(
+            -e "DTT_AI_ENABLED=1"
+            -e "DTT_AI_RUN_ID=${DTT_AI_RUN_ID}"
+            -e "DTT_AI_RUN_DIR=/output/.dtt-ai-work/${DTT_AI_RUN_ID}"
+            -e "DTT_AI_COMMAND=${DTT_AI_COMMAND}"
+            -e "DTT_DEFER_NOTIFICATIONS=yes"
+        )
+    fi
 
     local run_xfstest="no"
     if [[ -n "$config_xfstest_mds_template" ]] && \
@@ -2188,6 +2212,9 @@ cmd_smoke() {
     if [[ -n "$debug" ]]; then
         echo "  Debug:       container will be preserved"
     fi
+    if [[ -n "$ai_analysis" ]]; then
+        echo "  AI analysis: enabled (host Codex; final FAIL/ERROR only)"
+    fi
     echo ""
 
     # Execute: run container with -t smoke, mounting test/output dirs. Preserve
@@ -2211,6 +2238,35 @@ cmd_smoke() {
     fi
     if [[ -n "$report_url_host_file" ]]; then
         rm -f "$report_url_host_file" "$report_url_ready_file" 2>/dev/null || true
+    fi
+
+    if [[ -n "$ai_analysis" ]]; then
+        local smoke_index_tmp="${smoke_report_public_root}/.index.html.$$.$RANDOM"
+        if printf '%s\n' \
+            '<!doctype html><html lang="zh-CN"><meta charset="utf-8">' \
+            '<title>DTT Smoke Reports</title><body><h1>DTT Smoke Reports</h1>' \
+            '<ul><li><a href="allure-smoke-report-latest/index.html">最新 Allure 报告</a></li>' \
+            '<li><a href="ai-analysis/index.html">最新 AI 失败分析</a></li></ul></body></html>' \
+            > "$smoke_index_tmp" && \
+           chmod 0644 "$smoke_index_tmp" && \
+           mv "$smoke_index_tmp" "${smoke_report_public_root}/index.html"; then
+            :
+        else
+            echo "WARNING: Smoke report landing page could not be updated." >&2
+            rm -f "$smoke_index_tmp" 2>/dev/null || true
+        fi
+
+        local ai_base_url=""
+        if [[ -n "$active_report_host" ]]; then
+            ai_base_url="http://${active_report_host}:${report_port}/ai-analysis"
+        fi
+        finalize_ai_run \
+            "$DTT_AI_HOST_RUN_DIR" \
+            "${smoke_report_public_root}/ai-analysis" \
+            "$ai_base_url" \
+            "$ready_report_url" \
+            "$email_to" \
+            "$wechat"
     fi
 
     return "$smoke_exit"
