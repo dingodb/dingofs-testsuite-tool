@@ -609,7 +609,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
 === daily — 每日集成测试 ===
 
-  在容器内执行 run_tests.py，依次运行 11 个模块，每个失败用例重试 5 次，
+  在容器内执行 run_tests.py，依次运行 11 个模块；失败用例不重试，
   完成后生成 Allure 报告并发送通知。
 
   模块列表 (默认 env=126):
@@ -1422,7 +1422,7 @@ cmd_daily() {
         client --env env_${env}_smoke --run-level smoke \
         --log_path /output \
         --commit_info_file_path ${commit_info_file} \
-        --reruns 2 --email ${email_to}"
+        --reruns 0 --email ${email_to}"
     else
         local py_cmd="cd /dingofs-integration-test && python3 run_tests.py \
         quota --env env_${env}_quota \
@@ -1443,7 +1443,7 @@ cmd_daily() {
         mds_manage --env env_${env}_mds_manage \
         --log_path /output \
         --commit_info_file_path ${commit_info_file} \
-        --reruns 2 --email ${email_to}"
+        --reruns 0 --email ${email_to}"
     fi
 
     if [[ -n "$wechat" ]]; then
