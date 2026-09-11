@@ -16,6 +16,10 @@ install_local_cli() {
 
     mkdir -p "$install_dir"
     install -m 0755 "$SCRIPT_DIR/dingofs-testsuite-tool" "$installed_cli"
+    install -m 0755 "$SCRIPT_DIR/dtt-ai-analyze" "$install_dir/dtt-ai-analyze"
+    local library_dir="$install_dir/../lib/dingofs-testsuite-tool"
+    mkdir -p "$library_dir"
+    install -m 0644 "$SCRIPT_DIR/analysis.schema.json" "$library_dir/analysis.schema.json"
     ln -sfn "$installed_cli" "$install_dir/dtt"
     echo "      Updated local CLI: $installed_cli"
 }

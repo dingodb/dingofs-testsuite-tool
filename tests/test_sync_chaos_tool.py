@@ -130,6 +130,8 @@ class SyncChaosToolTest(unittest.TestCase):
             cli_source = temp / "dingofs-testsuite-tool"
             cli_source.write_text("#!/bin/bash\necho current-cli\n", encoding="utf-8")
             cli_source.chmod(0o755)
+            shutil.copy2(ROOT / "dtt-ai-analyze", temp / "dtt-ai-analyze")
+            shutil.copy2(ROOT / "analysis.schema.json", temp / "analysis.schema.json")
             (temp / "dingofs-integration-test").mkdir()
             (temp / "dingofs-chaos-tool" / ".git").mkdir(parents=True)
             scripts = temp / "scripts"
@@ -185,6 +187,11 @@ class SyncChaosToolTest(unittest.TestCase):
             )
             self.assertTrue(os.access(installed_cli, os.X_OK))
             self.assertEqual(os.readlink(install_dir / "dtt"), str(installed_cli))
+            installed_analyzer = install_dir / "dtt-ai-analyze"
+            self.assertTrue(os.access(installed_analyzer, os.X_OK))
+            self.assertEqual(installed_analyzer.read_bytes(), (ROOT / "dtt-ai-analyze").read_bytes())
+            installed_schema = install_dir.parent / "lib" / "dingofs-testsuite-tool" / "analysis.schema.json"
+            self.assertEqual(installed_schema.read_bytes(), (ROOT / "analysis.schema.json").read_bytes())
 
 
 if __name__ == "__main__":

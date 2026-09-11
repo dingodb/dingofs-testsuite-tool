@@ -134,6 +134,7 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
         default-jre-headless \
         wget \
         curl \
+        jq \
         unzip \
         ca-certificates \
         git \
@@ -165,6 +166,8 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone &
         libelf-dev \
         libssl-dev \
         libjemalloc2 && \
+    command -v jq && \
+    jq --version && \
     ln -sf /usr/lib/x86_64-linux-gnu/libjemalloc.so.2 /lib64/libjemalloc.so.2 && \
     cd /tmp && \
     git clone --depth 1 https://github.com/hpc/ior.git && \
@@ -211,6 +214,9 @@ COPY --chmod=755 elbencho/elbencho /usr/local/bin/elbencho
 COPY --chmod=755 entrypoint.sh /entrypoint.sh
 COPY --chmod=755 run_model.sh /usr/local/bin/run_model.sh
 COPY dingofs-integration-test /dingofs-integration-test
+RUN chmod +x /dingofs-integration-test/scripts/export_ai_run.py && \
+    ! command -v codex && \
+    test ! -e /root/.codex
 COPY --chmod=755 dingofs-chaos-tool/ /opt/dingofs-chaos-tool/
 RUN /scripts/configure_chaos_tool_runtime.sh /opt/dingofs-chaos-tool
 COPY --chmod=755 task/ /task/

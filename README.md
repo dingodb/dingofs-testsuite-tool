@@ -67,6 +67,7 @@ dingofs-testsuite-tool help
 | `--debug` | 调试模式，保留容器不删除 |
 | `--wechat` | 启用企业微信通知 |
 | `--email <地址>` | 邮件通知地址 |
+| `--ai-analysis` | 测试结束后，使用宿主机 Codex CLI 分析最终失败并生成网页（默认关闭） |
 | `--bs_size <类型>` | fio 块大小类型: normal (128K/1M/4M), small (128B-8K) |
 | `--test_times <次数>` | fio perf 重复次数 |
 | `--numjobs <数量>` | fio 并发 job 数，必须为正整数 |
@@ -79,6 +80,63 @@ dingofs-testsuite-tool help
 | `--operation <类型>` | elbencho 操作类型：`read` 或 `write` |
 
 ---
+
+## 可选 AI 失败分析
+
+`--ai-analysis` 支持 `dtt daily`、`dtt smoke` 和所有 `dtt -t <tool>` 的 one-shot 测试。只有最终结果存在 `FAIL/ERROR` 才调用 AI，每次运行最多调用一次；全部通过、跳过、已知问题或重试后通过不会调用。AI 结果仅供排查参考，不会改变测试退出码，也不会自动修改代码或执行修复命令。
+
+### 首次准备（宿主机）
+
+1. 在运行 `dtt` 的同一账号下安装新版 Codex CLI，然后通过 ChatGPT 账号登录。登录凭据保留在宿主机，不放进测试镜像。
+
+   ```bash
+   command -v codex
+   codex --version
+   codex login
+   codex login status
+   # 应显示 Logged in using ChatGPT
+   ```
+
+   CLI 需要支持 `exec --ephemeral --ignore-user-config --ignore-rules --output-schema` 等选项；开发时核对的版本为 `codex-cli 0.154.0`。本功能不使用 OpenAI API Key；未登录、额度受限、超时或 CLI 不兼容时会生成分析失败说明，不影响原测试结果。
+
+2. 更新工具仓库和 `dingofs-integration-test` 代码后重新构建镜像：
+
+   ```bash
+   ./build.sh --debug
+   ```
+
+   构建成功后会同时更新宿主机的 `dtt`、`dtt-ai-analyze` 和 `analysis.schema.json`。默认安装目录为 `$HOME/.local/bin` 和 `$HOME/.local/lib/dingofs-testsuite-tool`；`install.sh` 也会安装这些配套文件。镜像内只负责导出测试证据，不安装 Codex、不挂载宿主机 Codex 登录目录。
+
+### 使用示例
+
+```bash
+# 只跑 daily 的 fault 模块，分析后统一发送邮件和企业微信
+dtt daily --include fault --ai-analysis \
+  --report-path /mnt/disk5/daigy/tmp/output --report-port 8889 \
+  --email daigy@zetyun.com --wechat
+
+# smoke：报告服务使用独立端口，避免与 daily 服务冲突
+dtt smoke --env env_127 --exclude int_client,int_cache_node,xfstest \
+  --ai-analysis --report-port 8888 --email daigy@zetyun.com
+
+# 普通工具：只需追加 --ai-analysis
+dtt -t fio -s seq_read --numjobs 1 --direct 1 \
+  --file-size 10m --block-size 4M --ai-analysis
+```
+
+启用 AI 后，邮件/企业微信会等分析完成后再统一发送一次，包含测试摘要、原始报告链接（可用时）、AI 分析链接或本地路径。分析输入会裁剪日志并脱敏常见凭据；AI 只读取提供的证据，不主动连接集群。不要在日志中写入敏感信息，发布的报告也应限制访问。
+
+### 报告位置和运行限制
+
+- `daily`：指定的 `--report-path` 下的 `ai-analysis/`；未指定时为配置的 output 下的 `ai-analysis/`。
+- `smoke`：DTT 配置目录下的 `smoke-report-public/live/ai-analysis/`，由 smoke 报告服务提供访问。
+- `dtt -t ...`：配置的 output（或 `-o` 指定目录）下的 `ai-analysis/`。不会额外启动 HTTP 服务，可复用该输出目录现有的报告服务。
+
+`ai-analysis/index.html` 是历史索引，`history/<run_id>/index.html` 是单次分析，`latest/index.html` 指向最近一次成功分析。成功报告同时保存 `analysis.json`、脱敏证据和运行元数据。失败分析单独保留说明页，不覆盖上一次成功的 `latest`。
+
+例如 daily 的报告根目录由 126 上的 8889 服务提供时，可访问 `http://<126的IP>:8889/ai-analysis/index.html`。
+
+单次 AI 调用默认超时 300 秒。不支持 `dtt debug --ai-analysis` 或 `--mode long-running --ai-analysis`；支持 `dtt daily --debug --ai-analysis` 和 `dtt smoke --debug --ai-analysis`。定时任务必须使用已完成 ChatGPT 登录的同一宿主机账号，并保证其 `PATH` 能找到 `dtt` 和 `codex`。
 
 ## 1. FIO — 存储 I/O 性能测试
 
