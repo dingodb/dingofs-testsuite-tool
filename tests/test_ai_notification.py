@@ -77,6 +77,7 @@ class AiNotificationTest(unittest.TestCase):
                         "mode": "daily",
                         "tool": "int",
                         "scenario": "",
+                        "report_links": ["http://host:8889/allure/index.html"],
                         "started_at": "2026-09-11T21:00:00+08:00",
                         "suites": [
                             {
@@ -100,9 +101,10 @@ class AiNotificationTest(unittest.TestCase):
                     "EMAIL": "yes",
                     "WECHAT": "no",
                     "EMAIL_TO": "recipient@example.com",
+                    "EMAILPASS": "test-password",
                     "NOTIFY_CAPTURE": str(captured),
                     "DTT_DEFER_NOTIFICATIONS": "no",
-                    "DTT_ORIGINAL_REPORT_URL": "http://host:8889/allure/index.html",
+                    "DTT_ORIGINAL_REPORT_URL": "",
                     "DTT_AI_REPORT_URL": "http://host:8889/ai-analysis/history/run/index.html",
                     "DTT_AI_STATUS_TEXT": "分析成功",
                 }

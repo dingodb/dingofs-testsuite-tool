@@ -96,6 +96,8 @@ def _validate_analysis(analysis, manifest, evidence):
     groups = analysis.get("failure_groups")
     if not isinstance(groups, list):
         raise AnalysisError("invalid_output", "failure_groups must be a list")
+    if _has_final_failures(manifest) and not groups:
+        raise AnalysisError("invalid_output", "failure_groups must cover the final failures")
 
     case_names = set()
     for item in manifest.get("results", []):
@@ -105,12 +107,16 @@ def _validate_analysis(analysis, manifest, evidence):
             if isinstance(item.get(key), str) and item.get(key):
                 case_names.add(item[key])
     evidence_sources = set()
+    evidence_ranges = {}
     for failure in evidence.get("failures", []):
         if not isinstance(failure, dict):
             continue
         for snippet in failure.get("snippets", []):
             if isinstance(snippet, dict) and isinstance(snippet.get("source"), str):
                 evidence_sources.add(snippet["source"])
+                evidence_ranges.setdefault(snippet["source"], []).append(
+                    (snippet.get("line_start", 1), snippet.get("line_end", 1))
+                )
 
     for group in groups:
         if not isinstance(group, dict) or set(group) != GROUP_FIELDS:
@@ -139,6 +145,7 @@ def _validate_analysis(analysis, manifest, evidence):
                 or not isinstance(reference.get("line"), int)
                 or isinstance(reference.get("line"), bool)
                 or reference["line"] < 1
+                or not any(start <= reference["line"] <= end for start, end in evidence_ranges.get(reference["source"], []))
                 or not isinstance(reference.get("fact"), str)
             ):
                 raise AnalysisError("invalid_output", "invalid evidence reference")
@@ -205,6 +212,9 @@ def _run_codex(codex_bin, run_dir, schema_path, output_path, prompt, timeout):
         "--sandbox",
         "read-only",
         "--skip-git-repo-check",
+        "-c", "features.shell_tool=false",
+        "-c", "web_search=\"disabled\"",
+        "-c", "forced_login_method=\"chatgpt\"",
         "--cd",
         str(run_dir),
         "--output-schema",
@@ -290,7 +300,7 @@ def _render_analysis(manifest, analysis):
     report_links = "".join(
         '<li><a href="%s">%s</a></li>' % (html.escape(link, quote=True), html.escape(link))
         for link in manifest.get("report_links", [])
-        if isinstance(link, str)
+        if isinstance(link, str) and link.startswith(("https://", "http://"))
     ) or "<li>无</li>"
     return """<!DOCTYPE html>
 <html lang="zh-CN"><head><meta charset="utf-8"><title>DTT AI 失败分析</title>
@@ -418,6 +428,7 @@ def _parser():
     parser.add_argument("--base-url", default="")
     parser.add_argument("--codex-bin", default="codex")
     parser.add_argument("--timeout", type=int, default=300)
+    parser.add_argument("--test-exit", type=int, default=None)
     return parser
 
 
@@ -434,6 +445,20 @@ def main():
     try:
         if args.timeout <= 0:
             raise AnalysisError("invalid_input", "timeout must be positive")
+        if args.test_exit is not None and not (run_dir / "run_manifest.json").is_file():
+            # Even an old image or failed container start must leave a browsable
+            # explanation and enough metadata for the deferred notification.
+            manifest = {
+                "schema_version": 1, "run_id": run_dir.name,
+                "command": os.environ.get("DTT_AI_COMMAND", "dtt"),
+                "mode": os.environ.get("DTT_AI_MODE", "tool"),
+                "tool": "runtime", "scenario": "", "exit_code": args.test_exit,
+                "report_links": [], "results": [],
+                "suites": [{"name": "runtime", "pass": 0, "fail": 0,
+                            "error": int(args.test_exit != 0), "skip": 0, "total": 0}],
+            }
+            _write_json(run_dir / "run_manifest.json", manifest)
+            raise AnalysisError("evidence_missing", "测试容器没有导出分析证据；请更新镜像并检查测试启动日志。")
         manifest = _load_json(run_dir / "run_manifest.json", "run_manifest.json")
         evidence = _load_json(run_dir / "evidence.json", "evidence.json")
         if not _has_final_failures(manifest):
@@ -458,7 +483,9 @@ def main():
         _publish(run_dir, publish_root, manifest, analysis, metadata)
         print("AI analysis published: %s" % (publish_root / "history" / manifest["run_id"] / "index.html"))
         return SUCCESS
-    except AnalysisError as exc:
+    except (AnalysisError, OSError) as exc:
+        if isinstance(exc, OSError):
+            exc = AnalysisError("io_error", "AI report files could not be read or published")
         codex_exit = exc.codex_exit if exc.codex_exit is not None else codex_exit
         metadata = _metadata(started_at, start_clock, version, exc.category, codex_exit)
         if manifest and RUN_ID_RE.match(str(manifest.get("run_id", ""))):
@@ -471,7 +498,7 @@ def main():
                     metadata,
                     error=(exc.category, exc.safe_message),
                 )
-            except AnalysisError:
+            except (AnalysisError, OSError):
                 pass
         print("AI analysis failed: %s" % exc.safe_message, file=sys.stderr)
         return DEGRADED

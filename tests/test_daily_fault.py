@@ -107,6 +107,11 @@ class DailyFaultTest(unittest.TestCase):
             args,
         )
 
+    def test_daily_debug_does_not_require_unused_fault_identity(self):
+        result, args, _identity = self._run_daily(create_identity=False, extra_args="--debug")
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn("dingofs-chaos-tool-data:/opt/dingofs-chaos-tool/var:rw", args)
+
     def test_daily_include_rejects_unknown_module(self):
         result, args, _ = self._run_daily(extra_args="--include quota,unknown")
 

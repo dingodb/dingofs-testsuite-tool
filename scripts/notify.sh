@@ -580,6 +580,10 @@ send_ai_manifest_notification() {
         return 1
     fi
 
+    local DTT_ORIGINAL_REPORT_URL="${DTT_ORIGINAL_REPORT_URL:-}"
+    if [[ -z "$DTT_ORIGINAL_REPORT_URL" ]]; then
+        DTT_ORIGINAL_REPORT_URL=$(jq -r '[.report_links[]? | select(type == "string") | select(test("^https?://"))][0] // ""' "$manifest_path")
+    fi
     local mode tool scenario status details test_date
     mode=$(jq -r '.mode // "tool"' "$manifest_path")
     case "$mode" in

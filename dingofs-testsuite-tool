@@ -69,6 +69,16 @@ load_config() {
     fi
 }
 
+ai_container_output_owner() {
+    # UID 0 in a rootless user namespace already maps to the caller on the
+    # host. Passing the host numeric UID would map it to a subordinate UID.
+    if _is_rootless; then
+        printf '0:0\n'
+    else
+        printf '%s:%s\n' "$(id -u)" "$(id -g)"
+    fi
+}
+
 new_ai_run_id() {
     local suffix
     suffix=$(od -An -N3 -tx1 /dev/urandom 2>/dev/null | tr -d ' \n')
@@ -154,7 +164,7 @@ run_deferred_notification() {
     manifest_dir=$(dirname "$manifest_path")
     manifest_name=$(basename "$manifest_path")
     local -a notify_cmd=(
-        $runtime run --rm
+        $runtime run --rm --entrypoint /bin/bash
         -v "${manifest_dir}:/dtt-ai-run:ro"
         -e "DTT_DEFER_NOTIFICATIONS=no"
         -e "DTT_ORIGINAL_REPORT_URL=$original_report_url"
@@ -173,7 +183,7 @@ run_deferred_notification() {
         )
     fi
     notify_cmd+=(
-        "$image" /bin/bash -c
+        "$image" -c
         "source /scripts/notify.sh && send_ai_manifest_notification /dtt-ai-run/$manifest_name"
     )
     "${notify_cmd[@]}"
@@ -186,6 +196,7 @@ finalize_ai_run() {
     local original_report_url="$4"
     local email_to="$5"
     local wechat="$6"
+    local original_test_exit="${7:-}"
     local analyzer analysis_exit ai_status_text ai_report_url=""
 
     analyzer=$(resolve_ai_analyzer 2>/dev/null || true)
@@ -198,6 +209,9 @@ finalize_ai_run() {
             --run-dir "$run_dir"
             --publish-root "$publish_root"
         )
+        if [[ -n "$original_test_exit" ]]; then
+            analyzer_args+=(--test-exit "$original_test_exit")
+        fi
         if [[ -n "$base_url" ]]; then
             analyzer_args+=(--base-url "$base_url")
         fi
@@ -213,7 +227,8 @@ finalize_ai_run() {
         esac
     fi
 
-    if [[ "$analysis_exit" != "3" ]] && [[ -n "${DTT_AI_RUN_ID:-}" ]]; then
+    if [[ "$analysis_exit" != "3" ]] && [[ -n "${DTT_AI_RUN_ID:-}" ]] && \
+       [[ -f "$publish_root/history/${DTT_AI_RUN_ID}/index.html" ]]; then
         if [[ -n "$base_url" ]]; then
             ai_report_url="${base_url%/}/history/${DTT_AI_RUN_ID}/index.html"
         elif [[ -f "$publish_root/history/${DTT_AI_RUN_ID}/index.html" ]]; then
@@ -1276,7 +1291,7 @@ Smoke Test Suite
    13. warmup (env_126_warmup，smoke 目录)
    14. xattr (env_126_xattr，smoke 目录)
 
-  所有集成测试均使用 --reruns 2。
+  所有集成测试均使用 --reruns 0，只执行一次，不重试。
 
   所有工具全部执行，单个工具失败不会中止后续工具运行。
   env_126_tool 初始化失败时不会启动 smoke 容器。
@@ -1536,6 +1551,10 @@ cmd_daily() {
         selected_daily_modules=("${all_daily_modules[@]}")
     fi
 
+    # Debug mode runs only the client smoke suite below.
+    if [[ -n "$debug" ]]; then
+        selected_daily_modules=(client)
+    fi
     local run_fault=""
     for daily_module in "${selected_daily_modules[@]}"; do
         if [[ "$daily_module" == "fault" ]]; then
@@ -1642,6 +1661,9 @@ cmd_daily() {
     if [[ -n "$ai_analysis" ]]; then
         ai_report_root="${report_path:-$output}"
         prepare_ai_run "$ai_report_root" "daily" "$daily_command" || return 1
+        # The host publishes here after the container exits. Precreate it as
+        # the caller so a root container cannot take ownership of the root.
+        mkdir -p "$ai_report_root/ai-analysis" || return 1
         if [[ -n "$report_path" ]]; then
             ai_container_run_dir="/allure-report/.dtt-ai-work/${DTT_AI_RUN_ID}"
         else
@@ -1653,6 +1675,7 @@ cmd_daily() {
             "-e" "DTT_AI_RUN_DIR=${ai_container_run_dir}"
             "-e" "DTT_AI_COMMAND=${DTT_AI_COMMAND}"
             "-e" "DTT_DEFER_NOTIFICATIONS=yes"
+            "-e" "DTT_AI_OUTPUT_OWNER=$(ai_container_output_owner)"
         )
     fi
 
@@ -1763,6 +1786,9 @@ cmd_daily() {
         py_cmd+=" --ai-run-dir ${ai_run_dir_quoted}"
         py_cmd+=" --ai-command ${ai_command_quoted}"
         py_cmd+=" --ai-mode daily --defer-notifications"
+        # Daily bypasses entrypoint.sh, so hand back root-created private
+        # bundle files here as well. Never replace the Python test exit code.
+        py_cmd="trap 'dtt_test_exit=\$?; trap - EXIT; if [[ \$(id -u) -eq 0 ]] && [[ \"\$DTT_AI_OUTPUT_OWNER\" =~ ^[0-9]+:[0-9]+$ ]]; then chown \"\$DTT_AI_OUTPUT_OWNER\" \"\$DTT_AI_RUN_DIR\" \"\$DTT_AI_RUN_DIR\"/* 2>/dev/null || true; fi; exit \"\$dtt_test_exit\"' EXIT; $py_cmd"
     fi
 
     docker_cmd+=("$image" "-c" "$py_cmd")
@@ -1816,12 +1842,15 @@ cmd_daily() {
             }
         ')
         report_host_ip="${report_host_ip:-127.0.0.1}"
-        if [[ -n "$report_port" ]]; then
-            ai_base_url="http://${report_host_ip}:${report_port}/ai-analysis"
+        local ai_report_port="${report_port:-8888}"
+        if [[ -n "$ai_report_port" ]]; then
+            ai_base_url="http://${report_host_ip}:${ai_report_port}/ai-analysis"
             if [[ -n "$daily" ]]; then
-                original_report_url="http://${report_host_ip}:${report_port}/allure-daily-report-latest/index.html"
+                [[ ! -f "$ai_report_root/allure-daily-report-latest/index.html" ]] || \
+                    original_report_url="http://${report_host_ip}:${ai_report_port}/allure-daily-report-latest/index.html"
             else
-                original_report_url="http://${report_host_ip}:${report_port}/allure-report-latest/index.html"
+                [[ ! -f "$ai_report_root/allure-report-latest/index.html" ]] || \
+                    original_report_url="http://${report_host_ip}:${ai_report_port}/allure-report-latest/index.html"
             fi
         fi
         finalize_ai_run \
@@ -1830,7 +1859,7 @@ cmd_daily() {
             "$ai_base_url" \
             "$original_report_url" \
             "$email_to" \
-            "$wechat"
+            "$wechat" "$test_exit"
     fi
     return "$test_exit"
 }
@@ -2233,8 +2262,11 @@ cmd_smoke() {
        IFS= read -r ready_report_url < "$report_url_ready_file" && \
        [[ "$ready_report_url" == "$smoke_report_url" ]]; then
         echo "  Smoke Allure report: $smoke_report_url"
-    elif [[ -n "$smoke_report_url" ]]; then
-        echo "WARNING: Smoke Allure report was not published; no report link is available for this run."
+    else
+        ready_report_url=""
+        if [[ -n "$smoke_report_url" ]]; then
+            echo "WARNING: Smoke Allure report was not published; no report link is available for this run."
+        fi
     fi
     if [[ -n "$report_url_host_file" ]]; then
         rm -f "$report_url_host_file" "$report_url_ready_file" 2>/dev/null || true
@@ -2266,7 +2298,7 @@ cmd_smoke() {
             "$ai_base_url" \
             "$ready_report_url" \
             "$email_to" \
-            "$wechat"
+            "$wechat" "$smoke_exit"
     fi
 
     return "$smoke_exit"
@@ -2447,7 +2479,41 @@ run_docker_help() {
     $runtime run --rm --privileged --net=host "$image" -t "$tool" --help
 }
 
+prepare_tool_ai_runtime() {
+    local output_root="$1"
+    local command_array_name="$2"
+    local command_text="$3"
+    local -n command_array="$command_array_name"
+
+    prepare_ai_run "$output_root" "tool" "$command_text" || return 1
+    command_array+=(
+        -e "DTT_AI_ENABLED=1"
+        -e "DTT_AI_RUN_ID=${DTT_AI_RUN_ID}"
+        -e "DTT_AI_RUN_DIR=/output/.dtt-ai-work/${DTT_AI_RUN_ID}"
+        -e "DTT_AI_COMMAND=${DTT_AI_COMMAND}"
+        -e "DTT_DEFER_NOTIFICATIONS=yes"
+        -e "DTT_AI_OUTPUT_OWNER=$(ai_container_output_owner)"
+    )
+}
+
+finalize_tool_ai_runtime() {
+    local output_root="$1"
+    local email_to="$2"
+    local wechat="$3"
+    finalize_ai_run \
+        "$DTT_AI_HOST_RUN_DIR" \
+        "${output_root}/ai-analysis" \
+        "" "" "$email_to" "$wechat" "${4:-}"
+}
+
 run_testsuite() {
+    local tool_command="dtt"
+    local command_arg command_arg_quoted
+    for command_arg in "$@"; do
+        printf -v command_arg_quoted ' %q' "$command_arg"
+        tool_command+="$command_arg_quoted"
+    done
+
     local image=$(load_config image)
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
@@ -2472,6 +2538,8 @@ run_testsuite() {
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
     local setup_env=""
     local do_cleanup=""
+    local run_mode="one-shot"
+    local ai_analysis=""
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -2596,6 +2664,18 @@ run_testsuite() {
                 debug="yes"
                 shift
                 ;;
+            --mode)
+                if [[ $# -lt 2 ]] || [[ -z "$2" ]]; then
+                    echo "Error: --mode requires one-shot or long-running"
+                    return 1
+                fi
+                run_mode="$2"
+                shift 2
+                ;;
+            --ai-analysis)
+                ai_analysis="yes"
+                shift
+                ;;
             --setup-env)
                 setup_env="$2"
                 shift 2
@@ -2640,6 +2720,15 @@ run_testsuite() {
                 ;;
         esac
     done
+
+    if [[ ! "$run_mode" =~ ^(one-shot|long-running)$ ]]; then
+        echo "Error: Invalid --mode '$run_mode'. Valid modes: one-shot, long-running"
+        return 1
+    fi
+    if [[ -n "$ai_analysis" ]] && [[ "$run_mode" != "one-shot" ]]; then
+        echo "Error: --ai-analysis is supported only with --mode one-shot"
+        return 1
+    fi
 
     if [[ -n "$do_cleanup" ]] && [[ -z "$setup_env" ]]; then
         echo "Error: --cleanup requires --setup-env, or use --cleanup-env <name> directly"
@@ -2824,8 +2913,12 @@ run_testsuite() {
             docker_cmd+=("-v" "${config_custom}:/custom")
         fi
 
+        if [[ -n "$ai_analysis" ]]; then
+            prepare_tool_ai_runtime "$output" docker_cmd "$tool_command" || return 1
+        fi
+
         # Add container entrypoint args
-        docker_cmd+=("$image" "-t" "mlperf" "-s" "${scenario}" "-m" "$container_mount" "-o" "/output")
+        docker_cmd+=("$image" "-t" "mlperf" "-s" "${scenario}" "-m" "$container_mount" "-o" "/output" "--mode" "$run_mode")
 
         # Print what we're about to do
         echo "Starting MLPerf Storage benchmark..."
@@ -2841,9 +2934,19 @@ run_testsuite() {
         echo "  Output dir:  $output -> /output"
         echo ""
 
-        # Execute
-        exec "${docker_cmd[@]}"
-        # exec replaces the shell process, so we never reach here
+        # Preserve exec for the normal path. AI mode must regain control on the
+        # host so it can publish analysis without changing the benchmark exit.
+        if [[ -z "$ai_analysis" ]]; then
+            exec "${docker_cmd[@]}"
+        fi
+        local mlperf_exit
+        if "${docker_cmd[@]}"; then
+            mlperf_exit=0
+        else
+            mlperf_exit=$?
+        fi
+        finalize_tool_ai_runtime "$output" "$email_to" "$wechat" "$mlperf_exit"
+        return "$mlperf_exit"
     fi
 
     # xfstest: xfstests manages its own mounts via dingo-client + mount helper.
@@ -2900,6 +3003,11 @@ run_testsuite() {
             /entrypoint.sh -t xfstest -o /output
         )
         entrypoint_cmd+=(-s "${scenario:-auto}")
+        entrypoint_cmd+=(--mode "$run_mode")
+
+        if [[ -n "$ai_analysis" ]]; then
+            prepare_tool_ai_runtime "$output" docker_cmd "$tool_command" || return 1
+        fi
 
         echo "Running testsuite with image: $image"
         echo "  Output: $output -> /output"
@@ -2910,7 +3018,17 @@ run_testsuite() {
         fi
         echo ""
 
-        exec "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"
+        if [[ -z "$ai_analysis" ]]; then
+            exec "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"
+        fi
+        local xfstest_exit
+        if "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"; then
+            xfstest_exit=0
+        else
+            xfstest_exit=$?
+        fi
+        finalize_tool_ai_runtime "$output" "$email_to" "$wechat" "$xfstest_exit"
+        return "$xfstest_exit"
     fi
 
     # Validate required parameters
@@ -3054,6 +3172,10 @@ run_testsuite() {
         docker_cmd+=("-e" "EMAIL_TO=$email_addr")
     fi
 
+    if [[ -n "$ai_analysis" ]]; then
+        prepare_tool_ai_runtime "$output" docker_cmd "$tool_command" || return 1
+    fi
+
     # Pass bs_size if specified (for fio)
     if [[ -n "$bs_size" ]]; then
         docker_cmd+=("-e" "BS_SIZE=$bs_size")
@@ -3070,6 +3192,7 @@ run_testsuite() {
         -t "$tool"
         -m "$container_mount"
         -o /output
+        --mode "$run_mode"
     )
     # Add scenario (mdtest and elbencho default to "all")
     if [[ "$tool" == "mdtest" ]]; then
@@ -3131,8 +3254,12 @@ run_testsuite() {
     echo ""
 
     # Execute docker command with entrypoint
-    "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"
-    local test_exit=$?
+    local test_exit
+    if "${docker_cmd[@]}" "$image" "${entrypoint_cmd[@]}"; then
+        test_exit=0
+    else
+        test_exit=$?
+    fi
 
     # Start/restart HTTP server for int allure reports (default port 8800)
     if [[ "$tool" == "int" ]] && [[ -d "$output/int_allure_report" ]]; then
@@ -3166,6 +3293,10 @@ env_cleanup('$setup_env')
         else
             echo "Environment cleanup complete."
         fi
+    fi
+
+    if [[ -n "$ai_analysis" ]]; then
+        finalize_tool_ai_runtime "$output" "$email_to" "$wechat" "$test_exit"
     fi
 
     return $test_exit

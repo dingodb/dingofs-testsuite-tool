@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shlex
 import stat
 import subprocess
@@ -17,6 +18,7 @@ class DailyAiAnalysisTest(unittest.TestCase):
         runtime_exit=0,
         analyzer_exit=0,
         extra_args="--include fault",
+        rootless=False,
     ):
         wrapper = ROOT / "dingofs-testsuite-tool"
         temp_dir = tempfile.TemporaryDirectory()
@@ -67,6 +69,7 @@ class DailyAiAnalysisTest(unittest.TestCase):
             export DTT_AI_ANALYZER={shlex.quote(str(analyzer))}
             source {shlex.quote(str(wrapper))}
             prepare_chaos_tool_volume() {{ :; }}
+            _is_rootless() {{ {'true' if rootless else 'false'}; }}
             cmd_daily {extra_args} --ai-analysis \
                 --report-path {shlex.quote(str(reports))} --report-port 8889
             """
@@ -123,6 +126,37 @@ class DailyAiAnalysisTest(unittest.TestCase):
         self.assertTrue(analyzer_call)
         self.assertEqual(events, ["runtime", "analyzer"])
 
+    def test_daily_root_container_returns_private_bundle_to_host_user(self):
+        _result, args, _analyzer, _events, reports = self._run_daily()
+        self.assertIn("DTT_AI_OUTPUT_OWNER=%s:%s" % (os.getuid(), os.getgid()), args)
+        self.assertTrue((reports / "ai-analysis").is_dir())
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp = Path(temp_dir)
+            run_dir = temp / "run"
+            run_dir.mkdir()
+            bundle = run_dir / "run_manifest.json"
+            bundle.write_text("{}", encoding="utf-8")
+            recorded = temp / "ownership-args"
+            fake_bin = temp / "bin"
+            fake_bin.mkdir()
+            for name, body in {
+                "id": "echo 0",
+                "python3": "exit 7",
+                "chown": "printf '%s\\n' \"$@\" > \"$OWNERSHIP_ARGS\"",
+            }.items():
+                path = fake_bin / name
+                path.write_text("#!/bin/bash\n" + body + "\n", encoding="utf-8")
+                path.chmod(0o755)
+            command = args[-1].replace("cd /dingofs-integration-test", "cd " + shlex.quote(str(temp)))
+            completed = subprocess.run(
+                ["bash", "-c", command], capture_output=True, text=True,
+                env={**os.environ, "PATH": str(fake_bin) + ":" + os.environ["PATH"],
+                     "DTT_AI_RUN_DIR": str(run_dir), "DTT_AI_OUTPUT_OWNER": "123:456",
+                     "OWNERSHIP_ARGS": str(recorded)},
+            )
+            self.assertEqual(completed.returncode, 7, completed.stdout + completed.stderr)
+            self.assertEqual(recorded.read_text().splitlines(), ["123:456", str(run_dir), str(bundle)])
+
     def test_daily_ai_all_pass_keeps_zero_when_analyzer_skips(self):
         result, _args, analyzer_call, events, _reports = self._run_daily(
             runtime_exit=0, analyzer_exit=3
@@ -131,6 +165,11 @@ class DailyAiAnalysisTest(unittest.TestCase):
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertTrue(analyzer_call)
         self.assertEqual(events, ["runtime", "analyzer"])
+
+    def test_rootless_daily_uses_container_root_as_bundle_owner(self):
+        result, args, _call, _events, _reports = self._run_daily(rootless=True)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertIn("DTT_AI_OUTPUT_OWNER=0:0", args)
 
     def test_daily_debug_accepts_ai_analysis(self):
         result, args, analyzer_call, events, _reports = self._run_daily(

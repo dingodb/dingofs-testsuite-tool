@@ -43,6 +43,7 @@ MDTEST_BIN="/usr/local/bin/mdtest"
 INTEGRATION_DIR="/dingofs-integration-test"
 XFSTESTS_DIR="/xfstests-dev"
 REPORT_GENERATOR="${REPORT_GENERATOR:-/scripts/generate_report.py}"
+AI_EXPORTER="${DTT_AI_EXPORTER:-/dingofs-integration-test/scripts/export_ai_run.py}"
 
 # Scenario directories
 SCENARIOS_DIR="/scenarios"
@@ -95,6 +96,7 @@ Options:
   --threads       elbencho I/O 并发线程数
   --operation     elbencho 操作类型: read 或 write
   --mode          运行模式: one-shot (默认) 或 long-running
+  --ai-analysis   由宿主机 dtt 启用；容器内仅负责采集脱敏分析证据
 
 注意: -o 指定的是容器内路径，需要通过 -v 将容器内目录映射到本机路径
 
@@ -867,7 +869,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -988,6 +990,100 @@ parse_args() {
 # Result Logging Functions
 # ==============================================================================
 
+register_ai_artifact() {
+    local artifact_path="$1"
+    if [[ "${DTT_AI_ENABLED:-}" != "1" ]]; then
+        return 0
+    fi
+    if [[ -z "$artifact_path" ]] || [[ ! -e "$artifact_path" ]]; then
+        return 0
+    fi
+
+    local output_root resolved_artifact
+    output_root=$(readlink -f "${DTT_AI_OUTPUT_ROOT:-$OUTPUT}" 2>/dev/null) || return 1
+    resolved_artifact=$(readlink -f "$artifact_path" 2>/dev/null) || return 1
+    case "$resolved_artifact" in
+        "$output_root"|"$output_root"/*)
+            printf '%s\n' "$resolved_artifact" >> "$DTT_AI_RUN_DIR/artifacts.list"
+            ;;
+        *)
+            echo "WARNING: Refusing AI artifact outside output root: $artifact_path" >&2
+            return 1
+            ;;
+    esac
+}
+
+dtt_ai_export_on_exit() {
+    local test_exit=$?
+    trap - EXIT
+    set +e
+
+    # Closing the tee pipe before export makes the captured log available to
+    # the adapter. File descriptors 3/4 are opened by setup_ai_export.
+    exec 1>&3 2>&4
+    wait "$DTT_AI_TEE_PID" || true
+
+    local adapter_mode="tool"
+    if [[ "$TOOL" == "smoke" ]]; then
+        adapter_mode="smoke"
+    fi
+    python3 "$AI_EXPORTER" \
+        --mode "$adapter_mode" \
+        --tool "$TOOL" \
+        --scenario "$SCENARIO" \
+        --run-id "$DTT_AI_RUN_ID" \
+        --command "$DTT_AI_COMMAND" \
+        --exit-code "$test_exit" \
+        --output-root "$DTT_AI_OUTPUT_ROOT" \
+        --artifact-list "$DTT_AI_RUN_DIR/artifacts.list" \
+        --execution-log "$DTT_AI_RUN_DIR/execution.raw.log" \
+        --run-dir "$DTT_AI_RUN_DIR" || \
+        echo "WARNING: AI evidence export failed; original test exit is unchanged." >&2
+
+    if [[ $(id -u) -eq 0 ]] && [[ "${DTT_AI_OUTPUT_OWNER:-}" =~ ^[0-9]+:[0-9]+$ ]]; then
+        # Root-only tools must return the private bundle to the invoking user.
+        chown "$DTT_AI_OUTPUT_OWNER" "$DTT_AI_RUN_DIR" "$DTT_AI_RUN_DIR"/* 2>/dev/null || true
+    fi
+
+    if [[ "$TOOL" == "xfstest" ]] && [[ $(id -u) -eq 0 ]] && \
+       [[ "${DTT_SMOKE_OUTPUT_OWNER:-}" =~ ^[0-9]+:[0-9]+$ ]]; then
+        chown -R "$DTT_SMOKE_OUTPUT_OWNER" "$OUTPUT" 2>/dev/null || true
+    fi
+    exit "$test_exit"
+}
+
+setup_ai_export() {
+    if [[ "${DTT_AI_ENABLED:-}" != "1" ]]; then
+        return 0
+    fi
+    if [[ "$MODE" != "one-shot" ]]; then
+        echo "Error: AI analysis evidence export requires one-shot mode" >&2
+        return 1
+    fi
+    if [[ -z "${DTT_AI_RUN_ID:-}" ]] || [[ -z "${DTT_AI_RUN_DIR:-}" ]] || \
+       [[ -z "${DTT_AI_COMMAND:-}" ]]; then
+        echo "Error: Incomplete DTT AI analysis metadata" >&2
+        return 1
+    fi
+    case "$DTT_AI_RUN_DIR" in
+        "${OUTPUT%/}/.dtt-ai-work/${DTT_AI_RUN_ID}") ;;
+        *)
+            echo "Error: DTT_AI_RUN_DIR must be inside OUTPUT/.dtt-ai-work" >&2
+            return 1
+            ;;
+    esac
+
+    DTT_AI_OUTPUT_ROOT="$OUTPUT"
+    mkdir -p "$DTT_AI_RUN_DIR" || return 1
+    chmod 0700 "${OUTPUT%/}/.dtt-ai-work" "$DTT_AI_RUN_DIR" || return 1
+    : > "$DTT_AI_RUN_DIR/artifacts.list"
+    chmod 0600 "$DTT_AI_RUN_DIR/artifacts.list"
+    exec 3>&1 4>&2
+    exec > >(tee -a "$DTT_AI_RUN_DIR/execution.raw.log" >&3) 2>&1
+    DTT_AI_TEE_PID=$!
+    trap dtt_ai_export_on_exit EXIT
+}
+
 # Log test result to result.log
 # Usage: log_result <tool> <scenario> <exit_code> <start_time> <output_dir> [status_override] [details_override]
 log_result() {
@@ -1063,7 +1159,7 @@ log_result() {
                 fi
             fi
             ;;
-        vdbench)
+        vdbench|xfstest|task|elbencho)
             # vdbench success based on exit code
             if [[ $exit_code -eq 0 ]]; then
                 status="SUCCESS"
@@ -1108,6 +1204,11 @@ log_result() {
             ;;
     esac
 
+    # A successful-looking metric must not hide a failed process.
+    if [[ "$exit_code" -ne 0 ]]; then
+        status="FAIL"
+    fi
+
     # Append to result.log in the scenario directory
     {
         echo "========================================"
@@ -1142,6 +1243,7 @@ log_result() {
     fi
 
     echo "Result logged to: $result_log"
+    register_ai_artifact "$output_dir" || true
 }
 
 
@@ -3358,6 +3460,7 @@ Aggregate: ${agg_status}
 EOF
 
     echo "Smoke summary reports generated: ${smoke_base}/smoke_summary.json, ${smoke_base}/smoke_summary.txt"
+    register_ai_artifact "${smoke_base}/smoke_summary.json" || true
 }
 
 # Send one combined smoke notification.
@@ -3461,6 +3564,7 @@ smoke_run() {
 
     local smoke_base="$OUTPUT/smoke_${RUN_TIMESTAMP}"
     mkdir -p "$smoke_base"
+    register_ai_artifact "$smoke_base" || true
     SMOKE_ALLURE_COLLECTION_FAILED=0
     if ! rm -rf "${smoke_base}/allure-results" || \
        ! mkdir -p "${smoke_base}/allure-results"; then
@@ -3827,6 +3931,8 @@ main() {
     # Generate run timestamp for output directory
     RUN_TIMESTAMP="${RUN_TIMESTAMP:-$(date +"%Y%m%d_%H%M%S")}"
 
+    setup_ai_export
+
     echo "=============================================="
     echo "DingoFS Storage Testsuite Tools"
     echo "=============================================="
@@ -3848,5 +3954,11 @@ main() {
     fi
 }
 
-# Run main with all arguments
+# Tests and support scripts may explicitly load the function library without
+# starting a benchmark. Normal container execution keeps the historical main
+# entry point below intact.
+if [[ "${DTT_ENTRYPOINT_SOURCE_ONLY:-}" == "1" ]]; then
+    return 0 2>/dev/null || exit 0
+fi
+
 main "$@"
