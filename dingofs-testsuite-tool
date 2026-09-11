@@ -558,7 +558,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 命令:
   config <子命令>    管理配置（testdir, output, image 等）
   smoke [选项]       冒烟测试（快速验证基本功能）
-  daily [选项]       每日集成测试（11 个模块，生成 Allure 报告）
+  daily [选项]       每日集成测试（12 个模块，生成 Allure 报告）
   cluster <子命令>   管理 DingoFS 集群（update / status）
   deploy <子命令>    部署运维工具到目标机器
   debug              在测试容器中启动交互式 Shell
@@ -776,7 +776,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
 === daily — 每日集成测试 ===
 
-  在容器内执行 run_tests.py，依次运行 11 个模块；失败用例不重试，
+  在容器内执行 run_tests.py，依次运行 12 个模块；失败用例不重试，
   完成后生成 Allure 报告并发送通知。
 
   模块列表 (默认 env=126):
@@ -795,6 +795,7 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
   选项:
     --env <编号>        环境编号 (默认: 126)
+    --include <模块列表> 仅运行指定模块，多个模块以逗号分隔
     --email <地址>      邮件收件人，逗号分隔多个
     --wechat            启用企业微信通知
     --daily             每日模式（报告存入 daily 历史目录）
@@ -804,6 +805,8 @@ DingoFS 存储性能测试工具 — 通过 Docker 容器运行存储性能测�
 
   示例:
     dtt daily
+    dtt daily --include fault
+    dtt daily --include quota,client
     dtt daily --email daigy@zetyun.com --wechat
     dtt daily --daily --report-port 8889
     dtt daily --report-path /mnt/disk5/daigy/tmp/output
@@ -1340,23 +1343,25 @@ show_daily_help() {
 Daily Integration Test
 =====================
 
-每日集成测试，运行 client / cache_node / quota / basic_file_operation / mount_subdir / trash 六个模块。
+每日集成测试，默认运行全部 12 个集成测试模块。
 
 用法:
   dtt daily [选项]
 
 说明:
   dtt daily 会在容器 /dingofs-integration-test 目录下执行 run_tests.py，
-  依次测试四个集成测试模块，结果通过 email 和微信发送。
+  按 daily 固定顺序执行集成测试模块，结果通过 email 和微信发送。
 
 选项:
   --env <环境编号>        环境编号 (默认: 126)
+  --include <模块列表>     仅运行指定模块，多个模块以逗号分隔
   --email [地址]           邮件地址，支持逗号分隔多个 (默认: dingofs@zetyun.com)
   --wechat                 启用企业微信通知
   --daily                  启用每日模式，传递给 run_tests.py
   --report-port <端口>     Allure 报告服务端口，传递给 run_tests.py
   --debug                  调试模式，仅跑 client 模块且保留容器
   --report-path <路径>     报告输出路径，映射到容器 /allure-report (默认: /output)
+  --ai-analysis            最终 FAIL/ERROR 时在宿主机生成 AI 失败分析
   --help, -h               显示此帮助信息
 
 示例:
@@ -1365,6 +1370,12 @@ Daily Integration Test
 
   # 指定自定义邮件地址
   dtt daily --email daigy@zetyun.com
+
+  # 只运行 fault 模块
+  dtt daily --include fault
+
+  # 只运行 quota 和 client 模块
+  dtt daily --include quota,client
 
   # 同时启用微信和邮件
   dtt daily --wechat --email daigy@zetyun.com
@@ -1395,6 +1406,13 @@ EOF
 # ==============================================================================
 
 cmd_daily() {
+    local daily_command="dtt daily"
+    local command_arg command_arg_quoted
+    for command_arg in "$@"; do
+        printf -v command_arg_quoted ' %q' "$command_arg"
+        daily_command+="$command_arg_quoted"
+    done
+
     local image=$(load_config image)
     local config_testdir=$(load_config testdir)
     local config_output=$(load_config output)
@@ -1416,6 +1434,8 @@ cmd_daily() {
     local report_path=""
     local daily=""
     local report_port=""
+    local include=""
+    local ai_analysis=""
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --env)
@@ -1451,6 +1471,18 @@ cmd_daily() {
                 report_port="$2"
                 shift 2
                 ;;
+            --include)
+                if [[ -z "$2" ]] || [[ "$2" == -* ]]; then
+                    echo "Error: --include requires a comma-separated module list"
+                    return 1
+                fi
+                include="$2"
+                shift 2
+                ;;
+            --ai-analysis)
+                ai_analysis="yes"
+                shift
+                ;;
             --help|-h)
                 show_daily_help
                 return 0
@@ -1461,6 +1493,54 @@ cmd_daily() {
                 return 1
                 ;;
         esac
+    done
+
+    if [[ -n "$include" ]] && [[ -n "$debug" ]]; then
+        echo "Error: --include cannot be combined with --debug"
+        return 1
+    fi
+
+    local include_normalized="${include//[[:space:]]/}"
+    local -a all_daily_modules=(
+        fault quota basic_file_operation mount_subdir trash dirstat
+        hot_upgrade xattr warmup client cache_node mds_manage
+    )
+    local -a selected_daily_modules=()
+    local requested_module daily_module
+
+    if [[ -n "$include" ]] && [[ -z "$include_normalized" ]]; then
+        echo "Error: --include requires a comma-separated module list"
+        return 1
+    fi
+
+    if [[ -n "$include_normalized" ]]; then
+        local -a requested_daily_modules=()
+        IFS=',' read -ra requested_daily_modules <<< "$include_normalized"
+        for requested_module in "${requested_daily_modules[@]}"; do
+            case "$requested_module" in
+                fault|quota|basic_file_operation|mount_subdir|trash|dirstat|hot_upgrade|xattr|warmup|client|cache_node|mds_manage)
+                    ;;
+                *)
+                    echo "Error: Unknown daily module '$requested_module'"
+                    return 1
+                    ;;
+            esac
+        done
+        for daily_module in "${all_daily_modules[@]}"; do
+            if [[ ",$include_normalized," == *",$daily_module,"* ]]; then
+                selected_daily_modules+=("$daily_module")
+            fi
+        done
+    else
+        selected_daily_modules=("${all_daily_modules[@]}")
+    fi
+
+    local run_fault=""
+    for daily_module in "${selected_daily_modules[@]}"; do
+        if [[ "$daily_module" == "fault" ]]; then
+            run_fault="yes"
+            break
+        fi
     done
 
     # Validate image
@@ -1496,7 +1576,7 @@ cmd_daily() {
     mkdir -p "$output"
 
     local fault_identity="$HOME/.ssh/rocky_70"
-    if [[ -z "$debug" ]] && [[ ! -f "$fault_identity" ]]; then
+    if [[ -n "$run_fault" ]] && [[ ! -f "$fault_identity" ]]; then
         echo "Error: Fault SSH identity file not found: $fault_identity"
         return 1
     fi
@@ -1509,7 +1589,9 @@ cmd_daily() {
         chaos_uid=$(stat -c '%u' "$mount")
         chaos_gid=$(stat -c '%g' "$mount")
     fi
-    prepare_chaos_tool_volume "$image" "$chaos_uid" "$chaos_gid" || return 1
+    if [[ -n "$run_fault" ]]; then
+        prepare_chaos_tool_volume "$image" "$chaos_uid" "$chaos_gid" || return 1
+    fi
 
     # commit_info.yaml file path
     local commit_info_file="__USER_HOME__/jenkins_workdir/script-main/commit_info.yaml"
@@ -1534,9 +1616,11 @@ cmd_daily() {
     fi
 
     docker_cmd+=("-v" "${output}:/output")
-    docker_cmd+=("-v" "${DINGOFS_CHAOS_TOOL_VOLUME}:/opt/dingofs-chaos-tool/var:rw")
+    if [[ -n "$run_fault" ]]; then
+        docker_cmd+=("-v" "${DINGOFS_CHAOS_TOOL_VOLUME}:/opt/dingofs-chaos-tool/var:rw")
+    fi
 
-    if [[ -z "$debug" ]]; then
+    if [[ -n "$run_fault" ]]; then
         docker_cmd+=("-v" "${fault_identity}:/tmp/dtt-rocky_70:ro")
     fi
 
@@ -1550,6 +1634,25 @@ cmd_daily() {
     if [[ -n "$report_path" ]]; then
         mkdir -p "$report_path"
         docker_cmd+=("-v" "${report_path}:/allure-report")
+    fi
+
+    local ai_report_root=""
+    local ai_container_run_dir=""
+    if [[ -n "$ai_analysis" ]]; then
+        ai_report_root="${report_path:-$output}"
+        prepare_ai_run "$ai_report_root" "daily" "$daily_command" || return 1
+        if [[ -n "$report_path" ]]; then
+            ai_container_run_dir="/allure-report/.dtt-ai-work/${DTT_AI_RUN_ID}"
+        else
+            ai_container_run_dir="/output/.dtt-ai-work/${DTT_AI_RUN_ID}"
+        fi
+        docker_cmd+=(
+            "-e" "DTT_AI_ENABLED=1"
+            "-e" "DTT_AI_RUN_ID=${DTT_AI_RUN_ID}"
+            "-e" "DTT_AI_RUN_DIR=${ai_container_run_dir}"
+            "-e" "DTT_AI_COMMAND=${DTT_AI_COMMAND}"
+            "-e" "DTT_DEFER_NOTIFICATIONS=yes"
+        )
     fi
 
     # Mount commit_info.yaml if it exists
@@ -1591,26 +1694,45 @@ cmd_daily() {
         --commit_info_file_path ${commit_info_file} \
         --reruns 0 --email ${email_to}"
     else
-        local py_cmd="cd /dingofs-integration-test && python3 run_tests.py \
-        quota --env env_${env}_quota \
-        basic_file_operation --env env_${env}_smoke \
-        mount_subdir --env env_${env}_mount_subdir \
-        trash --env env_${env}_trash \
-        dirstat --env env_${env}_dirstat \
-        hot_upgrade --env env_${env}_hotupgrade_multi \
-        xattr --env env_${env}_xattr \
-        warmup --env env_${env}_warmup \
-        client --env env_40_dingofs \
-        cache_node --env env_40_dingofs \
-        fault --env env_79_dingofs \
-            --chaos-tool-path /opt/dingofs-chaos-tool \
-            --ssh-identity-file /tmp/dtt-rocky_70 \
-            --enable-external-chaos \
-            --allow-high-risk-chaos \
-        mds_manage --env env_${env}_mds_manage \
-        --log_path /output \
-        --commit_info_file_path ${commit_info_file} \
-        --reruns 0 --email ${email_to}"
+        local py_cmd="cd /dingofs-integration-test && python3 run_tests.py"
+        for daily_module in "${selected_daily_modules[@]}"; do
+            case "$daily_module" in
+                fault)
+                    py_cmd+=" fault --env env_79_dingofs --chaos-tool-path /opt/dingofs-chaos-tool --ssh-identity-file /tmp/dtt-rocky_70 --enable-external-chaos --allow-high-risk-chaos"
+                    ;;
+                quota)
+                    py_cmd+=" quota --env env_${env}_quota"
+                    ;;
+                basic_file_operation)
+                    py_cmd+=" basic_file_operation --env env_${env}_smoke"
+                    ;;
+                mount_subdir)
+                    py_cmd+=" mount_subdir --env env_${env}_mount_subdir"
+                    ;;
+                trash)
+                    py_cmd+=" trash --env env_${env}_trash"
+                    ;;
+                dirstat)
+                    py_cmd+=" dirstat --env env_${env}_dirstat"
+                    ;;
+                hot_upgrade)
+                    py_cmd+=" hot_upgrade --env env_${env}_hotupgrade_multi"
+                    ;;
+                xattr)
+                    py_cmd+=" xattr --env env_${env}_xattr"
+                    ;;
+                warmup)
+                    py_cmd+=" warmup --env env_${env}_warmup"
+                    ;;
+                client|cache_node)
+                    py_cmd+=" ${daily_module} --env env_40_dingofs"
+                    ;;
+                mds_manage)
+                    py_cmd+=" mds_manage --env env_${env}_mds_manage"
+                    ;;
+            esac
+        done
+        py_cmd+=" --log_path /output --commit_info_file_path ${commit_info_file} --reruns 0 --email ${email_to}"
     fi
 
     if [[ -n "$wechat" ]]; then
@@ -1631,6 +1753,17 @@ cmd_daily() {
         py_cmd="${py_cmd} --report-port ${report_port}"
     fi
 
+    if [[ -n "$ai_analysis" ]]; then
+        local ai_run_id_quoted ai_run_dir_quoted ai_command_quoted
+        printf -v ai_run_id_quoted '%q' "$DTT_AI_RUN_ID"
+        printf -v ai_run_dir_quoted '%q' "$ai_container_run_dir"
+        printf -v ai_command_quoted '%q' "$DTT_AI_COMMAND"
+        py_cmd+=" --ai-run-id ${ai_run_id_quoted}"
+        py_cmd+=" --ai-run-dir ${ai_run_dir_quoted}"
+        py_cmd+=" --ai-command ${ai_command_quoted}"
+        py_cmd+=" --ai-mode daily --defer-notifications"
+    fi
+
     docker_cmd+=("$image" "-c" "$py_cmd")
 
     # Print execution info
@@ -1640,6 +1773,7 @@ cmd_daily() {
     echo "  Email:       $email_to"
     echo "  WeChat:      ${wechat:-no}"
     echo "  Daily:       ${daily:-no}"
+    echo "  Modules:     ${include_normalized:-all}"
     if [[ -n "$report_port" ]]; then
         echo "  Report port: $report_port"
     fi
@@ -1647,16 +1781,57 @@ cmd_daily() {
         echo "  Test dir:    $mount -> $container_mount"
     fi
     echo "  Output dir:  $output -> /output"
-    echo "  Chaos data:  volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
+    if [[ -n "$run_fault" ]]; then
+        echo "  Chaos data:  volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
+    fi
     if [[ -n "$report_path" ]]; then
         echo "  Report path: $report_path -> /allure-report"
     fi
     if [[ -n "$debug" ]]; then
         echo "  Debug:       container will be preserved"
     fi
+    if [[ -n "$ai_analysis" ]]; then
+        echo "  AI analysis: enabled (host Codex; final FAIL/ERROR only)"
+    fi
     echo ""
 
-    "${docker_cmd[@]}"
+    local test_exit
+    if "${docker_cmd[@]}"; then
+        test_exit=0
+    else
+        test_exit=$?
+    fi
+
+    if [[ -n "$ai_analysis" ]]; then
+        local report_host_ip ai_base_url="" original_report_url=""
+        report_host_ip=$(hostname -I | awk '
+            {
+                for (i = 1; i <= NF; i++) {
+                    if ($i ~ /^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$/) {
+                        print $i
+                        exit
+                    }
+                }
+            }
+        ')
+        report_host_ip="${report_host_ip:-127.0.0.1}"
+        if [[ -n "$report_port" ]]; then
+            ai_base_url="http://${report_host_ip}:${report_port}/ai-analysis"
+            if [[ -n "$daily" ]]; then
+                original_report_url="http://${report_host_ip}:${report_port}/allure-daily-report-latest/index.html"
+            else
+                original_report_url="http://${report_host_ip}:${report_port}/allure-report-latest/index.html"
+            fi
+        fi
+        finalize_ai_run \
+            "$DTT_AI_HOST_RUN_DIR" \
+            "${ai_report_root}/ai-analysis" \
+            "$ai_base_url" \
+            "$original_report_url" \
+            "$email_to" \
+            "$wechat"
+    fi
+    return "$test_exit"
 }
 
 cmd_smoke() {

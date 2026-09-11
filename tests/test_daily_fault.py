@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 class DailyFaultTest(unittest.TestCase):
-    def _run_daily(self, *, create_identity=True):
+    def _run_daily(self, *, create_identity=True, extra_args=""):
         wrapper = ROOT / "dingofs-testsuite-tool"
         with tempfile.TemporaryDirectory() as temp_dir:
             temp = Path(temp_dir)
@@ -42,7 +42,7 @@ class DailyFaultTest(unittest.TestCase):
                 export HOME={home}
                 export DINGOFS_TESTSUITE_CONFIG_DIR={config}
                 source {wrapper}
-                cmd_daily
+                cmd_daily {extra_args}
                 """
             )
             result = subprocess.run(
@@ -83,6 +83,46 @@ class DailyFaultTest(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertEqual(args, [])
         self.assertIn(str(identity), result.stdout + result.stderr)
+
+    def test_daily_include_runs_only_selected_modules(self):
+        result, args, _ = self._run_daily(extra_args="--include quota,client")
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        command_tokens = shlex.split(args[-1])
+        self.assertIn("quota", command_tokens)
+        self.assertIn("client", command_tokens)
+        self.assertNotIn("fault", command_tokens)
+        self.assertNotIn("cache_node", command_tokens)
+
+    def test_daily_without_fault_does_not_require_fault_identity(self):
+        result, args, identity = self._run_daily(
+            create_identity=False,
+            extra_args="--include quota",
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertNotIn(f"{identity}:/tmp/dtt-rocky_70:ro", args)
+        self.assertNotIn(
+            "dingofs-chaos-tool-data:/opt/dingofs-chaos-tool/var:rw",
+            args,
+        )
+
+    def test_daily_include_rejects_unknown_module(self):
+        result, args, _ = self._run_daily(extra_args="--include quota,unknown")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(args, [])
+        self.assertIn("Unknown daily module 'unknown'", result.stdout + result.stderr)
+
+    def test_daily_include_cannot_be_combined_with_debug(self):
+        result, args, _ = self._run_daily(extra_args="--include client --debug")
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(args, [])
+        self.assertIn(
+            "--include cannot be combined with --debug",
+            result.stdout + result.stderr,
+        )
 
 
 if __name__ == "__main__":
