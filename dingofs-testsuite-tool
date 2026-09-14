@@ -1411,6 +1411,11 @@ Daily Integration Test
     dtt config set output <目录>
   - commit_info.yaml 需要存在于指定路径下
   - 微信通知使用配置中的 webhook_url
+  - daily 报告自动附带 Jenkins 父任务连续正常运行时长；未配置时显示获取失败
+  - Jenkins 通过 SSH 免密读取，不需要 API Token；默认连接 jenkins@172.30.14.128
+  - 专用密钥: ~/.ssh/dtt_jenkins_consistency；受信主机: ~/.ssh/dtt_jenkins_known_hosts
+    可用 DTT_JENKINS_SSH_KEY / DTT_JENKINS_KNOWN_HOSTS 指定其他路径，仅只读挂载
+  - 可选连接配置: ~/.dingofs_testsuite/jenkins_consistency.json（DTT_JENKINS_CONFIG 可覆盖）
 
 更多信息:
   - 项目地址: https://github.com/dingofs/dingofs-testsuite-tool
@@ -1642,6 +1647,36 @@ cmd_daily() {
 
     if [[ -n "$run_fault" ]]; then
         docker_cmd+=("-v" "${fault_identity}:/tmp/dtt-rocky_70:ro")
+    fi
+
+    # Query once, at report generation time. Only daily receives this opt-in.
+    # SSH credentials stay on the host and are read-only runtime mounts.
+    docker_cmd+=("-e" "DTT_JENKINS_CONSISTENCY=1")
+    local jenkins_config="${DTT_JENKINS_CONFIG:-$CONFIG_DIR/jenkins_consistency.json}"
+    if [[ -f "$jenkins_config" ]] && [[ -r "$jenkins_config" ]]; then
+        jenkins_config=$(readlink -f "$jenkins_config")
+        docker_cmd+=(
+            "-v" "${jenkins_config}:/tmp/dtt-jenkins-consistency.json:ro"
+            "-e" "DTT_JENKINS_CONFIG=/tmp/dtt-jenkins-consistency.json"
+        )
+    elif [[ -n "${DTT_JENKINS_CONFIG:-}" ]]; then
+        docker_cmd+=("-e" "DTT_JENKINS_CONFIG=/tmp/dtt-jenkins-consistency.json")
+        echo "Warning: Jenkins SSH 连接配置不可读，一致性持续时间将显示获取失败。"
+    else
+        docker_cmd+=("-e" "DTT_JENKINS_CONFIG=")
+    fi
+    local jenkins_key="${DTT_JENKINS_SSH_KEY:-$HOME/.ssh/dtt_jenkins_consistency}"
+    local jenkins_known_hosts="${DTT_JENKINS_KNOWN_HOSTS:-$HOME/.ssh/dtt_jenkins_known_hosts}"
+    docker_cmd+=("-e" "DTT_JENKINS_SSH_KEY=/tmp/dtt-jenkins-ssh-key"
+                  "-e" "DTT_JENKINS_KNOWN_HOSTS=/tmp/dtt-jenkins-known-hosts")
+    if [[ -f "$jenkins_key" ]] && [[ -r "$jenkins_key" ]] && \
+       [[ -f "$jenkins_known_hosts" ]] && [[ -r "$jenkins_known_hosts" ]]; then
+        jenkins_key=$(readlink -f "$jenkins_key")
+        jenkins_known_hosts=$(readlink -f "$jenkins_known_hosts")
+        docker_cmd+=("-v" "${jenkins_key}:/tmp/dtt-jenkins-ssh-key:ro"
+                      "-v" "${jenkins_known_hosts}:/tmp/dtt-jenkins-known-hosts:ro")
+    else
+        echo "Warning: Jenkins SSH 专用密钥或受信主机文件缺失，统计将显示获取失败。"
     fi
 
     # Mount custom scenarios directory if configured

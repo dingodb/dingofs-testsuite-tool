@@ -545,7 +545,9 @@ output/elbencho_<timestamp>/
 
 ## daily — 每日集成测试
 
-`dtt daily` 在容器内执行 `run_tests.py`，依次运行 12 个测试模块，每个失败用例重试 2 次，完成后生成 Allure 报告并发送邮件/微信通知。
+`dtt daily` 在容器内执行 `run_tests.py`，依次运行 12 个测试模块，只执行一次、不重试（`--reruns 0`），完成后生成 Allure 报告并发送邮件/微信通知。
+
+报告支持附带 Jenkins 父任务的连续正常运行时长（只统计父任务，扣除构建间隔）。通过 SSH 免密读取，使用宿主机的专用密钥和受信主机公钥，不需要 Jenkins API Token，详见 [一致性测试持续时间配置说明](docs/jenkins-consistency-report.md)。未能取得统计时不影响测试结果和原有通知。
 
 ### 模块列表
 

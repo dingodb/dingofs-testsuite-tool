@@ -264,6 +264,10 @@ ${read_rows}    </table>"
 <p><b>Allure 报告：</b><a href='${SMOKE_REPORT_URL}'>${SMOKE_REPORT_URL}</a></p>"
     fi
 
+    if [[ "$tool" == "daily" ]] && [[ -n "${DTT_CONSISTENCY_HTML:-}" ]]; then
+        html_content+="$DTT_CONSISTENCY_HTML"
+    fi
+
     if [[ -n "${DTT_ORIGINAL_REPORT_URL:-}" ]]; then
         local original_report_url_html
         original_report_url_html=$(html_escape_notify "$DTT_ORIGINAL_REPORT_URL")
@@ -429,6 +433,13 @@ send_wechat_notification() {
 Allure 报告：${SMOKE_REPORT_URL}"
     fi
 
+    if [[ "$tool" == "daily" ]] && [[ -n "${DTT_CONSISTENCY_TEXT:-}" ]]; then
+        content+="
+
+
+${DTT_CONSISTENCY_TEXT}"
+    fi
+
     if [[ -n "${DTT_ORIGINAL_REPORT_URL:-}" ]]; then
         content+="
 
@@ -535,6 +546,23 @@ ${details}"
     fi
     payload=$(jq -n --arg content "$content" '{msgtype:"markdown", markdown:{content:$content}}')
 
+    if [[ "$tool" == "daily" ]] && [[ -n "${DTT_CONSISTENCY_TEXT:-}" ]]; then
+        local notify_dir payloads part part_response send_status=0
+        notify_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+        payloads=$(printf '%s' "$content" | python3 "$notify_dir/../dingofs-integration-test/src/jenkins_consistency.py" --wechat-payloads) || return 1
+        while IFS= read -r part; do
+            [[ -z "$part" ]] && continue
+            if ! part_response=$(curl -s --max-time 20 -X POST "$WEBHOOK_URL" \
+                -H "Content-Type: application/json" -d "$part"); then
+                send_status=1
+            elif ! jq -e '.errcode == 0' <<< "$part_response" >/dev/null 2>&1; then
+                send_status=1
+            fi
+        done <<< "$payloads"
+        log_notify "Daily WeChat notification completed (status=$send_status)"
+        return "$send_status"
+    fi
+
     log_notify "Sending WeChat notification..."
     log_notify "Webhook URL: $WEBHOOK_URL"
     log_notify "Status: $status"
@@ -611,6 +639,21 @@ send_ai_manifest_notification() {
         status="FAIL"
     else
         status="SUCCESS"
+    fi
+
+    # Reuse the integration snapshot, including its original collection time.
+    # Rendering must not query Jenkins again after potentially slow AI analysis.
+    local DTT_CONSISTENCY_HTML="" DTT_CONSISTENCY_TEXT=""
+    if [[ "$mode" == "daily" ]] && jq -e '.consistency | type == "object" or type == "array"' "$manifest_path" >/dev/null; then
+        local notify_dir consistency_renderer
+        notify_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+        consistency_renderer="$notify_dir/../dingofs-integration-test/src/jenkins_consistency.py"
+        DTT_CONSISTENCY_HTML=$(python3 "$consistency_renderer" --manifest "$manifest_path" --format html 2>/dev/null) || true
+        DTT_CONSISTENCY_TEXT=$(python3 "$consistency_renderer" --manifest "$manifest_path" --format markdown 2>/dev/null) || true
+        if [[ -z "$DTT_CONSISTENCY_HTML" ]] || [[ -z "$DTT_CONSISTENCY_TEXT" ]]; then
+            DTT_CONSISTENCY_HTML='<p>一致性测试持续时间：快照渲染失败，原始测试结果不受影响。</p>'
+            DTT_CONSISTENCY_TEXT='一致性测试持续时间：快照渲染失败，原始测试结果不受影响。'
+        fi
     fi
 
     local email_status=0
