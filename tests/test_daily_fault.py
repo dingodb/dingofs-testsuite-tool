@@ -129,6 +129,35 @@ class DailyFaultTest(unittest.TestCase):
             result.stdout + result.stderr,
         )
 
+    def test_daily_forwards_external_report_url_without_losing_group_path(self):
+        result, args, _ = self._run_daily(
+            create_identity=False,
+            extra_args=(
+                "--include quota --report-port 8889 "
+                "--report-url http://172.30.14.126:8889/daily-fault"
+            ),
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        command_tokens = shlex.split(args[-1])
+        self.assertEqual(
+            command_tokens[command_tokens.index("--report-url") + 1],
+            "http://172.30.14.126:8889/daily-fault",
+        )
+        self.assertEqual(
+            command_tokens[command_tokens.index("--report-port") + 1], "8889"
+        )
+
+    def test_daily_report_url_requires_a_value(self):
+        result, args, _ = self._run_daily(
+            create_identity=False,
+            extra_args="--include quota --report-url",
+        )
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertEqual(args, [])
+        self.assertIn("--report-url requires a URL", result.stdout + result.stderr)
+
 
 if __name__ == "__main__":
     unittest.main()

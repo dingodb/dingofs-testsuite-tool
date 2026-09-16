@@ -1375,6 +1375,7 @@ Daily Integration Test
   --wechat                 启用企业微信通知
   --daily                  启用每日模式，传递给 run_tests.py
   --report-port <端口>     Allure 报告服务端口，传递给 run_tests.py
+  --report-url <URL>       已有报告服务的分组根 URL；设置后不在容器内启动报告服务
   --debug                  调试模式，仅跑 client 模块且保留容器
   --report-path <路径>     报告输出路径，映射到容器 /allure-report (默认: /output)
   --ai-analysis            最终 FAIL/ERROR 时在宿主机生成 AI 失败分析
@@ -1455,6 +1456,7 @@ cmd_daily() {
     local report_path=""
     local daily=""
     local report_port=""
+    local report_url=""
     local include=""
     local ai_analysis=""
     while [[ $# -gt 0 ]]; do
@@ -1490,6 +1492,14 @@ cmd_daily() {
                 ;;
             --report-port)
                 report_port="$2"
+                shift 2
+                ;;
+            --report-url)
+                if [[ -z "${2:-}" ]] || [[ "$2" == -* ]]; then
+                    echo "Error: --report-url requires a URL"
+                    return 1
+                fi
+                report_url="$2"
                 shift 2
                 ;;
             --include)
@@ -1812,6 +1822,12 @@ cmd_daily() {
         py_cmd="${py_cmd} --report-port ${report_port}"
     fi
 
+    if [[ -n "$report_url" ]]; then
+        local report_url_quoted
+        printf -v report_url_quoted '%q' "$report_url"
+        py_cmd="${py_cmd} --report-url ${report_url_quoted}"
+    fi
+
     if [[ -n "$ai_analysis" ]]; then
         local ai_run_id_quoted ai_run_dir_quoted ai_command_quoted
         printf -v ai_run_id_quoted '%q' "$DTT_AI_RUN_ID"
@@ -1838,6 +1854,9 @@ cmd_daily() {
     echo "  Modules:     ${include_normalized:-all}"
     if [[ -n "$report_port" ]]; then
         echo "  Report port: $report_port"
+    fi
+    if [[ -n "$report_url" ]]; then
+        echo "  Report URL:  $report_url"
     fi
     if [[ -n "$mount" ]]; then
         echo "  Test dir:    $mount -> $container_mount"

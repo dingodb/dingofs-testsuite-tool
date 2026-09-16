@@ -585,6 +585,11 @@ dtt daily --daily --report-port 8889
 # 指定报告输出路径
 dtt daily --report-path /mnt/disk5/daigy/tmp/output
 
+# 使用宿主机已有报告服务；适合多个 daily 分组并行运行
+dtt daily --include fault \
+  --report-path /mnt/disk5/daigy/tmp/output/daily-fault \
+  --report-url http://172.30.14.126:8889/daily-fault
+
 # 调试模式（仅跑 client 模块，保留容器）
 dtt daily --debug
 
@@ -602,6 +607,7 @@ dtt daily --email daigy@zetyun.com,sunxiao@zetyun.com --wechat
 | `--daily` | 每日模式（Allure 报告存入 `allure-daily-report-*`） |
 | `--report-port <端口>` | Allure 报告 HTTP 服务端口 |
 | `--report-path <路径>` | Allure 报告及日志输出路径 |
+| `--report-url <URL>` | 已有报告服务中本组报告的根 URL；设置后容器不启动 HTTP 服务 |
 | `--debug` | 调试模式（仅跑 client，保留容器） |
 
 ### 报告访问
@@ -613,6 +619,10 @@ http://<宿主机IP>:<report-port>/allure-daily-report-latest/index.html
 ```
 
 日志文件保存在 output 目录下（通过 `dtt config set output` 配置）。
+
+多个 daily 分组并行时，应由宿主机使用一个长期 HTTP 服务统一发布报告根目录，
+并为每组传入带分组路径的 `--report-url`。不要让并行任务共享
+`--report-port` 启动临时服务，否则任务会互相终止端口上的服务。
 
 ---
 
