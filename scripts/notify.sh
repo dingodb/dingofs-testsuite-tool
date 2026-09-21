@@ -24,6 +24,50 @@ html_escape_notify() {
     python3 -c 'import html, sys; print(html.escape(sys.argv[1], quote=True), end="")' "${1:-}"
 }
 
+append_commit_context_html() {
+    local rows=""
+    local label value escaped index
+    local -a labels=(
+        "PR 编号"
+        "PR 提交人"
+        "Commit ID"
+        "Commit 作者"
+        "Commit 作者邮箱"
+        "Commit 标题"
+        "Commit URL"
+        "Jenkins Build URL"
+    )
+    local -a values=(
+        "${DTT_PR_NUMBER:-}"
+        "${DTT_PR_AUTHOR:-}"
+        "${DTT_TEST_COMMIT_SHA:-}"
+        "${DTT_TEST_COMMIT_AUTHOR_NAME:-}"
+        "${DTT_TEST_COMMIT_AUTHOR_EMAIL:-}"
+        "${DTT_TEST_COMMIT_SUBJECT:-}"
+        "${DTT_TEST_COMMIT_URL:-}"
+        "${DTT_JENKINS_BUILD_URL:-}"
+    )
+
+    for index in "${!labels[@]}"; do
+        label=${labels[$index]}
+        value=${values[$index]}
+        [[ -n "$value" ]] || continue
+        escaped=$(html_escape_notify "$value")
+        if [[ "$label" == "Commit URL" || "$label" == "Jenkins Build URL" ]]; then
+            escaped="<a href='${escaped}'>${escaped}</a>"
+        fi
+        rows="${rows}
+<tr><td><b>${label}</b></td><td>${escaped}</td></tr>"
+    done
+
+    [[ -n "$rows" ]] || return 0
+    printf '%s' "
+<h3>提交信息</h3>
+<table border='1' cellpadding='5' cellspacing='0'>${rows}
+</table>
+<br>"
+}
+
 # Send email notification
 # Usage: send_email_notification <tool> <scenario> <status> <duration> [details] [test_date] [test_ip]
 # Mount point is read from TEST_MOUNT env var (set by entrypoint.sh)
@@ -77,6 +121,10 @@ send_email_notification() {
 <tr><td><b>耗时</b></td><td>$duration</td></tr>
 </table>
 <br>"
+
+    local commit_context_html
+    commit_context_html=$(append_commit_context_html)
+    html_content="${html_content}${commit_context_html}"
 
     if [[ "$tool" == "smoke" || "$tool" == "daily" ]]; then
         # Smoke details format: one tool per line, with optional

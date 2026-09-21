@@ -69,6 +69,27 @@ load_config() {
     fi
 }
 
+append_jenkins_metadata_env() {
+    local -n command_ref="$1"
+    local name value
+    local -a names=(
+        DTT_PR_NUMBER
+        DTT_PR_AUTHOR
+        DTT_TEST_COMMIT_SHA
+        DTT_TEST_COMMIT_AUTHOR_NAME
+        DTT_TEST_COMMIT_AUTHOR_EMAIL
+        DTT_TEST_COMMIT_SUBJECT
+        DTT_TEST_COMMIT_URL
+        DTT_JENKINS_BUILD_URL
+    )
+
+    for name in "${names[@]}"; do
+        value="${!name:-}"
+        [[ -n "$value" ]] && command_ref+=("-e" "${name}=${value}")
+    done
+    return 0
+}
+
 ai_container_output_owner() {
     # UID 0 in a rootless user namespace already maps to the caller on the
     # host. Passing the host numeric UID would map it to a subordinate UID.
@@ -171,6 +192,7 @@ run_deferred_notification() {
         -e "DTT_AI_REPORT_URL=$ai_report_url"
         -e "DTT_AI_STATUS_TEXT=$ai_status_text"
     )
+    append_jenkins_metadata_env notify_cmd
     if [[ -n "$email_to" ]]; then
         local resolved_email="$email_to"
         [[ "$resolved_email" == "yes" ]] && resolved_email=$(load_config email)
@@ -2145,6 +2167,7 @@ cmd_smoke() {
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
     )
+    append_jenkins_metadata_env docker_cmd
 
     if [[ -n "$ai_analysis" ]]; then
         prepare_ai_run "$output" "smoke" "$smoke_command" || return 1
@@ -3148,6 +3171,7 @@ run_testsuite() {
     local docker_cmd=(
         $runtime run $rm_flag --privileged --net=host
     )
+    append_jenkins_metadata_env docker_cmd
     # fio perf/debug needs root for cache clearing; skip --user
     local skip_user=false
     if [[ "$tool" == "fio" ]] && [[ "$scenario" == "perf" || "$scenario" == "debug" ]]; then

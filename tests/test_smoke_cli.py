@@ -1,4 +1,5 @@
 from pathlib import Path
+import os
 import shlex
 import subprocess
 import tempfile
@@ -17,6 +18,7 @@ class SmokeCliTest(unittest.TestCase):
         runtime_exit=0,
         report_server_exit=0,
         publish_public_report=True,
+        metadata=None,
     ):
         wrapper = ROOT / "dingofs-testsuite-tool"
         temp_dir = tempfile.TemporaryDirectory()
@@ -98,8 +100,14 @@ class SmokeCliTest(unittest.TestCase):
             exit "$smoke_rc"
             """
         )
+        env = os.environ.copy()
+        env.update(metadata or {})
         result = subprocess.run(
-            ["bash", "-c", command], text=True, capture_output=True, check=False
+            ["bash", "-c", command],
+            text=True,
+            capture_output=True,
+            check=False,
+            env=env,
         )
         self.last_config_dir = config
         docker_args = (
@@ -227,9 +235,33 @@ class SmokeCliTest(unittest.TestCase):
             result.stdout + result.stderr,
         )
 
+    def test_smoke_forwards_jenkins_commit_metadata(self):
+        metadata = jenkins_metadata()
+        result, args, _, _, _ = self._run_smoke(
+            "--exclude pjdtest,ltp,xfstest",
+            metadata=metadata,
+        )
+
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for name, value in metadata.items():
+            self.assertIn(f"{name}={value}", args)
+
 
 def report_path_placeholder():
     return "__REPORT_PATH__"
+
+
+def jenkins_metadata():
+    return {
+        "DTT_PR_NUMBER": "1083",
+        "DTT_PR_AUTHOR": "octocat",
+        "DTT_TEST_COMMIT_SHA": "0123456789abcdef",
+        "DTT_TEST_COMMIT_AUTHOR_NAME": "A B",
+        "DTT_TEST_COMMIT_AUTHOR_EMAIL": "author@example.com",
+        "DTT_TEST_COMMIT_SUBJECT": "fix cache reporting",
+        "DTT_TEST_COMMIT_URL": "https://github.com/dingodb/dingofs/commit/0123",
+        "DTT_JENKINS_BUILD_URL": "http://jenkins.example/job/7/",
+    }
 
 
 if __name__ == "__main__":
