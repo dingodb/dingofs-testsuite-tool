@@ -34,6 +34,9 @@ ELBENCHO_BLOCK_SIZE="${ELBENCHO_BLOCK_SIZE:-}"
 ELBENCHO_DIR_COUNT="${ELBENCHO_DIR_COUNT:-}"
 ELBENCHO_THREADS="${ELBENCHO_THREADS:-}"
 ELBENCHO_OPERATION="${ELBENCHO_OPERATION:-}"
+PERFORMANCE_MODE="" PERFORMANCE_REQUESTED="" PERFORMANCE_CONCURRENCY="" PERFORMANCE_TOTAL_SIZE=""
+PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
+PERFORMANCE_ARGS=()
 
 # Tool paths (from Dockerfile)
 FIO_BIN="/usr/bin/fio"
@@ -71,6 +74,7 @@ fi
 # ==============================================================================
 
 show_help() {
+    show_performance_help
     cat << EOF
 DingoFS Storage Testsuite Tools
 ===============================
@@ -282,6 +286,7 @@ EOF
 }
 
 show_fio_help() {
+    show_performance_help
     cat << EOF
 FIO 存储性能测试
 =================
@@ -546,6 +551,130 @@ EOF
 # Validation Functions
 # ==============================================================================
 
+# Normalize the common benchmark contract without requiring host-side Python.
+# Keep this self-contained helper in sync with the other CLI boundary script.
+prepare_performance_options() {
+    local bench_tool="$1" scene="$2" jobs="$3" threads="$4" operation="$5"
+    local direct="$6" file_size="$7" file_count="$8" block_size="$9" dir_count="${10}"
+    PERFORMANCE_MODE=""
+    PERFORMANCE_ARGS=()
+    if [[ "$bench_tool" == elbencho && "$scene" =~ ^(small|full|custom)$ && -n "$direct" ]]; then
+        echo "Error: --direct is unsupported by elbencho '$scene'; use -s benchmark to select direct I/O"
+        return 1
+    fi
+    if [[ "$bench_tool" =~ ^(fio|elbencho)$ ]] && \
+       { [[ -z "$scene" || "$scene" == "benchmark" || -n "$PERFORMANCE_REQUESTED" ]] || \
+         [[ "$bench_tool" == "fio" && -n "$file_count" ]]; }; then
+        PERFORMANCE_MODE=yes
+    elif [[ -n "$PERFORMANCE_REQUESTED" || "$scene" == "benchmark" ]]; then
+        echo "Error: common benchmark options require fio or elbencho"
+        return 1
+    else
+        return 0
+    fi
+
+    local scene_rw="" workers="$PERFORMANCE_CONCURRENCY" rw="$PERFORMANCE_RW"
+    case "$scene" in
+        ''|benchmark) ;;
+        seq_read) scene_rw=read ;;
+        seq_write) scene_rw=write ;;
+        rand_read) scene_rw=randread ;;
+        rand_write) scene_rw=randwrite ;;
+        *) echo "Error: scenario '$scene' is incompatible with common benchmark options"; return 1 ;;
+    esac
+    if [[ -n "$dir_count" ]]; then
+        echo "Error: --dir-count is only supported by legacy elbencho scenarios; benchmark --file-count is global"
+        return 1
+    fi
+    local alias_value
+    for alias_value in "$jobs" "$threads"; do
+        [[ -z "$alias_value" ]] && continue
+        if [[ -n "$workers" && "$workers" != "$alias_value" ]]; then
+            echo "Error: conflicting --concurrency, --numjobs, or --threads values"
+            return 1
+        fi
+        workers="$alias_value"
+    done
+    if [[ -n "$operation" ]]; then
+        if [[ ! "$operation" =~ ^(read|write)$ ]]; then
+            echo "Error: --operation must be read or write, got '$operation'"
+            return 1
+        fi
+        if [[ -n "$rw" && "$rw" != "$operation" ]]; then
+            echo "Error: --rw conflicts with --operation '$operation'"
+            return 1
+        fi
+        rw="$operation"
+    fi
+    if [[ -n "$scene_rw" ]]; then
+        if [[ -n "$rw" && "$rw" != "$scene_rw" ]]; then
+            echo "Error: scenario '$scene' conflicts with --rw '$rw'"
+            return 1
+        fi
+        rw="$scene_rw"
+    fi
+
+    local option value
+    local -a pairs=(--direct "$direct" --concurrency "$workers" --file-size "$file_size"
+        --file-count "$file_count" --total-size "$PERFORMANCE_TOTAL_SIZE" --block-size "$block_size"
+        --rw "$rw" --rounds "$PERFORMANCE_ROUNDS" --iodepth "$PERFORMANCE_IODEPTH"
+        --read-percent "$PERFORMANCE_READ_PERCENT")
+    while [[ ${#pairs[@]} -gt 0 ]]; do
+        option="${pairs[0]}"; value="${pairs[1]}"; pairs=("${pairs[@]:2}")
+        [[ -z "$value" ]] && continue
+        case "$option" in
+            --concurrency|--file-count|--rounds|--iodepth)
+                if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
+                    echo "Error: $option must be a positive integer, got '$value'"; return 1
+                fi ;;
+            --direct)
+                if [[ ! "$value" =~ ^[01]$ ]]; then
+                    echo "Error: --direct must be 0 or 1, got '$value'"; return 1
+                fi ;;
+            --read-percent)
+                if [[ ! "$value" =~ ^(0|[1-9][0-9]?|100)$ ]]; then
+                    echo "Error: --read-percent must be an integer from 0 to 100"; return 1
+                fi ;;
+            --rw)
+                if [[ ! "$value" =~ ^(read|write|randread|randwrite|rw|randrw)$ ]]; then
+                    echo "Error: --rw must be read, write, randread, randwrite, rw, or randrw"; return 1
+                fi ;;
+            --file-size|--total-size|--block-size)
+                if [[ ! "$value" =~ ^[1-9][0-9]*([Bb]|[KkMmGgTtPpEe]([iI]?[Bb])?)?$ ]]; then
+                    echo "Error: $option must be a positive size such as 4KiB or 1GiB"; return 1
+                fi ;;
+        esac
+        PERFORMANCE_ARGS+=("$option" "$value")
+    done
+    [[ "$PERFORMANCE_DRY_RUN" == yes ]] && PERFORMANCE_ARGS+=(--dry-run)
+    return 0
+}
+
+show_performance_help() {
+    cat << 'EOF'
+fio / elbencho 通用性能测试:
+  dtt -t <fio|elbencho> [-s benchmark] [参数]
+  不指定场景或使用以下新参数时启用通用测试；旧场景无新参数时保留原行为。
+  --concurrency N       并发数（默认 4；别名 --numjobs / --threads）
+  --file-size SIZE      每个文件大小（默认 256MiB）
+  --file-count N        全局总文件数（默认等于并发数，不按线程倍增）
+  --total-size SIZE     全局总数据量；与文件大小/数量一致时才接受
+  --block-size SIZE     I/O 块大小（默认：不超过 1MiB 且能整除文件大小的最大 2 的幂）
+  --rw MODE            read/write/randread/randwrite/rw/randrw（默认 write）
+  --direct 0|1          direct I/O（默认 1）
+  --rounds N            测试轮数（默认 1）
+  --iodepth N           I/O 队列深度（默认 1）
+  --read-percent N      混合读写的读比例（0..100）
+  --dry-run             只输出执行计划，不运行存储 I/O 或发送通知
+  --operation read|write 是 --rw 的别名；别名冲突会报错。
+  新参数可搭配 seq_read/seq_write/rand_read/rand_write，自动转换为对应 --rw。
+  all/small/custom 等场景不接受通用测试新参数。
+  fio --file-count 也启用通用测试；elbencho 显式旧场景保留每线程计数语义。
+  示例: dtt -t fio --concurrency 4 --file-count 16 --file-size 64MiB --rw randrw --dry-run
+
+EOF
+}
+
 validate_params() {
     local error=0
 
@@ -559,7 +688,7 @@ validate_params() {
     fi
 
     # Validate SCENARIO (PARM-06) - mdtest and mlperf don't require a scenario
-    if [[ "$TOOL" != "mdtest" && "$TOOL" != "mlperf" && "$TOOL" != "smoke" ]]; then
+    if [[ "$PERFORMANCE_MODE" != yes && "$TOOL" != "mdtest" && "$TOOL" != "mlperf" && "$TOOL" != "smoke" ]]; then
         if [[ -z "$SCENARIO" ]]; then
             echo "Error: Scenario is required. Use -s or --scenario to specify."
             error=1
@@ -596,7 +725,7 @@ validate_params() {
     fi
 
     # Validate OUTPUT directory (or that it can be created)
-    if [[ ! -d "$OUTPUT" ]]; then
+    if [[ "$PERFORMANCE_DRY_RUN" != yes && ! -d "$OUTPUT" ]]; then
         if ! mkdir -p "$OUTPUT" 2>/dev/null; then
             echo "Error: Cannot create output directory '$OUTPUT'"
             error=1
@@ -617,7 +746,7 @@ validate_params() {
         echo "Error: --direct must be 0 or 1, got '$FIO_DIRECT'"
         error=1
     fi
-    if [[ "$TOOL" == "elbencho" ]]; then
+    if [[ "$TOOL" == "elbencho" && "$PERFORMANCE_MODE" != yes ]]; then
         local elbencho_count_name elbencho_count_value
         for elbencho_count_name in file-count dir-count; do
             case "$elbencho_count_name" in
@@ -869,7 +998,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,concurrency:,total-size:,rw:,rounds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -879,12 +1008,21 @@ parse_args() {
 
     while true; do
         case "$1" in
+            --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation)
+                if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
+                    echo "Error: $1 requires a value"
+                    exit 1
+                fi
+                ;;
+        esac
+        case "$1" in
             -t|--tool)
                 TOOL="$2"
                 # Check if next arg is --help
                 if [[ "$3" == "--help" ]]; then
                     case "$TOOL" in
                         fio) show_fio_help; exit 0 ;;
+                        elbencho) show_performance_help; exit 0 ;;
                         vdbench) echo "vdbench: use --help for general help"; exit 0 ;;
                         mdtest) show_mdtest_help; exit 0 ;;
                         pjdtest) show_pjdtest_help; exit 0 ;;
@@ -931,6 +1069,23 @@ parse_args() {
             -n|--np)
                 NP="$2"
                 shift 2
+                ;;
+            --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent)
+                PERFORMANCE_REQUESTED=yes
+                case "$1" in
+                    --concurrency) PERFORMANCE_CONCURRENCY="$2" ;;
+                    --total-size) PERFORMANCE_TOTAL_SIZE="$2" ;;
+                    --rw) PERFORMANCE_RW="$2" ;;
+                    --rounds) PERFORMANCE_ROUNDS="$2" ;;
+                    --iodepth) PERFORMANCE_IODEPTH="$2" ;;
+                    --read-percent) PERFORMANCE_READ_PERCENT="$2" ;;
+                esac
+                shift 2
+                ;;
+            --dry-run)
+                PERFORMANCE_REQUESTED=yes
+                PERFORMANCE_DRY_RUN=yes
+                shift
                 ;;
             --numjobs)
                 FIO_NUMJOBS="$2"
@@ -984,6 +1139,12 @@ parse_args() {
                 ;;
         esac
     done
+    prepare_performance_options "$TOOL" "$SCENARIO" "$FIO_NUMJOBS" "$ELBENCHO_THREADS" \
+        "$ELBENCHO_OPERATION" "$FIO_DIRECT" "${FIO_FILE_SIZE:-$ELBENCHO_FILE_SIZE}" "$ELBENCHO_FILE_COUNT" \
+        "${FIO_BLOCK_SIZE:-$ELBENCHO_BLOCK_SIZE}" "$ELBENCHO_DIR_COUNT" || exit 1
+    if [[ "$PERFORMANCE_MODE" == yes ]]; then
+        SCENARIO=benchmark
+    fi
 }
 
 # ==============================================================================
@@ -1204,6 +1365,14 @@ log_result() {
             ;;
     esac
 
+    # The common runner validates its own metrics and returns the final status;
+    # legacy fio artifact names are not present in its per-round output layout.
+    if [[ "$scenario" == benchmark && "$tool" =~ ^(fio|elbencho)$ &&
+          "$status_override" =~ ^(SUCCESS|FAIL)$ ]]; then
+        status="$status_override"
+        details="$details_override"
+    fi
+
     # A successful-looking metric must not hide a failed process.
     if [[ "$exit_code" -ne 0 ]]; then
         status="FAIL"
@@ -1251,7 +1420,71 @@ log_result() {
 # Tool Dispatch Functions
 # ==============================================================================
 
+performance_run() {
+    local started start_time result=0 status=SUCCESS duration
+    started=$(date +%s)
+    start_time=$(date +"%Y-%m-%d %H:%M:%S")
+    local performance_runner_pid="" performance_wait_interrupted=no
+    local performance_pending_signal="" performance_stop_requested=no
+    local previous_int_trap previous_term_trap
+    previous_int_trap=$(trap -p INT)
+    previous_term_trap=$(trap -p TERM)
+    trap 'performance_wait_interrupted=yes; performance_stop_requested=yes;
+        if [[ -n "$performance_runner_pid" ]]; then
+            kill -INT "$performance_runner_pid" 2>/dev/null || true
+        else
+            performance_pending_signal=INT
+        fi' INT
+    trap 'performance_wait_interrupted=yes; performance_stop_requested=yes;
+        if [[ -n "$performance_runner_pid" ]]; then
+            kill -TERM "$performance_runner_pid" 2>/dev/null || true
+        else
+            performance_pending_signal=TERM
+        fi' TERM
+
+    # Bash PID 1 must wait on a background child to run its signal traps promptly.
+    python3 "${DTT_PERFORMANCE_RUNNER:-/scripts/performance_benchmark.py}" \
+        --tool "$TOOL" --mount "$MOUNT" --output "$OUTPUT" "${PERFORMANCE_ARGS[@]}" &
+    performance_runner_pid=$!
+    if [[ -n "$performance_pending_signal" ]]; then
+        kill -"$performance_pending_signal" "$performance_runner_pid" 2>/dev/null || true
+    fi
+    while true; do
+        performance_wait_interrupted=no
+        if wait "$performance_runner_pid"; then
+            result=0
+        else
+            result=$?
+        fi
+        # A trapped signal interrupts wait before the runner finishes its cleanup.
+        # Wait again to reap the child and retain its final interruption status.
+        [[ "$performance_wait_interrupted" == yes ]] || break
+    done
+    trap - INT TERM
+    if [[ -n "$previous_int_trap" ]]; then eval "$previous_int_trap"; fi
+    if [[ -n "$previous_term_trap" ]]; then eval "$previous_term_trap"; fi
+    if [[ "$performance_stop_requested" == yes && "$result" -eq 0 ]]; then
+        result=130
+    fi
+    [[ "$result" -eq 0 ]] || status=FAIL
+    if [[ "$PERFORMANCE_DRY_RUN" != yes ]]; then
+        log_result "$TOOL" benchmark "$result" "$start_time" "$OUTPUT" "$status" "Common performance benchmark" || true
+        duration="$(( $(date +%s) - started ))s"
+        if [[ "$WECHAT_ENABLED" == yes ]]; then
+            send_wechat_notification "$TOOL" benchmark "$status" "$duration" "" || true
+        fi
+        if [[ "$EMAIL_ENABLED" == yes ]]; then
+            send_email_notification "$TOOL" benchmark "$status" "$duration" "" || true
+        fi
+    fi
+    return "$result"
+}
+
 dispatch_tool() {
+    if [[ "$PERFORMANCE_MODE" == yes ]]; then
+        performance_run
+        return $?
+    fi
     export TEST_MOUNT="$MOUNT"
     case "$TOOL" in
         smoke)
@@ -2611,7 +2844,8 @@ elbencho_run() {
 
         local op_flag="-r"
         [[ "$sc" == *_write ]] && op_flag="-w"
-        local elb_cmd=(elbencho "$op_flag" -b "$elb_bs" -t "$elb_threads" --direct)
+        local elb_cmd=(elbencho "$op_flag" -b "$elb_bs" -t "$elb_threads")
+        [[ "${FIO_DIRECT:-1}" == 1 ]] && elb_cmd+=(--direct)
         [[ "$sc" == rand_* ]] && elb_cmd+=(--rand)
         elb_cmd+=(-s "$elb_size" --jsonfile "$sc_json")
         if [[ "$elb_directory_mode" == "yes" ]]; then

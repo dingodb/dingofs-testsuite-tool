@@ -16,7 +16,7 @@ dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest
 dingofs-testsuite-tool config show
 
 # 3. 运行测试（无需指定 -m -o，使用配置的值）
-dingofs-testsuite-tool -t fio -s seq_write
+dingofs-testsuite-tool -t fio --rw write --concurrency 4 --file-size 256M --file-count 4 --rounds 3
 dingofs-testsuite-tool -t mdtest -s mdtest
 dingofs-testsuite-tool -t vdbench -s seq_rd
 dingofs-testsuite-tool -t pjdtest -s pjdtest
@@ -51,16 +51,18 @@ dingofs-testsuite-tool help
 
 | 工具 | 说明 | 必填参数 | 可选参数 |
 |------|------|---------|---------|
-| `fio` | Flexible I/O 存储性能测试 | `-s <场景>` | `--bs_size`, `--numjobs`, `--direct`, `--file-size`, `--block-size` |
+| `fio` | Flexible I/O 存储性能测试 | 通用入口无需 `-s`；也支持旧场景 | `--rw`, `--direct`, `--concurrency`, `--file-size`, `--file-count`, `--total-size`, `--block-size`, `--rounds` |
 | `vdbench` | Oracle 存储性能测试 | `-s <场景>` | — |
 | `mdtest` | MPI 文件系统元数据测试 | `-n <进程数>` | `-s <场景>`（默认 all） |
 | `pjdtest` | POSIX 文件系统一致性测试 | `-s <场景>` | — |
 | `ltp` | Linux Test Project 内核测试 | `-s <场景>` | — |
 | `int` | DingoFS 集成测试 | `-s <场景>` | — |
 | `mlperf` | MLPerf Storage 基准测试 | `-s <场景>` | `--scale`, `--gpu_count`, `--file_count` |
-| `elbencho` | 多线程文件系统性能测试 | `-s <场景>`（默认 all） | `--file-size`, `--file-count`, `--block-size`, `--dir-count`, `--threads`, `--operation` |
+| `elbencho` | 多线程文件系统性能测试 | 通用入口无需 `-s`；旧全部场景使用 `-s all` | 与 fio 相同的通用参数；旧场景仍支持 `--dir-count`, `--threads`, `--operation` |
 
-### 通用可选参数
+### 旧场景和其他工具的可选参数
+
+以下文件数量/大小口径适用于显式旧场景；新的 `benchmark` 入口使用后文的全局总量口径。
 
 | 参数 | 说明 |
 |------|------|
@@ -80,6 +82,72 @@ dingofs-testsuite-tool help
 | `--operation <类型>` | elbencho 操作类型：`read` 或 `write` |
 
 ---
+
+## fio / elbencho：统一性能测试入口
+
+两种工具使用相同参数。无需准备 `.fio` 文件：不指定 `-s` 或显式使用 `-s benchmark`，即可运行一次有限数据量的测试。使用 `--rounds` 可以重复测量并生成包含平均值的独立 HTML 报告。
+
+```bash
+# 先查看计划：不运行存储 I/O
+# 文件数是全局 16 个，总量为 16 × 64MiB = 1GiB
+# dtt 已配置 testdir 和 output 时，可以省略 -m / -o
+dtt -t fio --rw randread --direct 1 --concurrency 4 \
+  --file-size 64M --file-count 16 --total-size 1G \
+  --block-size 4K --rounds 3 --dry-run
+
+# 正式运行：顺序写，三轮算术平均
+dtt -t fio --rw write --direct 1 --concurrency 4 \
+  --file-size 64M --file-count 16 --block-size 1M --rounds 3
+
+# elbencho 使用相同参数；混合随机读写，目标读比例 70%
+dtt -t elbencho --rw randrw --read-percent 70 --direct 0 \
+  --concurrency 4 --file-size 64M --file-count 16 --block-size 4K --rounds 3
+
+# 小文件：两个工具都支持；改 -t fio 即可用 fio 运行
+dtt -t elbencho --rw read --direct 1 --concurrency 4 \
+  --file-size 4K --file-count 10000 --block-size 4K --rounds 3
+
+# 按总量和数量自动推导单文件大小（每个 64MiB）
+dtt -t fio --rw read --concurrency 4 --total-size 1G --file-count 16 --rounds 3
+```
+
+| 参数 | 含义与默认值 |
+| --- | --- |
+| `--direct 0\|1` | Buffered / Direct I/O，默认 `1` |
+| `--concurrency N` | fio job 数 / elbencho 线程数，默认 `4`；`--numjobs` 和 `--threads` 是通用入口中的别名 |
+| `--file-size SIZE` | 单个文件大小；未提供可推导的总量时默认 `256M` |
+| `--file-count N` | 本次测试的**总文件数**，默认等于并发数；不会再乘线程数 |
+| `--total-size SIZE` | 总文件大小；与文件数或单文件大小组合可推导另一项；三项同时提供必须满足 `总大小 = 数量 × 单文件大小` |
+| `--block-size SIZE` | 每次 I/O 请求大小；默认取不超过 `1MiB` 且能整除文件大小的最大二次幂 |
+| `--rw MODE` | `read` 顺序读、`write` 顺序写、`randread` 随机读、`randwrite` 随机写、`rw` 顺序混合、`randrw` 随机混合；默认 `write` |
+| `--read-percent N` | 混合模式的目标读百分比，默认 `50`；其他模式不接受此参数 |
+| `--rounds N` | 测量轮数，默认 `1`；准备数据不算测量轮 |
+| `--iodepth N` | 每个 worker 的请求队列深度，默认 `1`；实际并行程度取决于工具、I/O 引擎和文件系统 |
+| `--dry-run` | 打印参数和数据量计划，不执行工具；不可与建环境、清理或 AI 分析参数组合 |
+
+`K/M/G/T` 和 `KiB/MiB/GiB/TiB` 均按 1024 进制解释。要求文件数不少于并发数，文件大小可以被块大小整除；Direct I/O 要求块大小和文件大小按 4KiB 对齐。elbencho 随机模式要求总量可被 `block × 并发数` 整除；参数不满足时明确报错，不让工具悄悄缩减数据量。
+
+读和混合模式自动先写入完整数据；准备阶段独立记录，不进入平均值。各测量轮复用本次专属数据目录，数据量不乘轮数，不自动清除缓存。完成或失败后保留数据在 `testdir/dtt-performance/<run-id>/<tool>/`，便于复核；再次执行创建新目录，用户可按报告中的精确目录回收旧数据。
+
+报告保存在配置的 output 或 `-o` 目录内的 `performance-<tool>-<run-id>/index.html`，可直接用浏览器打开，无外部网络依赖。页面包含参数、成功/计划轮数、带宽/IOPS/延迟平均值、最小/最大值、逐轮表格和图表，以及原始命令、工具 JSON、日志链接；同时输出 `summary.json` 和 `plan.json`。容器控制台的 `/output/...` 对应宿主机配置的输出目录。
+
+所有平均值只统计成功轮。遇到失败即停止后续轮次、保留现场、返回非零退出码；部分成功不会被显示为完整通过。带宽/IOPS/延迟采用工具原生指标，耗时包含进程启动和同步；fio 的 `end_fsync` 与 elbencho 的独立 `SYNC` 计时不同，跨工具比较应同时查看耗时和原始结果。小数据量的实际混合读比例可能偏离目标比例。
+
+兼容性：显式旧场景且未带新参数时行为保持原样（例如 `-s all`、`-s small`、自定义 `.fio`）。`--rounds`、`--concurrency`、`--total-size`、`--rw` 等新参数启用通用入口；它们也可与 `seq_read/seq_write/rand_read/rand_write` 搭配。旧 elbencho `small/full/custom` 脚本不支持 Direct I/O 覆盖，需改用通用入口。
+
+本地开发验证（只使用新建的临时目录，不连接集群）：
+
+```bash
+PYTHONPATH=tests python3 -m unittest \
+  test_performance_plan test_performance_runner test_performance_tools \
+  test_performance_report test_performance_cli \
+  test_fio_cli test_elbencho_cli test_elbencho_report test_elbencho_small_report
+
+# 需要本机已安装真正的 fio 与 elbencho；可用 DTT_FIO_BIN / DTT_ELBENCHO_BIN 指定路径
+DTT_RUN_REAL_PERFORMANCE=1 PYTHONPATH=tests python3 -m unittest test_performance_smoke -v
+```
+
+镜像的 Dockerfile 已通过 `COPY scripts/ /scripts/` 包含新的运行器；更新时需要同时更新宿主机 dtt 脚本并重新构建测试镜像，单独更换宿主机脚本不会更新容器内代码。
 
 ## 可选 AI 失败分析
 
