@@ -579,6 +579,7 @@ prepare_chaos_tool_volume() {
 }
 
 show_help() {
+    echo "  --custom-dir PATH    custom 场景目录（仅本次运行，不修改全局配置）"
     cat << EOF
 dingofs-Testsuite-tools (dtt)
 =============================
@@ -2620,6 +2621,12 @@ run_testsuite() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --custom-dir)
+                if [[ $# -lt 2 || -z "${2:-}" || "${2:-}" == -* ]]; then
+                    echo "Error: --custom-dir requires a value"
+                    return 1
+                fi
+                ;;
             --file-size|--file-count|--block-size|--dir-count|--threads|--operation)
                 if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:-}" == -* ]]; then
                     echo "Error: $1 requires a value"
@@ -2628,6 +2635,14 @@ run_testsuite() {
                 ;;
         esac
         case "$1" in
+            --custom-dir)
+                if [[ ! -d "$2" || "$2" != /* ]]; then
+                    echo "Error: --custom-dir requires an existing absolute directory"
+                    return 1
+                fi
+                config_custom="$2"
+                shift 2
+                ;;
             -m|--mount)
                 mount="$2"
                 shift 2
@@ -5288,7 +5303,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        -t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
+        --custom-dir|-t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;
