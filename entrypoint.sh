@@ -16,6 +16,8 @@ set -e
 # before any setup, notification imports, or test/output initialization.
 if [[ -n "${INT_FUNCTIONAL_CONTEXT:-}" ]]; then
     python3 /functional-runtime/functional_runtime.py --verify-container "$INT_FUNCTIONAL_CONTEXT"
+elif [[ "${INT_LEGACY_PACKAGE:-}" == 1 ]]; then
+    python3 /functional-runtime/functional_runtime.py --verify-legacy-container
 fi
 
 # ==============================================================================

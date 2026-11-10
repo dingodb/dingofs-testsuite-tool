@@ -66,6 +66,9 @@ class InstalledFunctionalContainer(unittest.TestCase):
         case = source / 'testcases/quota_test_cases/integration_fixture.yaml'
         case.write_text('case_name: installed fixture\nrequired_environment: selected\n'
                         'steps: [{step_name: sleep, parameter: {sleep_second: 0}}]\n')
+        (case.parent / 'custom_fixture.yaml').write_text(
+            'case_name: installed custom fixture\nrequired_environment: env_platform_abc\n'
+            'steps: [{step_name: sleep, parameter: {sleep_second: 0}}]\n')
         alias = source / 'testcases/quota_test_cases/smoke/integration_alias.yaml'
         alias.parent.mkdir(exist_ok=True)
         alias.symlink_to('../integration_fixture.yaml')
@@ -184,6 +187,35 @@ class InstalledFunctionalContainer(unittest.TestCase):
         self.assertEqual(result.returncode, 2, result.stdout + result.stderr)
         self.assertIn('digest mismatch', result.stderr)
         self.assertFalse((self.temp / 'output').exists())
+
+    def test_new_package_preserves_custom_preflight(self):
+        from dingofs_platform.functional.environments.preflight import PROBE_CODE
+        checked = subprocess.run([sys.executable, '-B', '-c', "DINGO_PATH='/bin/true'\n" + PROBE_CODE],
+            env=self.env, capture_output=True, text=True, timeout=60)
+        self.assertEqual(checked.returncode, 0, checked.stderr)
+        self.assertEqual(json.loads(checked.stdout), {'dtt': True, 'runtime': True, 'dingo': True})
+
+    def test_new_package_runs_custom_exact_plan_with_complete_imports(self):
+        custom = self.temp / 'env_platform_abc.yaml'
+        custom.write_text('env_platform_abc:\n  mds_addr: 192.0.2.1:6700\n'
+            '  host: 192.0.2.1\n  ssh_user: tester\n  run_as_user: tester/fixture-secret\n'
+            '  dingo_tool_path: /bin/dingo\n  clients: []\n')
+        plan = self.temp / 'custom-plan.json'
+        digest = hashlib.sha256((self.source / 'testcases/quota_test_cases/custom_fixture.yaml').read_bytes()).hexdigest()
+        plan.write_text(json.dumps({'version': 1, 'modules': {'quota': ['custom_fixture.yaml']},
+                                   'hashes': {'quota': {'custom_fixture.yaml': digest}}}))
+        output = self.temp / 'custom-output'
+        result = subprocess.run([self.executable, '-t', 'int', '-s', 'quota', '--env', 'env_platform_abc',
+            '--case-plan', str(plan), '--int-env-file', str(custom), '-m', str(self.temp / 'data'), '-o', str(output)],
+            env={**self.env, 'DTT_MDSADDR': '192.0.2.1:6700'}, capture_output=True, text=True, timeout=120)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        rows = [json.loads(line) for line in (output / 'functional-events.jsonl').read_text().splitlines()]
+        self.assertTrue(any(row['type'] == 'case_finished' and row['data']['status'] == 'PASS' for row in rows))
+        self.assertFalse(list(self.source.rglob('__pycache__')))
+        for path in output.rglob('*'):
+            if path.is_file():
+                self.assertEqual(path.stat().st_uid, os.geteuid())
+                self.assertNotIn(b'fixture-secret', path.read_bytes())
 
 
 if __name__ == '__main__':

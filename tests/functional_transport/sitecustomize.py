@@ -21,9 +21,11 @@ if sys.argv[0].endswith('run_tests.py'):
     assert not os.environ.get('SSH_AUTH_SOCK')
     # A writable private HOME and even hostile local alias config must not
     # affect context-pinned Paramiko routing or authentication.
-    (home / '.ssh').mkdir()
-    (home / '.ssh/config').write_text('Host *\n  HostName 203.0.113.9\n  Port 99\n'
-                                     '  User wrong-user\n  ProxyCommand false\n')
+    guided = bool(os.environ.get('INT_FUNCTIONAL_CONTEXT'))
+    if guided:
+        (home / '.ssh').mkdir()
+        (home / '.ssh/config').write_text('Host *\n  HostName 203.0.113.9\n  Port 99\n'
+                                         '  User wrong-user\n  ProxyCommand false\n')
     for readonly in ('/functional-runtime/functional_runtime.py',
                      '/dingofs-integration-test/src/config/env_parser.py'):
         try:
@@ -39,6 +41,15 @@ if sys.argv[0].endswith('run_tests.py'):
 
     socket.socket.connect = denied
     socket.getaddrinfo = denied
+    if not guided:
+        # Legacy report generation discovers its local URL; keep discovery
+        # offline and its HTTP listener inside the network-none container.
+        def offline_address(sock, address):
+            if sock.type == socket.SOCK_DGRAM and address == ('10.255.255.255', 1):
+                raise OSError('network-none local address discovery')
+            return denied()
+        socket.socket.connect = offline_address
+        socket.gethostbyname = lambda name: '127.0.0.1' if name == socket.gethostname() else denied()
     spec = importlib.util.spec_from_file_location('owned_remote_fixture', '/test-transport/owned_remote.py')
     fixture = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixture)
@@ -66,12 +77,13 @@ if sys.argv[0].endswith('run_tests.py'):
         def set_missing_host_key_policy(self, policy): pass
         def connect(self, **kwargs):
             assert kwargs['hostname'] in ('192.0.2.1', '192.0.2.2')
-            assert kwargs['port'] == 2222 and kwargs['username'] == 'tester'
+            assert kwargs.get('port', 22) == (2222 if guided else 22) and kwargs['username'] == 'tester'
             assert kwargs['password'] == 'fixture-secret'
-            assert kwargs['look_for_keys'] is False and kwargs['allow_agent'] is False
+            if guided:
+                assert kwargs['look_for_keys'] is False and kwargs['allow_agent'] is False
             assert 'key_filename' not in kwargs and 'sock' not in kwargs
             self.host = kwargs['hostname']
-            connections.append({k: kwargs[k] for k in ('hostname', 'port', 'username', 'look_for_keys', 'allow_agent')})
+            connections.append({k: kwargs.get(k) for k in ('hostname', 'port', 'username', 'look_for_keys', 'allow_agent')})
         def get_transport(self):
             return SimpleNamespace(set_keepalive=lambda seconds: None,
                                    is_active=lambda: True, is_authenticated=lambda: True)

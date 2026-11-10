@@ -15,6 +15,14 @@ if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
             exec python3 "$dtt_root/functional_runtime.py" "$@"
         fi
     done
+    dtt_root=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+    if [[ -f "$dtt_root/functional-runtime.json" ]]; then
+        for dtt_arg in "$@"; do
+            if [[ "$dtt_arg" == --case-plan ]]; then
+                exec python3 -B "$dtt_root/functional_runtime.py" "$@"
+            fi
+        done
+    fi
 fi
 
 # ==============================================================================

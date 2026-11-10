@@ -14,6 +14,8 @@ import platform
 import re
 import subprocess
 import sys
+import shutil
+import tempfile
 
 FEATURES = ['exact_case_plan_v1', 'runtime_context_v1', 'owned_cleanup_v1',
             'lifecycle_events_v2', 'cancel_boundary_v1', 'inspection_v1']
@@ -261,6 +263,73 @@ def launch(root, argv):
     return subprocess.call(command)
 
 
+def launch_legacy(root, argv):
+    """Preserved exact-plan/custom API using the complete installed source tree.
+
+This is deliberately not a guided context. A private configuration copy adds
+the custom environment while all imported program/case bytes stay read-only.
+"""
+    parser = argparse.ArgumentParser(description='Launch a legacy exact functional plan')
+    parser.add_argument('-t', '--tool', choices=['int'], required=True)
+    parser.add_argument('-s', '--scenario', required=True)
+    parser.add_argument('--env', required=True)
+    parser.add_argument('--case-plan', type=Path, required=True)
+    parser.add_argument('--int-env-file', type=Path)
+    parser.add_argument('-m', '--mount', type=Path)
+    parser.add_argument('-o', '--output', type=Path, required=True)
+    args = parser.parse_args(argv)
+    cap = capability(root)
+    for path in (args.case_plan, args.int_env_file):
+        if path and (not path.is_absolute() or not path.is_file() or path.is_symlink()):
+            raise ValueError('Legacy plan/environment requires an absolute regular file')
+    if args.int_env_file and not re.fullmatch('env_platform_[a-f0-9]{3,64}', args.env):
+        raise ValueError('Custom environment requires env_platform_<id>')
+    engine = runtime_engine(root)
+    identity = execution_identity_args(engine)
+    output = args.output.absolute()
+    if any(path.is_symlink() for path in (output, *output.parents)):
+        raise ValueError('Functional output cannot traverse a symlink')
+    output.mkdir(parents=True, mode=0o700, exist_ok=True)
+    output.chmod(0o700)
+    command = [engine, 'run', '--rm', '--pull=never', '--net=host', *identity,
+        '--entrypoint', '/entrypoint.sh', '-v', str(root) + ':/functional-runtime:ro',
+        '-v', str(root / 'dingofs-integration-test') + ':/dingofs-integration-test:ro',
+        '-v', str(root / 'entrypoint.sh') + ':/entrypoint.sh:ro',
+        '-v', str(args.case_plan) + ':/functional-plan/plan.json:ro',
+        '-v', str(output) + ':/output',
+        '--tmpfs', f'/functional-home:rw,noexec,nosuid,mode=0700,uid={os.geteuid()},gid={os.getegid()}',
+        '-e', 'HOME=/functional-home', '-e', 'SSH_AUTH_SOCK=', '-e', 'PYTHONDONTWRITEBYTECODE=1',
+        '-e', 'DTT_FUNCTIONAL_OUTPUT_DIR=/output', '-e', 'INT_LEGACY_PACKAGE=1',
+        '-e', 'INT_CASE_PLAN=/functional-plan/plan.json', '-e', 'INT_ENV=' + args.env]
+    if args.mount:
+        mount = args.mount.absolute()
+        if any(path.is_symlink() for path in (mount, *mount.parents)):
+            raise ValueError('Functional data directory cannot traverse a symlink')
+        mount.mkdir(parents=True, mode=0o700, exist_ok=True)
+        command += ['-v', str(mount) + ':/data']
+    for name in ('DTT_INT_RERUNS', 'DTT_INT_EXISTING_FS', 'DTT_CLIENT_BINARY', 'DTT_CACHE_BINARY',
+                 'DTT_MDS_CLIENT_BINARY'):
+        if name in os.environ: command += ['-e', name + '=' + os.environ[name]]
+    mds = os.environ.get('DTT_MDSADDR') or ((root / 'config/mdsaddr').read_text().strip()
+                                         if (root / 'config/mdsaddr').is_file() else '')
+    command += ['-e', 'MDSADDR=' + mds]
+    for original, destination in (('DTT_INT_SOURCE_FILE', 'INT_EXPECTED_SOURCE_FILE'),
+        ('DTT_INT_SOURCE_SHA256', 'INT_EXPECTED_SOURCE_SHA256'), ('DTT_INT_STORAGE_SHA256', 'INT_EXPECTED_STORAGE_SHA256')):
+        if original in os.environ: command += ['-e', destination + '=' + os.environ[original]]
+    with tempfile.TemporaryDirectory(prefix='dtt-custom-conf-') as temporary:
+        if args.int_env_file:
+            conf = Path(temporary) / 'conf'
+            shutil.copytree(root / 'dingofs-integration-test/conf', conf)
+            custom = conf / 'env' / (args.env + '.yaml')
+            custom.parent.mkdir(parents=True, exist_ok=True)
+            custom.write_bytes(args.int_env_file.read_bytes())
+            custom.chmod(0o600)
+            command += ['-v', str(conf) + ':/dingofs-integration-test/conf:ro']
+        capability(root, inspect_image=False)
+        command += [cap['image_id'], '-t', 'int', '-s', args.scenario, '-o', '/output']
+        return subprocess.call(command)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     root = Path(__file__).resolve().parent
@@ -273,6 +342,13 @@ def main(argv=None):
         cap = capability(root, inspect_image=False)
         read_context(Path(argv[1]), cap)
         return 0
+    if argv == ['--verify-legacy-container']:
+        if sys.version_info < (3, 10):
+            raise ValueError('Functional container requires Python 3.10 or newer')
+        capability(root, inspect_image=False)
+        return 0
+    if '--case-plan' in argv and '--functional-context' not in argv:
+        return launch_legacy(root, argv)
     return launch(root, argv)
 
 

@@ -115,6 +115,34 @@ class FunctionalRuntimeCLI(unittest.TestCase):
         self.assertIn('DTT_FUNCTIONAL_OUTPUT_DIR=/output', run)
         self.assertIn(str(self.root / 'output/parent/child') + ':/output', run)
 
+    def test_legacy_exact_plan_preserves_mount_and_overrides(self):
+        mount = self.root / 'legacy-data'
+        self.env.update(DTT_MDSADDR='192.0.2.1:6900', DTT_INT_RERUNS='2', DTT_INT_EXISTING_FS='true',
+                        DTT_CLIENT_BINARY='/opt/custom-client')
+        result = self.invoke('-t', 'int', '-s', 'quota', '--env', 'legacy', '--case-plan', str(self.plan),
+                             '-m', str(mount), '-o', str(self.root / 'legacy-output'))
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertTrue(mount.is_dir())
+        run = next(call for call in self.calls() if call[0] == 'run')
+        for argument in (str(mount) + ':/data', str(self.package / 'dingofs-integration-test') + ':/dingofs-integration-test:ro',
+                         'HOME=/functional-home', 'MDSADDR=192.0.2.1:6900', 'DTT_INT_RERUNS=2',
+                         'DTT_INT_EXISTING_FS=true', 'DTT_CLIENT_BINARY=/opt/custom-client'):
+            self.assertIn(argument, run)
+        self.assertEqual(run[run.index('--user') + 1], f'{os.geteuid()}:{os.getegid()}')
+
+    def test_legacy_custom_cannot_bypass_bytecode_or_source_verification(self):
+        for corruption in ('cache', 'source'):
+            with self.subTest(corruption=corruption):
+                target = self.package / ('injected.pyc' if corruption == 'cache' else 'dingofs-integration-test/src/config/env_parser.py')
+                previous = target.read_bytes() if target.exists() else None
+                target.write_bytes(b'changed source or unapproved bytecode')
+                result = self.invoke('-t', 'int', '-s', 'quota', '--env', 'legacy', '--case-plan', str(self.plan),
+                                     '-o', str(self.root / 'legacy-output'))
+                self.assertEqual(result.returncode, 2, result.stderr)
+                self.assertFalse(any(call[0] == 'run' for call in self.calls()))
+                if previous is None: target.unlink()
+                else: target.write_bytes(previous)
+
     def test_guided_output_owner_matches_execution_user(self):
         self.assertEqual(self.launch().returncode, 0)
         run = next(call for call in self.calls() if call[0] == 'run')
