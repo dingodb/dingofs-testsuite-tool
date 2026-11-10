@@ -58,6 +58,7 @@ class FunctionalRuntimeCLI(unittest.TestCase):
                         'with open(os.environ["FAKE_DOCKER_LOG"],"a") as f: f.write(json.dumps(sys.argv[1:])+"\\n")\n'
                         'if sys.argv[1:3]==["image","inspect"]: print(json.dumps([{'
                         '"Id":os.environ["FAKE_IMAGE"],"Os":"linux","Architecture":os.environ["FAKE_ARCH"]}]))\n'
+                        'elif sys.argv[1:2]==["info"]: print(os.environ.get("FAKE_ENGINE_INFO","[]"))\n'
                         'elif sys.argv[1:2]!=["run"]: sys.exit(99)\n')
         fake.chmod(0o755)
         self.env = dict(os.environ, PATH=str(bindir) + ':' + os.environ['PATH'],
@@ -113,6 +114,45 @@ class FunctionalRuntimeCLI(unittest.TestCase):
         self.assertIn('SSH_AUTH_SOCK=', run)
         self.assertIn('DTT_FUNCTIONAL_OUTPUT_DIR=/output', run)
         self.assertIn(str(self.root / 'output/parent/child') + ':/output', run)
+
+    def test_guided_output_owner_matches_execution_user(self):
+        self.assertEqual(self.launch().returncode, 0)
+        run = next(call for call in self.calls() if call[0] == 'run')
+        self.assertEqual(run[run.index('--user') + 1], f'{os.geteuid()}:{os.getegid()}')
+        self.assertIn(f'/functional-home:rw,noexec,nosuid,mode=0700,uid={os.geteuid()},gid={os.getegid()}', run)
+
+    def test_unverified_docker_user_namespace_rejected_before_launch(self):
+        for options in ('["name=rootless"]', '["name=userns"]', 'malformed'):
+            with self.subTest(options=options):
+                self.env['FAKE_ENGINE_INFO'] = options
+                self.assertNotEqual(self.launch().returncode, 0)
+                self.assertFalse(any(call[0] == 'run' for call in self.calls()))
+                self.assertFalse((self.root / 'output').exists())
+
+    def test_rootless_podman_preserves_host_uid_mapping(self):
+        import runpy
+        from unittest.mock import patch
+        module = runpy.run_path(str(self.package / 'functional_runtime.py'))
+        calls = []
+        def invoke(argv, **kwargs):
+            calls.append(argv)
+            return subprocess.CompletedProcess(argv, 0, 'true\n')
+        with patch('subprocess.run', side_effect=invoke):
+            args = module['execution_identity_args']('podman')
+        self.assertIn('--userns=keep-id', args)
+        self.assertIn(f'{os.geteuid()}:{os.getegid()}', args)
+        self.assertEqual(calls, [['podman', 'info', '--format', '{{.Host.Security.Rootless}}']])
+
+    def test_podman_rootful_and_unknown_modes(self):
+        import runpy
+        from unittest.mock import patch
+        module = runpy.run_path(str(self.package / 'functional_runtime.py'))
+        with patch('subprocess.run', return_value=subprocess.CompletedProcess([], 0, 'false\n')):
+            self.assertEqual(module['execution_identity_args']('podman'),
+                             ['--user', f'{os.geteuid()}:{os.getegid()}'])
+        with patch('subprocess.run', return_value=subprocess.CompletedProcess([], 0, 'unknown\n')):
+            with self.assertRaisesRegex(ValueError, 'namespace'):
+                module['execution_identity_args']('podman')
 
     def test_image_and_base_digest_change_rejected(self):
         self.env['FAKE_IMAGE'] = 'sha256:' + 'b' * 64

@@ -189,6 +189,29 @@ def read_context(path, cap):
     return context
 
 
+def execution_identity_args(engine):
+    """Keep private output readable by the same user that installed/launched it."""
+    args = ['--user', f'{os.geteuid()}:{os.getegid()}']
+    if engine == 'podman':
+        result = subprocess.run([engine, 'info', '--format', '{{.Host.Security.Rootless}}'],
+                                check=True, capture_output=True, text=True, timeout=30)
+        rootless = result.stdout.strip()
+        if rootless not in ('true', 'false'):
+            raise ValueError('Unable to verify Podman user namespace mode')
+        if rootless == 'true':
+            args.append('--userns=keep-id')
+    else:
+        result = subprocess.run([engine, 'info', '--format', '{{json .SecurityOptions}}'],
+                                check=True, capture_output=True, text=True, timeout=30)
+        options = json.loads(result.stdout)
+        if not isinstance(options, list) or not all(isinstance(item, str) for item in options):
+            raise ValueError('Unable to verify Docker user namespace mode')
+        if any(item.split(',', 1)[0] in ('name=rootless', 'name=userns') for item in options):
+            raise ValueError('Guided execution requires rootful Docker without user namespace remapping; '
+                             'rootless/remapped Docker private-file ownership is not supported')
+    return args
+
+
 def launch(root, argv):
     parser = argparse.ArgumentParser(description='Launch one approved functional child')
     parser.add_argument('-t', '--tool', choices=['int'], required=True)
@@ -209,6 +232,8 @@ def launch(root, argv):
     if plan.get('version') != 1 or set(plan.get('modules', {})) != {context['module']}:
         raise ValueError('Case plan must select exactly the approved child module')
     capability(root)
+    engine = runtime_engine(root)
+    identity_args = execution_identity_args(engine)
     output = args.output.absolute() / context['parent_id'] / context['child_id']
     if output.exists() and (output.is_symlink() or any(output.iterdir())):
         raise ValueError('Functional child output must be an unused directory')
@@ -216,7 +241,7 @@ def launch(root, argv):
         raise ValueError('Functional output cannot traverse a symlink')
     output.mkdir(parents=True, mode=0o700, exist_ok=True)
     output.chmod(0o700)
-    command = [runtime_engine(root), 'run', '--rm', '--pull=never', '--net=host',
+    command = [engine, 'run', '--rm', '--pull=never', '--net=host', *identity_args,
                '--entrypoint', '/entrypoint.sh',
                '-v', str(root) + ':/functional-runtime:ro',
                '-v', str(root / 'dingofs-integration-test') + ':/dingofs-integration-test:ro',
@@ -225,7 +250,7 @@ def launch(root, argv):
                '-v', str(args.functional_context) + ':' + str(args.functional_context) + ':ro',
                '-v', str(output) + ':/output',
                '--tmpfs', '/root/.ssh:rw,noexec,nosuid,mode=0700',
-               '--tmpfs', '/functional-home:rw,noexec,nosuid,mode=0700',
+               '--tmpfs', f'/functional-home:rw,noexec,nosuid,mode=0700,uid={os.geteuid()},gid={os.getegid()}',
                '-e', 'HOME=/functional-home', '-e', 'SSH_AUTH_SOCK=',
                '-e', 'DTT_FUNCTIONAL_OUTPUT_DIR=/output',
                '-e', 'DTT_INT_RERUNS=' + str(context['retries']),
