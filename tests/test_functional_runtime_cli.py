@@ -165,6 +165,62 @@ class FunctionalRuntimeCLI(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,'digest mismatch'):
                 module['main'](['--verify-container',str(self.context)])
 
+    def inject_compatible_bytecode(self):
+        import importlib.util
+        import marshal
+        import struct
+        source=self.package/'dingofs-integration-test/src/config/env_parser.py'
+        cache=Path(importlib.util.cache_from_source(str(source)))
+        cache.parent.mkdir()
+        stat=source.stat()
+        code=compile("BYTECODE_MARKER='unhashed cached code'",str(source),'exec')
+        cache.write_bytes(importlib.util.MAGIC_NUMBER+
+            struct.pack('<III',0,int(stat.st_mtime)&0xffffffff,stat.st_size)+marshal.dumps(code))
+        return source
+
+    def test_injected_compatible_bytecode_rejected_before_host_inspection_or_launch(self):
+        import importlib.util
+        source=self.inject_compatible_bytecode()
+        # Establish that this cache is executable, even with cache writes off.
+        spec=importlib.util.spec_from_file_location('bytecode_fixture',source)
+        module=importlib.util.module_from_spec(spec)
+        from unittest.mock import patch
+        with patch('sys.dont_write_bytecode',True):
+            spec.loader.exec_module(module)
+        self.assertEqual(module.BYTECODE_MARKER,'unhashed cached code')
+        for result in (self.invoke('--functional-capabilities','--format','json'),self.launch()):
+            self.assertNotEqual(result.returncode,0,result.stderr)
+            self.assertIn('bytecode',result.stderr)
+        self.assertEqual(self.calls(),[])
+
+    def test_injected_compatible_bytecode_rejected_by_container_recheck(self):
+        import runpy
+        from unittest.mock import patch
+        self.inject_compatible_bytecode()
+        module=runpy.run_path(str(self.package/'functional_runtime.py'))
+        with patch('sys.version_info',(3,12,0)), patch('subprocess.run',side_effect=AssertionError('Container check must be local')):
+            with self.assertRaisesRegex(ValueError,'bytecode'):
+                module['main'](['--verify-container',str(self.context)])
+        self.assertEqual(self.calls(),[])
+
+    def test_root_bytecode_and_empty_cache_directories_rejected(self):
+        for relative in ('dingofs-integration-test/run_tests.pyc',
+                         'dingofs-integration-test/__pycache__',
+                         '__pycache__','functional_runtime.pyo'):
+            with self.subTest(relative=relative):
+                path=self.package/relative
+                if path.name=='__pycache__':
+                    path.mkdir()
+                else:
+                    path.write_bytes(b'cached code')
+                try:
+                    result=self.invoke('--functional-capabilities','--format','json')
+                    self.assertNotEqual(result.returncode,0,result.stderr)
+                    self.assertIn('bytecode',result.stderr)
+                    self.assertEqual(self.calls(),[])
+                finally:
+                    path.rmdir() if path.is_dir() else path.unlink()
+
     def test_container_python_version_is_checked_separately(self):
         import runpy
         from unittest.mock import patch

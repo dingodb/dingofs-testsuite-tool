@@ -68,7 +68,7 @@ def collect_source(root, aliases=None):
             for path in directory.rglob('*'):
                 if path.is_symlink():
                     safe_file(root,path.relative_to(root).as_posix(),aliases)
-                if path.is_file() and '__pycache__' not in path.parts and path.suffix != '.pyc':
+                if path.is_file():
                     paths.append(path)
     result = {path.relative_to(root).as_posix(): digest(safe_file(root, path.relative_to(root).as_posix(),aliases))
               for path in sorted(paths)}
@@ -85,6 +85,13 @@ def collect_source(root, aliases=None):
 
 
 def capability(root, inspect_image=True):
+    # -B/PYTHONDONTWRITEBYTECODE prevents writes, not consumption of existing
+    # caches. Installed code must execute only the source bytes we hash below.
+    # Scan the entire package, including root modules outside SOURCE_DIRS.
+    for path in root.rglob('*'):
+        if path.name == '__pycache__' or path.suffix in ('.pyc', '.pyo'):
+            raise ValueError('Installed functional runtime contains Python bytecode/cache: ' +
+                             path.relative_to(root).as_posix())
     document = json.loads(safe_file(root, 'functional-runtime.json').read_text())
     cap = document['functional_runtime']
     if (set(cap) != {'version', 'features', 'files', 'image_id', 'source_manifest'}
