@@ -6,6 +6,17 @@
 
 set -e
 
+# Guided capability inspection precedes all mutable legacy initialization.
+# Resolve the executable itself, so current/latest links never define a runtime.
+if [[ "${BASH_SOURCE[0]}" == "${0}" ]]; then
+    for dtt_arg in "$@"; do
+        if [[ "$dtt_arg" == --functional-capabilities || "$dtt_arg" == --functional-context ]]; then
+            dtt_root=$(dirname -- "$(readlink -f -- "${BASH_SOURCE[0]}")")
+            exec python3 "$dtt_root/functional_runtime.py" "$@"
+        fi
+    done
+fi
+
 # ==============================================================================
 # Global Variables
 # ==============================================================================

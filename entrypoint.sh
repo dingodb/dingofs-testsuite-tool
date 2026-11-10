@@ -12,6 +12,12 @@
 
 set -e
 
+# Repeat byte and context validation using the container's actual interpreter,
+# before any setup, notification imports, or test/output initialization.
+if [[ -n "${INT_FUNCTIONAL_CONTEXT:-}" ]]; then
+    python3 /functional-runtime/functional_runtime.py --verify-container "$INT_FUNCTIONAL_CONTEXT"
+fi
+
 # ==============================================================================
 # Global Variables
 # ==============================================================================
@@ -2259,7 +2265,7 @@ integration_run() {
 
     # Get MDS address from environment
     local mdsaddr="${MDSADDR:-}"
-    if [[ -z "$mdsaddr" ]]; then
+    if [[ -z "$mdsaddr" && -z "${INT_FUNCTIONAL_CONTEXT:-}" ]]; then
         echo "Error: MDSADDR environment variable not set"
         echo "Please set MDS address via: dtt config set mdsaddr <address>"
         exit 1
@@ -2349,7 +2355,12 @@ EOF
         cmd+=("--case" "$INT_CASE")
     fi
     if [[ -n "${INT_CASE_PLAN:-}" ]]; then
-        cmd+=("--case-plan" "$INT_CASE_PLAN" "--mds-addr" "$mdsaddr" "--event-file" "$OUTPUT/functional-events.jsonl" "--cancel-file" "$OUTPUT/functional-cancel")
+        cmd+=("--case-plan" "$INT_CASE_PLAN" "--event-file" "$OUTPUT/functional-events.jsonl" "--cancel-file" "$OUTPUT/functional-cancel")
+        if [[ -n "${INT_FUNCTIONAL_CONTEXT:-}" ]]; then
+            cmd+=("--functional-context" "$INT_FUNCTIONAL_CONTEXT")
+        else
+            cmd+=("--mds-addr" "$mdsaddr")
+        fi
     fi
     if [[ "${INT_ENABLE_EXT_CHAOS:-}" == "1" ]]; then
         cmd+=("--enable-external-chaos")
