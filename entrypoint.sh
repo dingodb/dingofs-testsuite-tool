@@ -872,7 +872,7 @@ scenario_exists() {
             ;;
         int|integration)
             # int scenarios: all registered modules in run_tests.py
-            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr)$ ]]
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr|mdtest|posix|large_scale)(,(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr|mdtest|posix|large_scale))*$ ]]
             ;;
         mlperf)
             # mlperf scenarios: resnet50, unet3d, cosmoflow, checkpointing, all
@@ -2281,6 +2281,23 @@ integration_run() {
 
     cd "$INTEGRATION_DIR"
 
+    if [[ -n "${INT_EXPECTED_SOURCE_FILE:-}" ]]; then
+        if [[ ! "$INT_EXPECTED_SOURCE_FILE" =~ ^env_[A-Za-z0-9_-]+\.yaml$ ||
+              ! "${INT_EXPECTED_SOURCE_SHA256:-}" =~ ^[a-f0-9]{64}$ ||
+              ! "${INT_EXPECTED_STORAGE_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: invalid predefined environment digest request" >&2
+            return 1
+        fi
+        local source_file="$INTEGRATION_DIR/conf/env/$INT_EXPECTED_SOURCE_FILE"
+        local storage_file="$INTEGRATION_DIR/conf/storage.yaml"
+        if [[ ! -f "$source_file" || ! -f "$storage_file" ||
+              "$(sha256sum "$source_file" | cut -d' ' -f1)" != "$INT_EXPECTED_SOURCE_SHA256" ||
+              "$(sha256sum "$storage_file" | cut -d' ' -f1)" != "$INT_EXPECTED_STORAGE_SHA256" ]]; then
+            echo "Error: predefined environment differs from platform source; update dtt image" >&2
+            return 1
+        fi
+    fi
+
     # Determine env: --env flag > INT_ENV env var > default dynamic env
     local test_env="${INT_ENV:-}"
 
@@ -2319,14 +2336,20 @@ EOF
     # Run tests with run_tests.py (supports env YAML with full cluster config)
     local report_dir="${int_output}/allure-results"
     mkdir -p "$report_dir"
-    local cmd=(
-        python3 run_tests.py "$module" --env "$test_env"
-        --report-path "$int_output" --report-dir "$report_dir"
-        --reruns 2 --email ""
-    )
+    local -a modules=()
+    IFS=',' read -ra modules <<< "$module"
+    local cmd=(python3 run_tests.py)
+    local selected_module
+    for selected_module in "${modules[@]}"; do
+        cmd+=("$selected_module" --env "$test_env")
+    done
+    cmd+=(--report-path "$int_output" --report-dir "$report_dir" --reruns "${DTT_INT_RERUNS:-0}" --email "")
     # Append fault-specific flags from env vars
     if [[ -n "${INT_CASE:-}" ]]; then
         cmd+=("--case" "$INT_CASE")
+    fi
+    if [[ -n "${INT_CASE_PLAN:-}" ]]; then
+        cmd+=("--case-plan" "$INT_CASE_PLAN" "--mds-addr" "$mdsaddr" "--event-file" "$OUTPUT/functional-events.jsonl" "--cancel-file" "$OUTPUT/functional-cancel")
     fi
     if [[ "${INT_ENABLE_EXT_CHAOS:-}" == "1" ]]; then
         cmd+=("--enable-external-chaos")
@@ -2335,11 +2358,12 @@ EOF
         export DINGOFS_SKIP_CHAOS_RESIDUE_CHECK=1
     fi
     echo "Executing: ${cmd[*]}"
+    local exit_code=0
     (
         trap 'kill -INT $$' INT TERM
         "${cmd[@]}" 2>&1 | tee "$log_file"
-    )
-    local exit_code=${PIPESTATUS[0]}
+        exit "${PIPESTATUS[0]}"
+    ) || exit_code=$?
 
     # Accumulate allure reports to persistent int_allure_report directory
     local int_report_base="$OUTPUT/int_allure_report"

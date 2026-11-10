@@ -46,6 +46,10 @@ mkdir -p "$CONFIG_DIR"
 
 load_config() {
     local key="$1"
+    if [[ "$key" == mdsaddr && -n "${DTT_MDSADDR:-}" ]]; then
+        printf '%s' "$DTT_MDSADDR"
+        return
+    fi
     local file=""
     local default=""
     case "$key" in
@@ -2759,6 +2763,7 @@ run_testsuite() {
     local elbencho_file_count="" elbencho_dir_count="" elbencho_threads="" elbencho_operation=""
     local wechat="" email_to=""
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
+    local int_case_plan="" int_env_file=""
     local setup_env=""
     local do_cleanup=""
     local run_mode="one-shot"
@@ -2882,6 +2887,15 @@ run_testsuite() {
                 ;;
             --int-report-port)
                 int_report_port="$2"
+                shift 2
+                ;;
+            --case-plan)
+                int_case_plan="$2"
+                shift 2
+                ;;
+            --int-env-file)
+                if [[ $# -lt 2 ]]; then echo "Error: --int-env-file requires an absolute file" >&2; return 1; fi
+                int_env_file="$2"
                 shift 2
                 ;;
             --case)
@@ -3375,6 +3389,36 @@ run_testsuite() {
         docker_cmd+=("-v" "${config_custom}:/custom")
     fi
 
+    if [[ "$tool" == int && -n "$int_case_plan" ]]; then
+        if [[ ! -f "$int_case_plan" ]]; then
+            echo "Error: case plan does not exist: $int_case_plan"
+            return 1
+        fi
+        docker_cmd+=("-v" "${int_case_plan}:/functional-plan/plan.json:ro" "-e" "INT_CASE_PLAN=/functional-plan/plan.json")
+    fi
+    if [[ -n "$int_env_file" ]]; then
+        if [[ "$tool" != int || ! "$int_env_file" = /* || ! -f "$int_env_file" || -L "$int_env_file" || ! -r "$int_env_file" ]]; then
+            echo "Error: --int-env-file requires a readable regular file and -t int" >&2
+            return 1
+        fi
+        if [[ ! "${int_env_override:-}" =~ ^env_platform_[a-f0-9]{3,64}$ ]]; then
+            echo "Error: --int-env-file requires --env env_platform_<id>" >&2
+            return 1
+        fi
+        docker_cmd+=("-v" "${int_env_file}:/dingofs-integration-test/conf/env/${int_env_override}.yaml:ro")
+    fi
+    if [[ -n "${DTT_INT_SOURCE_FILE:-}" ]]; then
+        if [[ "$tool" != int || ! "$DTT_INT_SOURCE_FILE" =~ ^env_[A-Za-z0-9_-]+\.yaml$ ||
+              ! "${DTT_INT_SOURCE_SHA256:-}" =~ ^[a-f0-9]{64}$ ||
+              ! "${DTT_INT_STORAGE_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: invalid integration source verification request" >&2
+            return 1
+        fi
+        docker_cmd+=(-e "INT_EXPECTED_SOURCE_FILE=$DTT_INT_SOURCE_FILE"
+                     -e "INT_EXPECTED_SOURCE_SHA256=$DTT_INT_SOURCE_SHA256"
+                     -e "INT_EXPECTED_STORAGE_SHA256=$DTT_INT_STORAGE_SHA256")
+    fi
+
     # Pass INT_ENV for integration test environment (--env overrides config)
     local int_env="${int_env_override:-$(load_config int_env)}"
     int_env="${int_env:-env_126_smoke}"
@@ -3439,6 +3483,34 @@ run_testsuite() {
     # Pass test_times if specified (for fio perf)
     if [[ -n "$test_times" ]]; then
         docker_cmd+=("-e" "TEST_TIMES=$test_times")
+    fi
+
+    if [[ "$tool" == int && -n "$int_case_plan" ]]; then
+        if [[ -z "${DTT_PERFORMANCE_RUNTIME_DIR:-}" ]]; then
+            echo "Error: exact functional case plan requires platform-managed runtime; update dtt tool package"
+            return 1
+        fi
+        local file
+        for file in entrypoint.sh run_tests.py test_suite.py functional_plan.py env_parser.py env_setup.py command_utils.py mount_subdir_executor.py trash_executor.py cache_node_executor.py hot_upgrade_executor.py dirstat_executor.py mds_manage_executor.py client_mount_ops.py client_cache_group_ops.py large_scale_cache_setup.py large_scale_cache_observer.py; do
+            if [[ ! -f "$DTT_PERFORMANCE_RUNTIME_DIR/$file" ]]; then
+                echo "Error: functional test runtime missing: $file"
+                return 1
+            fi
+            case "$file" in
+                entrypoint.sh) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/entrypoint.sh:ro") ;;
+                env_parser.py|env_setup.py|command_utils.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/config/$file:ro") ;;
+                client_*.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/client_test/mixins/${file#client_}:ro") ;;
+                large_scale_*.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/large_scale_test/${file#large_scale_}:ro") ;;
+                *_executor.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/${file%_executor.py}_test/executor.py:ro") ;;
+                run_tests.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/run_tests.py:ro") ;;
+                *) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/test_runner/$file:ro") ;;
+            esac
+        done
+        docker_cmd+=("-e" "DTT_INT_RERUNS=${DTT_INT_RERUNS:-0}")
+        if [[ "${DTT_INT_EXISTING_FS:-}" == true ]]; then docker_cmd+=("-e" "DTT_INT_EXISTING_FS=true"); fi
+        for key in DTT_CLIENT_BINARY DTT_CACHE_BINARY DTT_MDS_CLIENT_BINARY; do
+            if [[ -n "${!key:-}" ]]; then docker_cmd+=("-e" "$key=${!key}"); fi
+        done
     fi
 
     # Build entrypoint command
