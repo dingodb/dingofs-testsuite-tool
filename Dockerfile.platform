@@ -1,0 +1,12 @@
+ARG BASE_IMAGE
+FROM ${BASE_IMAGE}
+USER root
+# Remove inherited sources completely before copying the reviewed tree.
+RUN rm -rf /dingofs-integration-test /opt/dtt-platform
+COPY dingofs-integration-test/ /dingofs-integration-test/
+COPY package/ /opt/dtt-platform/
+COPY scripts/ /scripts/
+COPY package/entrypoint.sh /entrypoint.sh
+RUN chmod +x /entrypoint.sh /opt/dtt-platform/dingofs-testsuite-tool /opt/dtt-platform/dtt-ai-analyze && mkdir -p /dingofs-integration-test/log
+ENV PYTHONDONTWRITEBYTECODE=1
+ENTRYPOINT ["/bin/bash", "/entrypoint.sh"]

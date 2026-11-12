@@ -86,7 +86,22 @@ def collect_source(root, aliases=None):
     return result
 
 
-def capability(root, inspect_image=True):
+def source_location(root):
+    value=json.loads(safe_file(root,'functional-runtime.json').read_text()).get('source_location','directory')
+    if value not in ('directory','image'):
+        raise ValueError('Unsupported functional source location')
+    return value
+
+
+def source_mounts(root):
+    if source_location(root)=='image':
+        # Keep image cases/configuration frozen after verification; scratch,
+        # private home and outputs have their own writable mounts.
+        return ['--read-only', '--tmpfs', '/tmp:rw,nosuid,nodev,mode=1777']
+    return ['-v',str(root/'dingofs-integration-test')+':/dingofs-integration-test:ro']
+
+
+def capability(root, inspect_image=True, container_source=None, legacy_env=None):
     # -B/PYTHONDONTWRITEBYTECODE prevents writes, not consumption of existing
     # caches. Installed code must execute only the source bytes we hash below.
     # Scan the entire package, including root modules outside SOURCE_DIRS.
@@ -95,6 +110,7 @@ def capability(root, inspect_image=True):
             raise ValueError('Installed functional runtime contains Python bytecode/cache: ' +
                              path.relative_to(root).as_posix())
     document = json.loads(safe_file(root, 'functional-runtime.json').read_text())
+    image_source = source_location(root)=='image'
     cap = document['functional_runtime']
     if (set(cap) != {'version', 'features', 'files', 'image_id', 'source_manifest'}
             or cap['version'] != 2 or set(cap['features']) != set(FEATURES)
@@ -117,11 +133,30 @@ def capability(root, inspect_image=True):
     for name, expected in files.items():
         if not isinstance(expected, str) or not HEX.fullmatch(expected) or digest(safe_file(root, name,package_aliases)) != expected:
             raise ValueError('Functional runtime file digest mismatch: ' + name)
-    if not package_aliases.keys() <= files.keys():
+    if not image_source and not package_aliases.keys() <= files.keys():
         raise ValueError('Unlisted functional source alias')
-    source = collect_source(root / 'dingofs-integration-test',aliases)
-    if source != cap['source_manifest'] or any(files.get('dingofs-integration-test/' + name) != sha for name, sha in source.items()):
-        raise ValueError('Functional runtime source manifest mismatch')
+    manifest=cap['source_manifest']
+    if not isinstance(manifest,dict) or not set(REQUIRED) <= manifest.keys():
+        raise ValueError('Incomplete functional source manifest')
+    for name,sha in manifest.items():
+        relative=PurePosixPath(name)
+        if (relative.is_absolute() or '..' in relative.parts or str(relative)!=name
+                or not isinstance(sha,str) or not HEX.fullmatch(sha)):
+            raise ValueError('Invalid functional source manifest')
+    if not image_source:
+        source = collect_source(root / 'dingofs-integration-test',aliases)
+        if source != manifest or any(files.get('dingofs-integration-test/' + name) != sha for name, sha in source.items()):
+            raise ValueError('Functional runtime source manifest mismatch')
+    elif container_source is not None:
+        source = collect_source(container_source,aliases)
+        # Legacy custom environments add exactly one selected configuration;
+        # an existing reviewed file must still match its frozen hash.
+        if legacy_env is not None and re.fullmatch(r'env_platform_[a-f0-9]{3,64}', legacy_env):
+            custom = 'conf/env/' + legacy_env + '.yaml'
+            if custom not in manifest:
+                source.pop(custom, None)
+        if source != manifest:
+            raise ValueError('Image functional source manifest mismatch')
     if inspect_image:
         runtime = runtime_engine(root)
         result = subprocess.run([runtime, 'image', 'inspect', cap['image_id']],
@@ -130,6 +165,13 @@ def capability(root, inspect_image=True):
         arch = {'amd64': 'x86_64', 'arm64': 'aarch64'}.get(image['Architecture'])
         if image['Id'] != cap['image_id'] or image['Os'] != 'linux' or arch != document['architecture']:
             raise ValueError('Functional runtime image identity or architecture mismatch')
+        if image_source:
+            result=subprocess.run([runtime,'run','--rm','--pull=never','--network=none','--read-only',
+                '-e','PYTHONDONTWRITEBYTECODE=1','--entrypoint','python3',cap['image_id'],
+                '/opt/dtt-platform/functional_runtime.py','--image-source-manifest'],
+                check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=60)
+            if json.loads(result.stdout)!=manifest:
+                raise ValueError('Image functional source manifest mismatch')
     return cap
 
 
@@ -246,7 +288,7 @@ def launch(root, argv):
     command = [engine, 'run', '--rm', '--pull=never', '--net=host', *identity_args,
                '--entrypoint', '/entrypoint.sh',
                '-v', str(root) + ':/functional-runtime:ro',
-               '-v', str(root / 'dingofs-integration-test') + ':/dingofs-integration-test:ro',
+               *source_mounts(root),
                '-v', str(root / 'entrypoint.sh') + ':/entrypoint.sh:ro',
                '-v', str(args.case_plan) + ':' + str(args.case_plan) + ':ro',
                '-v', str(args.functional_context) + ':' + str(args.functional_context) + ':ro',
@@ -293,7 +335,7 @@ the custom environment while all imported program/case bytes stay read-only.
     output.chmod(0o700)
     command = [engine, 'run', '--rm', '--pull=never', '--net=host', *identity,
         '--entrypoint', '/entrypoint.sh', '-v', str(root) + ':/functional-runtime:ro',
-        '-v', str(root / 'dingofs-integration-test') + ':/dingofs-integration-test:ro',
+        *source_mounts(root),
         '-v', str(root / 'entrypoint.sh') + ':/entrypoint.sh:ro',
         '-v', str(args.case_plan) + ':/functional-plan/plan.json:ro',
         '-v', str(output) + ':/output',
@@ -319,7 +361,10 @@ the custom environment while all imported program/case bytes stay read-only.
     with tempfile.TemporaryDirectory(prefix='dtt-custom-conf-') as temporary:
         if args.int_env_file:
             conf = Path(temporary) / 'conf'
-            shutil.copytree(root / 'dingofs-integration-test/conf', conf)
+            if source_location(root)=='image':
+                copy_image_conf(engine,cap['image_id'],conf)
+            else:
+                shutil.copytree(root / 'dingofs-integration-test/conf', conf)
             custom = conf / 'env' / (args.env + '.yaml')
             custom.parent.mkdir(parents=True, exist_ok=True)
             custom.write_bytes(args.int_env_file.read_bytes())
@@ -330,22 +375,40 @@ the custom environment while all imported program/case bytes stay read-only.
         return subprocess.call(command)
 
 
+def copy_image_conf(engine, image_id, destination):
+    result=subprocess.run([engine,'create','--entrypoint','/bin/true',image_id],
+        check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,text=True,timeout=30)
+    container=result.stdout.strip()
+    if not re.fullmatch(r'[a-f0-9]{64}',container):
+        raise ValueError('Invalid temporary image container identity')
+    try:
+        destination.mkdir(mode=0o700)
+        subprocess.run([engine,'cp',container+':/dingofs-integration-test/conf/.',str(destination)],check=True,timeout=60)
+    finally:
+        subprocess.run([engine,'rm',container],check=True,stdout=subprocess.PIPE,stderr=subprocess.PIPE,timeout=30)
+
+
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     root = Path(__file__).resolve().parent
+    if argv == ['--image-source-manifest']:
+        metadata=json.loads((root/'image-manifest.json').read_text())
+        print(json.dumps(collect_source(Path('/dingofs-integration-test'),metadata.get('source_aliases',{})),sort_keys=True))
+        return 0
     if argv == ['--functional-capabilities', '--format', 'json']:
         print(json.dumps(capability(root), sort_keys=True))
         return 0
     if argv[:1] == ['--verify-container']:
         if sys.version_info < (3, 10):
             raise ValueError('Guided container requires Python 3.10 or newer')
-        cap = capability(root, inspect_image=False)
+        cap = capability(root, inspect_image=False,container_source=Path('/dingofs-integration-test'))
         read_context(Path(argv[1]), cap)
         return 0
     if argv == ['--verify-legacy-container']:
         if sys.version_info < (3, 10):
             raise ValueError('Functional container requires Python 3.10 or newer')
-        capability(root, inspect_image=False)
+        capability(root, inspect_image=False,container_source=Path('/dingofs-integration-test'),
+                   legacy_env=os.environ.get('INT_ENV'))
         return 0
     if '--case-plan' in argv and '--functional-context' not in argv:
         return launch_legacy(root, argv)
