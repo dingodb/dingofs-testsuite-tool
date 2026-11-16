@@ -46,6 +46,14 @@ mkdir -p "$CONFIG_DIR"
 
 load_config() {
     local key="$1"
+    if [[ "$key" == mdsaddr && -n "${DTT_MDSADDR:-}" ]]; then
+        printf '%s' "$DTT_MDSADDR"
+        return
+    fi
+    if [[ "$key" == custom && -n "${DTT_CUSTOM_DIR:-}" ]]; then
+        printf '%s' "$DTT_CUSTOM_DIR"
+        return
+    fi
     local file=""
     local default=""
     case "$key" in
@@ -578,8 +586,40 @@ prepare_chaos_tool_volume() {
         dtt-chaos-volume "$run_uid" "$run_gid"
 }
 
+show_ai_storage_help() {
+    cat <<'EOF'
+AI Storage 单客户端场景（独立选择，不包含在 all 中）:
+  fio:      ai-storage-b01-read/write, ai-storage-t02-read, ai-storage-t03-read/write, ai-storage-c01
+  elbencho: ai-storage-t01-read, ai-storage-t03-read/write, ai-storage-l01-read
+  mdtest:   ai-storage-t03
+  使用完整场景名，例如 ai-storage-t03-read；read/write 不是字面场景名。
+AI Storage 参数（仅用于以上场景）:
+  --ai-storage-dry-run                 只打印计划，不运行存储负载
+  --ai-storage-dataset-size 256G       单客户端合计数据量，各 job 分摊
+  小文件默认遍历全部 19 种大小/块组合；指定 file-size 或 bs 筛选，同时指定则单组。
+  --ai-storage-file-size 256K          单个小文件或 elbencho shard 大小
+  --ai-storage-file-count 100000       总文件数，不是每个线程的文件数
+  --ai-storage-bs 64K                  请求块大小
+  --ai-storage-jobs 4                  fio jobs / mdtest ranks
+  --ai-storage-threads 4               elbencho threads
+  --ai-storage-iodepth 1               每个 job/thread 的请求队列深度
+  --ai-storage-direct 0|1              buffered/direct；C01 默认 0，其余数据场景 1
+  --ai-storage-repeats 3               独立测量轮次；C01 固定三轮
+  --ai-storage-runtime 600             T02 测量秒数
+  --ai-storage-ramp-time 30            T02 预热秒数
+  --ai-storage-phase all|prepare|measure  分开准备与测量（默认 all）
+  --ai-storage-data-id ID              复用 prepare 生成的数据标识
+  --custom-dir PATH                  custom 场景目录（仅本次运行，不修改配置）
+  --ai-storage-layout unique|shared    mdtest 目录布局（默认 unique）
+  --ai-storage-cache-note TEXT         记录缓存条件，默认不宣称冷缓存
+  详细说明见 docs/AI_STORAGE_SINGLE_CLIENT.md；AI Storage 调参统一使用 --ai-storage-*。
+
+EOF
+}
+
 show_help() {
     show_performance_help
+    show_ai_storage_help
     cat << EOF
 dingofs-Testsuite-tools (dtt)
 =============================
@@ -992,6 +1032,7 @@ EOF
 
 show_elbencho_help() {
     show_performance_help
+    show_ai_storage_help
     cat << 'EOF'
 elbencho — 分布式存储基准测试
 ============================
@@ -1654,7 +1695,7 @@ cmd_daily() {
     fi
 
     # commit_info.yaml file path
-    local commit_info_file="__USER_HOME__/jenkins_workdir/script-main/commit_info.yaml"
+    local commit_info_file="${DTT_COMMIT_INFO_FILE:-${HOME}/jenkins_workdir/script-main/commit_info.yaml}"
 
     # Build docker/podman command
     local rm_flag="--rm"
@@ -2703,7 +2744,7 @@ fio / elbencho 通用性能测试:
   --dry-run             只输出执行计划，不运行存储 I/O 或发送通知
   --operation read|write 是 --rw 的别名；别名冲突会报错。
   新参数可搭配 seq_read/seq_write/rand_read/rand_write，自动转换为对应 --rw。
-  all/small/custom 等场景不接受通用测试新参数。
+  all/small/custom/ai-storage-* 等场景不接受通用测试新参数。
   fio --file-count 也启用通用测试；elbencho 显式旧场景保留每线程计数语义。
   示例: dtt -t fio --concurrency 4 --file-count 16 --file-size 64MiB --rw randrw --dry-run
 
@@ -2752,6 +2793,7 @@ run_testsuite() {
 
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
+    local -a ai_storage_args=()
     local PERFORMANCE_MODE="" PERFORMANCE_REQUESTED="" PERFORMANCE_CONCURRENCY="" PERFORMANCE_TOTAL_SIZE=""
     local PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
     local -a PERFORMANCE_ARGS=()
@@ -2759,6 +2801,7 @@ run_testsuite() {
     local elbencho_file_count="" elbencho_dir_count="" elbencho_threads="" elbencho_operation=""
     local wechat="" email_to=""
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
+    local int_case_plan="" int_env_file=""
     local setup_env=""
     local do_cleanup=""
     local run_mode="one-shot"
@@ -2766,7 +2809,7 @@ run_testsuite() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation)
+            --custom-dir|--concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation|--ai-storage-dataset-size|--ai-storage-file-size|--ai-storage-file-count|--ai-storage-bs|--ai-storage-jobs|--ai-storage-threads|--ai-storage-iodepth|--ai-storage-direct|--ai-storage-repeats|--ai-storage-runtime|--ai-storage-ramp-time|--ai-storage-phase|--ai-storage-data-id|--ai-storage-layout|--ai-storage-cache-note)
                 if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:-}" == -* ]]; then
                     echo "Error: $1 requires a value"
                     return 1
@@ -2774,6 +2817,14 @@ run_testsuite() {
                 ;;
         esac
         case "$1" in
+            --custom-dir)
+                if [[ ! -d "$2" || "$2" != /* ]]; then
+                    echo "Error: --custom-dir requires an existing absolute directory"
+                    return 1
+                fi
+                config_custom="$2"
+                shift 2
+                ;;
             -m|--mount)
                 mount="$2"
                 shift 2
@@ -2840,6 +2891,14 @@ run_testsuite() {
                 fio_direct="$2"
                 shift 2
                 ;;
+            --ai-storage-dry-run)
+                ai_storage_args+=("$1")
+                shift
+                ;;
+            --ai-storage-dataset-size|--ai-storage-file-size|--ai-storage-file-count|--ai-storage-bs|--ai-storage-jobs|--ai-storage-threads|--ai-storage-iodepth|--ai-storage-direct|--ai-storage-repeats|--ai-storage-runtime|--ai-storage-ramp-time|--ai-storage-phase|--ai-storage-data-id|--ai-storage-layout|--ai-storage-cache-note)
+                ai_storage_args+=("$1" "$2")
+                shift 2
+                ;;
             --file-size)
                 fio_file_size="$2"
                 shift 2
@@ -2882,6 +2941,15 @@ run_testsuite() {
                 ;;
             --int-report-port)
                 int_report_port="$2"
+                shift 2
+                ;;
+            --case-plan)
+                int_case_plan="$2"
+                shift 2
+                ;;
+            --int-env-file)
+                if [[ $# -lt 2 ]]; then echo "Error: --int-env-file requires an absolute file" >&2; return 1; fi
+                int_env_file="$2"
                 shift 2
                 ;;
             --case)
@@ -2969,6 +3037,14 @@ run_testsuite() {
         scenario=benchmark
     fi
 
+    if [[ ${#ai_storage_args[@]} -gt 0 && "$scenario" != ai-storage-* ]]; then
+        echo "Error: --ai-storage-* options require a ai-storage-* scenario"
+        return 1
+    fi
+    if [[ "$scenario" == ai-storage-* && -n "$fio_numjobs$fio_direct$fio_file_size$fio_block_size$elbencho_file_count$elbencho_dir_count$elbencho_threads$elbencho_operation" ]]; then
+        echo "Error: AI Storage scenarios require --ai-storage-* tuning options"
+        return 1
+    fi
     if [[ ! "$run_mode" =~ ^(one-shot|long-running)$ ]]; then
         echo "Error: Invalid --mode '$run_mode'. Valid modes: one-shot, long-running"
         return 1
@@ -3375,6 +3451,35 @@ run_testsuite() {
         docker_cmd+=("-v" "${config_custom}:/custom")
     fi
 
+    if [[ "$tool" == int && -n "$int_case_plan" ]]; then
+        if [[ ! -f "$int_case_plan" ]]; then
+            echo "Error: case plan does not exist: $int_case_plan"
+            return 1
+        fi
+        docker_cmd+=("-v" "${int_case_plan}:/functional-plan/plan.json:ro" "-e" "INT_CASE_PLAN=/functional-plan/plan.json")
+    fi
+    if [[ -n "$int_env_file" ]]; then
+        if [[ "$tool" != int || ! "$int_env_file" = /* || ! -f "$int_env_file" || -L "$int_env_file" || ! -r "$int_env_file" ]]; then
+            echo "Error: --int-env-file requires a readable regular file and -t int" >&2
+            return 1
+        fi
+        if [[ ! "${int_env_override:-}" =~ ^env_platform_[a-f0-9]{3,64}$ ]]; then
+            echo "Error: --int-env-file requires --env env_platform_<id>" >&2
+            return 1
+        fi
+        docker_cmd+=("-v" "${int_env_file}:/dingofs-integration-test/conf/env/${int_env_override}.yaml:ro")
+    fi
+    if [[ -n "${DTT_INT_SOURCE_FILE:-}" ]]; then
+        if [[ "$tool" != int || ! "$DTT_INT_SOURCE_FILE" =~ ^env_[A-Za-z0-9_-]+\.yaml$ ||
+              ! "${DTT_INT_SOURCE_SHA256:-}" =~ ^[a-f0-9]{64}$ ||
+              ! "${DTT_INT_STORAGE_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: invalid integration source verification request" >&2
+            return 1
+        fi
+        docker_cmd+=(-e "INT_EXPECTED_SOURCE_FILE=$DTT_INT_SOURCE_FILE"
+                     -e "INT_EXPECTED_SOURCE_SHA256=$DTT_INT_SOURCE_SHA256"
+                     -e "INT_EXPECTED_STORAGE_SHA256=$DTT_INT_STORAGE_SHA256")
+    fi
     # Pass INT_ENV for integration test environment (--env overrides config)
     local int_env="${int_env_override:-$(load_config int_env)}"
     int_env="${int_env:-env_126_smoke}"
@@ -3441,6 +3546,71 @@ run_testsuite() {
         docker_cmd+=("-e" "TEST_TIMES=$test_times")
     fi
 
+    # A managed runtime keeps the benchmark contract in sync with the host CLI,
+    # even when an existing image still contains an older entrypoint.
+    if [[ "$PERFORMANCE_MODE" == yes && -n "${DTT_PERFORMANCE_RUNTIME_DIR:-}" ]]; then
+        local runtime_file runtime_target
+        for runtime_file in entrypoint.sh performance_benchmark.py performance_plan.py performance_report.py performance_tools.py; do
+            if [[ ! -f "$DTT_PERFORMANCE_RUNTIME_DIR/$runtime_file" ]]; then
+                echo "Error: incomplete performance runtime: $runtime_file"
+                return 1
+            fi
+            runtime_target="/scripts/$runtime_file"
+            [[ "$runtime_file" == entrypoint.sh ]] && runtime_target=/entrypoint.sh
+            docker_cmd+=(-v "$DTT_PERFORMANCE_RUNTIME_DIR/$runtime_file:$runtime_target:ro")
+        done
+    fi
+
+    # Keep metadata parsing and MPI slot allocation current with the managed CLI.
+    if [[ "$tool" == mdtest && "$scenario" == ai-storage-t03 ]]; then
+        local metadata_runtime="${DTT_PERFORMANCE_RUNTIME_DIR:-}"
+        if [[ -z "$metadata_runtime" ]]; then
+            local cli_root
+            cli_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+            if [[ -f "$cli_root/scripts/ai_storage_scenarios.py" ]]; then
+                docker_cmd+=(-v "$cli_root/scripts/ai_storage_scenarios.py:/scripts/ai_storage_scenarios.py:ro")
+                docker_cmd+=(-v "$cli_root/entrypoint.sh:/entrypoint.sh:ro")
+            fi
+        elif [[ -f "$metadata_runtime/ai_storage_scenarios.py" && -f "$metadata_runtime/entrypoint.sh" ]]; then
+            docker_cmd+=(-v "$metadata_runtime/ai_storage_scenarios.py:/scripts/ai_storage_scenarios.py:ro")
+            docker_cmd+=(-v "$metadata_runtime/entrypoint.sh:/entrypoint.sh:ro")
+        else
+            echo "Error: mdtest runtime missing; update the dtt tool package"
+            return 1
+        fi
+    fi
+
+    if [[ "$tool" == int && -n "$int_case_plan" ]]; then
+        if [[ -z "${DTT_PERFORMANCE_RUNTIME_DIR:-}" ]]; then
+            echo "Error: exact functional case plan requires platform-managed runtime; update dtt tool package"
+            return 1
+        fi
+        local file
+        for file in entrypoint.sh run_tests.py test_suite.py functional_plan.py env_parser.py env_setup.py command_utils.py mount_subdir_executor.py trash_executor.py cache_node_executor.py hot_upgrade_executor.py dirstat_executor.py mds_manage_executor.py client_mount_ops.py client_cache_group_ops.py large_scale_cache_setup.py large_scale_cache_observer.py; do
+            if [[ ! -f "$DTT_PERFORMANCE_RUNTIME_DIR/$file" ]]; then
+                echo "Error: functional test runtime missing: $file"
+                return 1
+            fi
+            case "$file" in
+                entrypoint.sh) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/entrypoint.sh:ro") ;;
+                env_parser.py|env_setup.py|command_utils.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/config/$file:ro") ;;
+                client_*.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/client_test/mixins/${file#client_}:ro") ;;
+                large_scale_*.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/large_scale_test/${file#large_scale_}:ro") ;;
+                *_executor.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/${file%_executor.py}_test/executor.py:ro") ;;
+                run_tests.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/run_tests.py:ro") ;;
+                *) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/test_runner/$file:ro") ;;
+            esac
+        done
+    fi
+
+    if [[ "$tool" == int && -n "$int_case_plan" ]]; then
+        docker_cmd+=("-e" "DTT_INT_RERUNS=${DTT_INT_RERUNS:-0}")
+        if [[ "${DTT_INT_EXISTING_FS:-}" == true ]]; then docker_cmd+=("-e" "DTT_INT_EXISTING_FS=true"); fi
+        for key in DTT_CLIENT_BINARY DTT_CACHE_BINARY DTT_MDS_CLIENT_BINARY; do
+            if [[ -n "${!key:-}" ]]; then docker_cmd+=("-e" "$key=${!key}"); fi
+        done
+    fi
+
     # Build entrypoint command
     local entrypoint_cmd=(
         /entrypoint.sh
@@ -3468,6 +3638,8 @@ run_testsuite() {
         fi
         entrypoint_cmd+=(-s "$scenario")
     fi
+
+    entrypoint_cmd+=("${ai_storage_args[@]}")
 
     # Add duration for vdbench stability
     if [[ -n "$vd_duration" ]]; then
@@ -5472,7 +5644,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--dry-run|-t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
+        --custom-dir|--concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--dry-run|--ai-storage-*|-t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;

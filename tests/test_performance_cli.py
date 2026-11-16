@@ -289,5 +289,19 @@ class PerformanceCliTest(unittest.TestCase):
         self.assertEqual(argv[argv.index('--direct') + 1], '0')
 
 
+    def test_managed_performance_runtime_overrides_old_image_scripts(self):
+        from unittest.mock import patch
+        runtime = self.temp / 'performance runtime'
+        runtime.mkdir()
+        names = ['entrypoint.sh', 'performance_benchmark.py', 'performance_plan.py', 'performance_report.py', 'performance_tools.py']
+        for name in names: (runtime / name).write_text('fixture')
+        with patch.dict(os.environ, DTT_PERFORMANCE_RUNTIME_DIR=str(runtime)):
+            result, argv = self.wrapper(['-t', 'fio', '-s', 'benchmark'])
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        for name in names:
+            target = '/entrypoint.sh' if name == 'entrypoint.sh' else '/scripts/' + name
+            self.assertIn(str(runtime / name) + ':' + target + ':ro', argv)
+
+
 if __name__ == '__main__':
     unittest.main()

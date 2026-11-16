@@ -1,5 +1,7 @@
 # DingoFS 存储性能测试工具
 
+AI Storage 单客户端 AI 存储场景（fio、mdtest、elbencho）：[场景、数据量与运行命令](docs/AI_STORAGE_SINGLE_CLIENT.md)。
+
 DingoFS 存储性能测试工具是一个 Docker 镜像，集成了 fio、vdbench、mdtest、pjdtest、ltp、mlperf 等多种存储性能测试工具，支持通过命令行参数快速执行存储性能测试。
 
 ## 快速开始 (dingofs-testsuite-tool)
@@ -133,7 +135,7 @@ dtt -t fio --rw read --concurrency 4 --total-size 1G --file-count 16 --rounds 3
 
 所有平均值只统计成功轮。遇到失败即停止后续轮次、保留现场、返回非零退出码；部分成功不会被显示为完整通过。带宽/IOPS/延迟采用工具原生指标，耗时包含进程启动和同步；fio 的 `end_fsync` 与 elbencho 的独立 `SYNC` 计时不同，跨工具比较应同时查看耗时和原始结果。小数据量的实际混合读比例可能偏离目标比例。
 
-兼容性：显式旧场景且未带新参数时行为保持原样（例如 `-s all`、`-s small`、自定义 `.fio`）。`--rounds`、`--concurrency`、`--total-size`、`--rw` 等新参数启用通用入口；它们也可与 `seq_read/seq_write/rand_read/rand_write` 搭配。旧 elbencho `small/full/custom` 脚本不支持 Direct I/O 覆盖，需改用通用入口。
+兼容性：显式旧场景且未带新参数时行为保持原样（例如 `-s all`、`-s small`、自定义 `.fio`、`ai-storage-*`）。`--rounds`、`--concurrency`、`--total-size`、`--rw` 等新参数启用通用入口；它们也可与 `seq_read/seq_write/rand_read/rand_write` 搭配。AI Storage 组合继续使用自己的 `--ai-storage-*` 参数。旧 elbencho `small/full/custom` 脚本不支持 Direct I/O 覆盖，需改用通用入口。
 
 本地开发验证（只使用新建的临时目录，不连接集群）：
 
@@ -141,7 +143,8 @@ dtt -t fio --rw read --concurrency 4 --total-size 1G --file-count 16 --rounds 3
 PYTHONPATH=tests python3 -m unittest \
   test_performance_plan test_performance_runner test_performance_tools \
   test_performance_report test_performance_cli \
-  test_fio_cli test_elbencho_cli test_elbencho_report test_elbencho_small_report
+  test_fio_cli test_elbencho_cli test_elbencho_report test_elbencho_small_report \
+  test_ai_storage_cli test_ai_storage_matrix test_ai_storage_scenarios
 
 # 需要本机已安装真正的 fio 与 elbencho；可用 DTT_FIO_BIN / DTT_ELBENCHO_BIN 指定路径
 DTT_RUN_REAL_PERFORMANCE=1 PYTHONPATH=tests python3 -m unittest test_performance_smoke -v

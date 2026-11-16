@@ -75,6 +75,7 @@ fi
 
 show_help() {
     show_performance_help
+    show_ai_storage_help
     cat << EOF
 DingoFS Storage Testsuite Tools
 ===============================
@@ -287,6 +288,7 @@ EOF
 
 show_fio_help() {
     show_performance_help
+    show_ai_storage_help
     cat << EOF
 FIO 存储性能测试
 =================
@@ -344,6 +346,7 @@ EOF
 }
 
 show_mdtest_help() {
+    show_ai_storage_help
     cat << EOF
 MDTEST 元数据测试
 ==================
@@ -551,6 +554,42 @@ EOF
 # Validation Functions
 # ==============================================================================
 
+show_ai_storage_help() {
+    cat <<'EOF'
+AI Storage 单客户端场景（独立选择，不包含在 all 中）:
+  fio:      ai-storage-b01-read/write, ai-storage-t02-read, ai-storage-t03-read/write, ai-storage-c01
+  elbencho: ai-storage-t01-read, ai-storage-t03-read/write, ai-storage-l01-read
+  mdtest:   ai-storage-t03
+  使用完整场景名，例如 ai-storage-t03-read；read/write 不是字面场景名。
+AI Storage 参数（仅用于以上场景）:
+  --ai-storage-dry-run                 只打印计划，不运行存储负载
+  --ai-storage-dataset-size 256G       单客户端合计数据量，各 job 分摊
+  小文件默认遍历全部 19 种大小/块组合；指定 file-size 或 bs 筛选，同时指定则单组。
+  --ai-storage-file-size 256K          单个小文件或 elbencho shard 大小
+  --ai-storage-file-count 100000       总文件数，不是每个线程的文件数
+  --ai-storage-bs 64K                  请求块大小
+  --ai-storage-jobs 4                  fio jobs / mdtest ranks
+  --ai-storage-threads 4               elbencho threads
+  --ai-storage-iodepth 1               每个 job/thread 的请求队列深度
+  --ai-storage-direct 0|1              buffered/direct；C01 默认 0，其余数据场景 1
+  --ai-storage-repeats 3               独立测量轮次；C01 固定三轮
+  --ai-storage-runtime 600             T02 测量秒数
+  --ai-storage-ramp-time 30            T02 预热秒数
+  --ai-storage-phase all|prepare|measure  分开准备与测量（默认 all）
+  --ai-storage-data-id ID              复用 prepare 生成的数据标识
+  --ai-storage-layout unique|shared    mdtest 目录布局（默认 unique）
+  --ai-storage-cache-note TEXT         记录缓存条件，默认不宣称冷缓存
+  详细说明见 docs/AI_STORAGE_SINGLE_CLIENT.md；AI Storage 调参统一使用 --ai-storage-*。
+
+EOF
+}
+
+ai_storage_run() {
+    python3 "${DTT_AI_STORAGE_RUNNER:-/scripts/ai_storage_scenarios.py}" \
+        --tool "$TOOL" --scenario "$SCENARIO" --mount "$MOUNT" --output "$OUTPUT" \
+        "${AI_STORAGE_ARGS[@]}"
+}
+
 # Normalize the common benchmark contract without requiring host-side Python.
 # Keep this self-contained helper in sync with the other CLI boundary script.
 prepare_performance_options() {
@@ -668,7 +707,7 @@ fio / elbencho 通用性能测试:
   --dry-run             只输出执行计划，不运行存储 I/O 或发送通知
   --operation read|write 是 --rw 的别名；别名冲突会报错。
   新参数可搭配 seq_read/seq_write/rand_read/rand_write，自动转换为对应 --rw。
-  all/small/custom 等场景不接受通用测试新参数。
+  all/small/custom/ai-storage-* 等场景不接受通用测试新参数。
   fio --file-count 也启用通用测试；elbencho 显式旧场景保留每线程计数语义。
   示例: dtt -t fio --concurrency 4 --file-count 16 --file-size 64MiB --rw randrw --dry-run
 
@@ -677,6 +716,15 @@ EOF
 
 validate_params() {
     local error=0
+    if [[ "$SCENARIO" == ai-storage-* ]]; then
+        if [[ -n "$FIO_NUMJOBS$FIO_DIRECT$FIO_FILE_SIZE$FIO_BLOCK_SIZE$ELBENCHO_FILE_COUNT$ELBENCHO_DIR_COUNT$ELBENCHO_THREADS$ELBENCHO_OPERATION" ]]; then
+            echo "Error: AI Storage scenarios require --ai-storage-* tuning options"
+            exit 1
+        fi
+    elif [[ ${#AI_STORAGE_ARGS[@]} -gt 0 ]]; then
+        echo "Error: --ai-storage-* options require a ai-storage-* scenario"
+        exit 1
+    fi
 
     # Validate TOOL (PARM-06)
     if [[ -z "$TOOL" ]]; then
@@ -808,6 +856,13 @@ scenario_exists() {
     local tool="$1"
     local scenario="$2"
 
+    if [[ "$scenario" == ai-storage-* ]]; then
+        case "$tool:$scenario" in
+            fio:ai-storage-b01-read|fio:ai-storage-b01-write|fio:ai-storage-t02-read|fio:ai-storage-t03-read|fio:ai-storage-t03-write|fio:ai-storage-c01|elbencho:ai-storage-t01-read|elbencho:ai-storage-t03-read|elbencho:ai-storage-t03-write|elbencho:ai-storage-l01-read|mdtest:ai-storage-t03) return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+
     # Check custom override first
     case "$tool" in
         smoke)
@@ -872,7 +927,7 @@ scenario_exists() {
             ;;
         int|integration)
             # int scenarios: all registered modules in run_tests.py
-            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr)$ ]]
+            [[ "$scenario" == "all" ]] || [[ "$scenario" =~ ^(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr|mdtest|posix|large_scale)(,(quota|client|cache_node|fault|mount_subdir|basic_file_operation|metadata_consistency|trash|dirstat|mds_manage|hot_upgrade|warmup|xattr|mdtest|posix|large_scale))*$ ]]
             ;;
         mlperf)
             # mlperf scenarios: resnet50, unet3d, cosmoflow, checkpointing, all
@@ -981,6 +1036,7 @@ get_scenario_name() {
 # ==============================================================================
 
 parse_args() {
+    AI_STORAGE_ARGS=()
     # Check for -- separator and extract app args
     local app_args=()
     local found_separator=false
@@ -998,7 +1054,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,concurrency:,total-size:,rw:,rounds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,concurrency:,total-size:,rw:,rounds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -1119,6 +1175,14 @@ parse_args() {
                 ;;
             --operation)
                 ELBENCHO_OPERATION="$2"
+                shift 2
+                ;;
+            --ai-storage-dry-run)
+                AI_STORAGE_ARGS+=(--dry-run)
+                shift
+                ;;
+            --ai-storage-dataset-size|--ai-storage-file-size|--ai-storage-file-count|--ai-storage-bs|--ai-storage-jobs|--ai-storage-threads|--ai-storage-iodepth|--ai-storage-direct|--ai-storage-repeats|--ai-storage-runtime|--ai-storage-ramp-time|--ai-storage-phase|--ai-storage-data-id|--ai-storage-layout|--ai-storage-cache-note)
+                AI_STORAGE_ARGS+=("--${1#--ai-storage-}" "$2")
                 shift 2
                 ;;
             --mode)
@@ -1483,6 +1547,10 @@ performance_run() {
 dispatch_tool() {
     if [[ "$PERFORMANCE_MODE" == yes ]]; then
         performance_run
+        return $?
+    fi
+    if [[ "$SCENARIO" == ai-storage-* ]]; then
+        ai_storage_run
         return $?
     fi
     export TEST_MOUNT="$MOUNT"
@@ -2281,6 +2349,23 @@ integration_run() {
 
     cd "$INTEGRATION_DIR"
 
+    if [[ -n "${INT_EXPECTED_SOURCE_FILE:-}" ]]; then
+        if [[ ! "$INT_EXPECTED_SOURCE_FILE" =~ ^env_[A-Za-z0-9_-]+\.yaml$ ||
+              ! "${INT_EXPECTED_SOURCE_SHA256:-}" =~ ^[a-f0-9]{64}$ ||
+              ! "${INT_EXPECTED_STORAGE_SHA256:-}" =~ ^[a-f0-9]{64}$ ]]; then
+            echo "Error: invalid predefined environment digest request" >&2
+            return 1
+        fi
+        local source_file="$INTEGRATION_DIR/conf/env/$INT_EXPECTED_SOURCE_FILE"
+        local storage_file="$INTEGRATION_DIR/conf/storage.yaml"
+        if [[ ! -f "$source_file" || ! -f "$storage_file" ||
+              "$(sha256sum "$source_file" | cut -d' ' -f1)" != "$INT_EXPECTED_SOURCE_SHA256" ||
+              "$(sha256sum "$storage_file" | cut -d' ' -f1)" != "$INT_EXPECTED_STORAGE_SHA256" ]]; then
+            echo "Error: predefined environment differs from platform source; update dtt image" >&2
+            return 1
+        fi
+    fi
+
     # Determine env: --env flag > INT_ENV env var > default dynamic env
     local test_env="${INT_ENV:-}"
 
@@ -2319,14 +2404,20 @@ EOF
     # Run tests with run_tests.py (supports env YAML with full cluster config)
     local report_dir="${int_output}/allure-results"
     mkdir -p "$report_dir"
-    local cmd=(
-        python3 run_tests.py "$module" --env "$test_env"
-        --report-path "$int_output" --report-dir "$report_dir"
-        --reruns 2 --email ""
-    )
+    local -a modules=()
+    IFS=',' read -ra modules <<< "$module"
+    local cmd=(python3 run_tests.py)
+    local selected_module
+    for selected_module in "${modules[@]}"; do
+        cmd+=("$selected_module" --env "$test_env")
+    done
+    cmd+=(--report-path "$int_output" --report-dir "$report_dir" --reruns "${DTT_INT_RERUNS:-0}" --email "")
     # Append fault-specific flags from env vars
     if [[ -n "${INT_CASE:-}" ]]; then
         cmd+=("--case" "$INT_CASE")
+    fi
+    if [[ -n "${INT_CASE_PLAN:-}" ]]; then
+        cmd+=("--case-plan" "$INT_CASE_PLAN" "--mds-addr" "$mdsaddr" "--event-file" "$OUTPUT/functional-events.jsonl" "--cancel-file" "$OUTPUT/functional-cancel")
     fi
     if [[ "${INT_ENABLE_EXT_CHAOS:-}" == "1" ]]; then
         cmd+=("--enable-external-chaos")
@@ -2335,11 +2426,12 @@ EOF
         export DINGOFS_SKIP_CHAOS_RESIDUE_CHECK=1
     fi
     echo "Executing: ${cmd[*]}"
+    local exit_code=0
     (
         trap 'kill -INT $$' INT TERM
         "${cmd[@]}" 2>&1 | tee "$log_file"
-    )
-    local exit_code=${PIPESTATUS[0]}
+        exit "${PIPESTATUS[0]}"
+    ) || exit_code=$?
 
     # Accumulate allure reports to persistent int_allure_report directory
     local int_report_base="$OUTPUT/int_allure_report"
