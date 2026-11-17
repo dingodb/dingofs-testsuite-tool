@@ -91,7 +91,11 @@ def run_step(plan, step, binary, timeout):
         row['returncode'] = result
         if result:
             raise RuntimeError('tool exited with %d: %s' % (result, log_tail(step['log_path'])))
-        metrics = parse_metrics(plan['tool'], step['result_path'], 'write' if not step['measured'] else plan['mode'])
+        expected_workers = (plan['concurrency'] if step['measured'] and
+                            plan.get('runtime_seconds') is not None and plan['tool'] == 'fio' else None)
+        metrics = parse_metrics(plan['tool'], step['result_path'],
+                                'write' if not step['measured'] else plan['mode'],
+                                expected_workers=expected_workers)
         if step['measured'] and plan.get('runtime_seconds') is not None:
             measured_seconds = metrics.get('measurement_seconds')
             if measured_seconds is None or measured_seconds < plan['runtime_seconds'] * 0.95:

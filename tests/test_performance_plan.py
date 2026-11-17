@@ -117,6 +117,8 @@ class PerformancePlanTest(unittest.TestCase):
                 prepare = build_step(plan, 'prepare', 0)
                 measured = build_step(plan, 'read', 1)
                 if tool == 'fio':
+                    self.assertIn('group_reporting=1', prepare['config'])
+                    self.assertIn('group_reporting=0', measured['config'])
                     self.assertNotIn('time_based=', prepare['config'])
                     self.assertNotIn('runtime=', prepare['config'])
                     self.assertIn('time_based=1', measured['config'])

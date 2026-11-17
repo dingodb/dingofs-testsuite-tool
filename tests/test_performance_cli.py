@@ -129,6 +129,17 @@ class PerformanceCliTest(unittest.TestCase):
         self.assertEqual(entrypoint.returncode, 0, entrypoint.stdout + entrypoint.stderr)
         self.assertEqual(json.loads(entrypoint.stdout), {'runtime_seconds': 60})
 
+    def test_long_running_dry_run_is_rejected_before_launch_at_both_shell_boundaries(self):
+        options = ['-t', 'fio', '--runtime-seconds', '60', '--dry-run', '--mode', 'long-running']
+        wrapper, argv = self.wrapper(options)
+        self.assertNotEqual(wrapper.returncode, 0)
+        self.assertEqual(argv, [])
+        self.assertIn('--dry-run', wrapper.stdout + wrapper.stderr)
+        entrypoint, argv, _ = self.entrypoint(options, exit_code=17)
+        self.assertNotEqual(entrypoint.returncode, 0)
+        self.assertEqual(argv, [])
+        self.assertIn('--dry-run', entrypoint.stdout + entrypoint.stderr)
+
     def test_invalid_runtime_seconds_fails_before_runtime(self):
         for value in ('0', '604801', '1.5', '01'):
             with self.subTest(value=value):

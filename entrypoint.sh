@@ -789,6 +789,10 @@ validate_params() {
         echo "Error: Invalid mode '$MODE'. Valid modes: one-shot, long-running"
         error=1
     fi
+    if [[ "$PERFORMANCE_DRY_RUN" == yes && "$MODE" == long-running ]]; then
+        echo "Error: --dry-run cannot be combined with --mode long-running"
+        error=1
+    fi
 
     if [[ -n "$FIO_NUMJOBS" ]] && [[ ! "$FIO_NUMJOBS" =~ ^[1-9][0-9]*$ ]]; then
         echo "Error: --numjobs must be a positive integer, got '$FIO_NUMJOBS'"

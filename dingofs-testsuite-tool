@@ -3054,6 +3054,10 @@ run_testsuite() {
         echo "Error: Invalid --mode '$run_mode'. Valid modes: one-shot, long-running"
         return 1
     fi
+    if [[ "$PERFORMANCE_DRY_RUN" == yes && "$run_mode" == long-running ]]; then
+        echo "Error: --dry-run cannot be combined with --mode long-running"
+        return 1
+    fi
     if [[ -n "$ai_analysis" ]] && [[ "$run_mode" != "one-shot" ]]; then
         echo "Error: --ai-analysis is supported only with --mode one-shot"
         return 1

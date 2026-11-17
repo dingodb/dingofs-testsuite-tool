@@ -48,11 +48,22 @@ observed = (0 if os.environ.get('DTT_TEST_ZERO') else
             total - 4096 if os.environ.get('DTT_TEST_SHORT') or common.get('time_based') else total)
 runtime = (900 if os.environ.get('DTT_TEST_MEASURE_SHORT') else
            int(common.get('runtime', '1')) * 1000)
-out.write_text(json.dumps({'jobs': [{'error': 0, direction: {
-    'io_bytes': observed, 'bw_bytes': round_number * 100 * 1048576,
-    'iops': round_number * 1000, 'total_ios': observed // int(common['bs']),
-    'lat_ns': {'mean': 2000}, 'runtime': runtime
-}}]}))
+workers = [name for name in cfg.sections() if name != 'global'] if common.get('time_based') else ['worker-0']
+jobs = []
+for index, name in enumerate(workers):
+    count = observed // len(workers) + (index < observed % len(workers))
+    worker_runtime = runtime
+    if index == len(workers) - 1 and os.environ.get('DTT_TEST_WORKER_STATE') == 'short':
+        worker_runtime = 900
+    if index == len(workers) - 1 and os.environ.get('DTT_TEST_WORKER_STATE') == 'zero':
+        count = 0
+        worker_runtime = 0
+    jobs.append({'jobname': name, 'error': 0, direction: {
+        'io_bytes': count, 'bw_bytes': round_number * 100 * 1048576 / len(workers) if count else 0,
+        'iops': round_number * 1000 / len(workers) if count else 0,
+        'total_ios': count // int(common['bs']), 'lat_ns': {'mean': 2000}, 'runtime': worker_runtime
+    }})
+out.write_text(json.dumps({'jobs': jobs}))
 '''
 
 
@@ -127,6 +138,13 @@ class PerformanceRunnerTest(unittest.TestCase):
     def test_short_or_zero_timed_measurement_cannot_pass(self):
         for key in ('DTT_TEST_MEASURE_SHORT', 'DTT_TEST_ZERO'):
             with self.subTest(key=key), patch.dict(os.environ, {key: 'yes'}):
+                report = execute(self.plan('--runtime-seconds', '2'))
+                self.assertEqual(report['status'], 'failed')
+                self.assertEqual(report['statistics']['successful_rounds'], 0)
+
+    def test_timed_round_fails_when_one_fio_worker_is_short_or_idle(self):
+        for worker_state in ('short', 'zero'):
+            with self.subTest(worker_state=worker_state), patch.dict(os.environ, {'DTT_TEST_WORKER_STATE': worker_state}):
                 report = execute(self.plan('--runtime-seconds', '2'))
                 self.assertEqual(report['status'], 'failed')
                 self.assertEqual(report['statistics']['successful_rounds'], 0)

@@ -51,16 +51,31 @@ def _positive_milliseconds(value, name):
     return milliseconds / 1000
 
 
-def _fio_measurement_seconds(document, directions):
-    durations = []
-    for job in document['jobs']:
+def _fio_measurement_seconds(document, directions, expected_workers=None):
+    jobs = document['jobs']
+    if expected_workers is not None:
+        names = [job.get('jobname') for job in jobs]
+        if (len(jobs) != expected_workers or not all(isinstance(name, str) for name in names) or
+                set(names) != {'worker-%d' % index for index in range(expected_workers)}):
+            raise ValueError('fio result does not contain every configured worker')
+    worker_durations = []
+    for job in jobs:
+        io_bytes = sum(_number(job.get(direction, {}).get('io_bytes', 0),
+                               'fio io_bytes', integer=True) for direction in directions)
+        if expected_workers is not None and io_bytes <= 0:
+            raise ValueError('fio worker completed no I/O: ' + str(job.get('jobname')))
+        durations = []
         for direction in directions:
             data = job.get(direction, {})
             if _number(data.get('io_bytes', 0), 'fio io_bytes', integer=True) > 0:
                 if 'runtime' not in data:
                     return None
                 durations.append(_positive_milliseconds(data['runtime'], 'fio runtime'))
-    return max(durations) if durations else None
+        if durations:
+            worker_durations.append(max(durations))
+    if not worker_durations:
+        return None
+    return min(worker_durations) if expected_workers is not None else max(worker_durations)
 
 
 def _elbencho_measurement_seconds(text, directions):
@@ -168,7 +183,7 @@ def _elbencho_components(text, directions):
     return components
 
 
-def parse_metrics(tool, result_path, mode):
+def parse_metrics(tool, result_path, mode, expected_workers=None):
     """Return bytes, MiB/s, IOPS and operation-weighted mean latency in us.
 
     Result byte counts cover read + write for mixed workloads. Latency is None
@@ -181,7 +196,7 @@ def parse_metrics(tool, result_path, mode):
     if tool == "fio":
         document = json.loads(text)
         components = _fio_components(document, directions)
-        measurement_seconds = _fio_measurement_seconds(document, directions)
+        measurement_seconds = _fio_measurement_seconds(document, directions, expected_workers)
     elif tool == "elbencho":
         components = _elbencho_components(text, directions)
         measurement_seconds = _elbencho_measurement_seconds(text, directions)

@@ -117,7 +117,9 @@ def build_step(plan, phase, round_number):
                 log_path=str(output / (prefix + '.log')),
                 command_path=str(output / (prefix + '.command')))
     if plan['tool'] == 'fio':
-        lines = ['[global]', 'ioengine=libaio', 'thread=1', 'group_reporting=1',
+        separate_workers = not prepare and plan.get('runtime_seconds') is not None
+        lines = ['[global]', 'ioengine=libaio', 'thread=1',
+                 'group_reporting=%d' % (not separate_workers),
                  'directory=' + plan['data_dir'], 'filesize=%d' % plan['file_size_bytes'],
                  'bs=%d' % plan['block_size_bytes'], 'direct=%d' % plan['direct'],
                  'iodepth=%d' % plan['iodepth'], 'rw=' + mode,

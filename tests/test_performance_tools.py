@@ -111,6 +111,31 @@ class PerformanceToolsTest(unittest.TestCase):
         self.assertAlmostEqual(fio['measurement_seconds'], 0.006)
         self.assertAlmostEqual(elbencho['measurement_seconds'], 0.004)
 
+    def test_timed_fio_requires_every_expected_worker_and_uses_shortest_duration(self):
+        original = json.loads((FIXTURES / 'fio-seq-write.json').read_text())['jobs'][0]
+        first = deepcopy(original)
+        first['jobname'] = 'worker-0'
+        first['write']['runtime'] = 60000
+        second = deepcopy(original)
+        second['jobname'] = 'worker-1'
+        second['write']['runtime'] = 1000
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / 'fio.json'
+            path.write_text(json.dumps({'jobs': [first, second]}))
+            result = parse_metrics('fio', path, 'write', expected_workers=2)
+            self.assertEqual(result['measurement_seconds'], 1)
+            for change in ('zero', 'missing', 'duplicate'):
+                with self.subTest(change=change), self.assertRaises(ValueError):
+                    rows = deepcopy([first, second])
+                    if change == 'zero':
+                        rows[1]['write']['io_bytes'] = 0
+                    elif change == 'missing':
+                        rows.pop()
+                    else:
+                        rows[1]['jobname'] = 'worker-0'
+                    path.write_text(json.dumps({'jobs': rows}))
+                    parse_metrics('fio', path, 'write', expected_workers=2)
+
     def test_invalid_native_measurement_duration_is_rejected(self):
         for tool, key, container in (('fio', 'runtime', 'write'), ('elbencho', 'elapsed_time_ms', 'last_done')):
             original = json.loads((FIXTURES / f'{tool}-seq-write.json').read_text())
