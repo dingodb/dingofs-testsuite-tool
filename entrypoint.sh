@@ -4109,10 +4109,14 @@ smoke_run() {
 # ==============================================================================
 
 run_one_shot() {
-    echo "Running in one-shot mode..."
+    if [[ "$PERFORMANCE_DRY_RUN" != yes ]]; then
+        echo "Running in one-shot mode..."
+    fi
     dispatch_tool
     local exit_code=$?
-    echo "Test completed with exit code: $exit_code"
+    if [[ "$PERFORMANCE_DRY_RUN" != yes ]]; then
+        echo "Test completed with exit code: $exit_code"
+    fi
     exit $exit_code
 }
 
@@ -4264,18 +4268,20 @@ main() {
 
     setup_ai_export
 
-    echo "=============================================="
-    echo "DingoFS Storage Testsuite Tools"
-    echo "=============================================="
-    echo "Tool:     $TOOL"
-    echo "Scenario: $SCENARIO"
-    echo "Mount:    $MOUNT"
-    echo "Output:   $OUTPUT"
-    echo "Run Time: $RUN_TIMESTAMP"
-    echo "NP:       $NP"
-    echo "Mode:     $MODE"
-    echo "=============================================="
-    echo ""
+    if [[ "$PERFORMANCE_DRY_RUN" != yes ]]; then
+        echo "=============================================="
+        echo "DingoFS Storage Testsuite Tools"
+        echo "=============================================="
+        echo "Tool:     $TOOL"
+        echo "Scenario: $SCENARIO"
+        echo "Mount:    $MOUNT"
+        echo "Output:   $OUTPUT"
+        echo "Run Time: $RUN_TIMESTAMP"
+        echo "NP:       $NP"
+        echo "Mode:     $MODE"
+        echo "=============================================="
+        echo ""
+    fi
 
     # Execute based on mode
     if [[ "$MODE" == "long-running" ]]; then

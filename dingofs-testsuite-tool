@@ -3673,20 +3673,24 @@ run_testsuite() {
         [[ -n "$elbencho_operation" ]] && entrypoint_cmd+=(--operation "$elbencho_operation")
     fi
 
-    echo "Running testsuite with image: $image"
-    echo "Mount: $mount -> $container_mount  (vol: ${host_mount}:${container_target})"
-    echo "Output: $output -> /output"
-    echo "Tool: $tool"
-    if [[ -n "$scenario" ]]; then
-        echo "Scenario: $scenario"
-    fi
-    if [[ "$use_chaos_volume" == "yes" ]]; then
-        echo "Chaos data: volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
-    fi
-    if [[ "$tool" == "mdtest" ]]; then
-        echo "NP: $np"
-    fi
-    echo ""
+    local banner_fd=1
+    [[ "$PERFORMANCE_DRY_RUN" == yes ]] && banner_fd=2
+    {
+        echo "Running testsuite with image: $image"
+        echo "Mount: $mount -> $container_mount  (vol: ${host_mount}:${container_target})"
+        echo "Output: $output -> /output"
+        echo "Tool: $tool"
+        if [[ -n "$scenario" ]]; then
+            echo "Scenario: $scenario"
+        fi
+        if [[ "$use_chaos_volume" == "yes" ]]; then
+            echo "Chaos data: volume $DINGOFS_CHAOS_TOOL_VOLUME -> /opt/dingofs-chaos-tool/var (rw)"
+        fi
+        if [[ "$tool" == "mdtest" ]]; then
+            echo "NP: $np"
+        fi
+        echo ""
+    } >&"$banner_fd"
 
     # Execute docker command with entrypoint
     local test_exit

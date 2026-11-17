@@ -110,7 +110,12 @@ def run_step(plan, step, binary, timeout):
     return row
 
 
-def execute(plan, timeout=86400):
+def execute(plan, timeout=None):
+    if timeout is None:
+        # This is a per-process safety watchdog, separate from the tool's
+        # native measurement timer. Leave room for startup and final sync.
+        runtime = plan.get('runtime_seconds') or 0
+        timeout = max(86400, runtime * 1.1 + 60)
     output = Path(plan['output_dir'])
     output.mkdir(parents=True, exist_ok=False)
     (output / 'plan.json').write_text(json.dumps(plan, ensure_ascii=False, indent=2), encoding='utf-8')

@@ -33,7 +33,8 @@ class PerformanceCliTest(unittest.TestCase):
         self.addCleanup(bin_dir.cleanup)
         runtime = Path(bin_dir.name) / 'runtime'
         runtime.write_text('#!/usr/bin/env python3\nimport json, pathlib, sys\n'
-                           f'pathlib.Path({str(recorded)!r}).write_text(json.dumps(sys.argv[1:]))\n')
+                           f'pathlib.Path({str(recorded)!r}).write_text(json.dumps(sys.argv[1:]))\n'
+                           'if "--dry-run" in sys.argv: print(json.dumps({"runtime_seconds": 60}))\n')
         runtime.chmod(0o755)
         for key, value in {'image': 'test-image', 'testdir': self.mount,
                            'output': self.output, 'runtime': runtime}.items():
@@ -58,6 +59,7 @@ class PerformanceCliTest(unittest.TestCase):
         runner = self.temp / 'fake runner.py'
         runner.write_text('import json, pathlib, sys\n'
                           f'pathlib.Path({str(recorded)!r}).write_text(json.dumps(sys.argv[1:]))\n'
+                          'if "--dry-run" in sys.argv: print(json.dumps({"runtime_seconds": 60}))\n'
                           f'sys.exit({exit_code})\n')
         events = self.temp / 'events'
         harness = self.temp / 'entrypoint harness.sh'
@@ -117,6 +119,15 @@ class PerformanceCliTest(unittest.TestCase):
                 result, argv, _ = self.entrypoint(['-t', tool, '--runtime-seconds', '60', '--dry-run'])
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(argv[argv.index('--runtime-seconds') + 1], '60')
+
+    def test_timed_dry_run_stdout_is_one_json_plan_at_both_shell_boundaries(self):
+        options = ['-t', 'fio', '--runtime-seconds', '60', '--dry-run']
+        wrapper, _ = self.wrapper(options)
+        self.assertEqual(wrapper.returncode, 0, wrapper.stdout + wrapper.stderr)
+        self.assertEqual(json.loads(wrapper.stdout), {'runtime_seconds': 60})
+        entrypoint, _, _ = self.entrypoint(options)
+        self.assertEqual(entrypoint.returncode, 0, entrypoint.stdout + entrypoint.stderr)
+        self.assertEqual(json.loads(entrypoint.stdout), {'runtime_seconds': 60})
 
     def test_invalid_runtime_seconds_fails_before_runtime(self):
         for value in ('0', '604801', '1.5', '01'):

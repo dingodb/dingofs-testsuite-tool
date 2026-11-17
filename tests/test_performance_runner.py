@@ -9,7 +9,7 @@ from unittest.mock import patch
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'scripts'))
-from performance_benchmark import execute
+from performance_benchmark import execute, run_process
 from performance_plan import build_plan, parser
 
 
@@ -130,6 +130,13 @@ class PerformanceRunnerTest(unittest.TestCase):
                 report = execute(self.plan('--runtime-seconds', '2'))
                 self.assertEqual(report['status'], 'failed')
                 self.assertEqual(report['statistics']['successful_rounds'], 0)
+
+    def test_default_watchdog_allows_supported_runtime_longer_than_a_day(self):
+        plan = self.plan('--runtime-seconds', '100000')
+        with patch('performance_benchmark.run_process', wraps=run_process) as processes:
+            report = execute(plan)
+        self.assertEqual(report['status'], 'passed', report)
+        self.assertGreater(processes.call_args.args[2], 100000)
 
     def test_preparation_failure_does_not_start_read_round(self):
         with patch.dict(os.environ, {'DTT_TEST_FAIL': 'prepare'}):
