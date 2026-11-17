@@ -108,6 +108,26 @@ class PerformanceCliTest(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
                 self.assertEqual(argv[argv.index('--direct'):], expected)
 
+    def test_runtime_seconds_reaches_entrypoint_and_runner(self):
+        for tool in ('fio', 'elbencho'):
+            with self.subTest(tool=tool):
+                result, argv = self.wrapper(['-t', tool, '--runtime-seconds', '60', '--dry-run'])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(argv[argv.index('--runtime-seconds') + 1], '60')
+                result, argv, _ = self.entrypoint(['-t', tool, '--runtime-seconds', '60', '--dry-run'])
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(argv[argv.index('--runtime-seconds') + 1], '60')
+
+    def test_invalid_runtime_seconds_fails_before_runtime(self):
+        for value in ('0', '604801', '1.5', '01'):
+            with self.subTest(value=value):
+                result, argv = self.wrapper(['-t', 'fio', '--runtime-seconds', value])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(argv, [])
+                result, argv, _ = self.entrypoint(['-t', 'fio', '--runtime-seconds', value])
+                self.assertNotEqual(result.returncode, 0)
+                self.assertEqual(argv, [])
+
     def test_new_options_translate_legacy_direction_to_one_benchmark(self):
         for scene, mode in [('seq_read', 'read'), ('seq_write', 'write'),
                             ('rand_read', 'randread'), ('rand_write', 'randwrite')]:

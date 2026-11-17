@@ -35,7 +35,7 @@ ELBENCHO_DIR_COUNT="${ELBENCHO_DIR_COUNT:-}"
 ELBENCHO_THREADS="${ELBENCHO_THREADS:-}"
 ELBENCHO_OPERATION="${ELBENCHO_OPERATION:-}"
 PERFORMANCE_MODE="" PERFORMANCE_REQUESTED="" PERFORMANCE_CONCURRENCY="" PERFORMANCE_TOTAL_SIZE=""
-PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
+PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_RUNTIME_SECONDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
 PERFORMANCE_ARGS=()
 
 # Tool paths (from Dockerfile)
@@ -656,13 +656,13 @@ prepare_performance_options() {
     local option value
     local -a pairs=(--direct "$direct" --concurrency "$workers" --file-size "$file_size"
         --file-count "$file_count" --total-size "$PERFORMANCE_TOTAL_SIZE" --block-size "$block_size"
-        --rw "$rw" --rounds "$PERFORMANCE_ROUNDS" --iodepth "$PERFORMANCE_IODEPTH"
+        --rw "$rw" --rounds "$PERFORMANCE_ROUNDS" --runtime-seconds "$PERFORMANCE_RUNTIME_SECONDS" --iodepth "$PERFORMANCE_IODEPTH"
         --read-percent "$PERFORMANCE_READ_PERCENT")
     while [[ ${#pairs[@]} -gt 0 ]]; do
         option="${pairs[0]}"; value="${pairs[1]}"; pairs=("${pairs[@]:2}")
         [[ -z "$value" ]] && continue
         case "$option" in
-            --concurrency|--file-count|--rounds|--iodepth)
+            --concurrency|--file-count|--rounds|--iodepth|--runtime-seconds)
                 if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
                     echo "Error: $option must be a positive integer, got '$value'"; return 1
                 fi ;;
@@ -683,6 +683,9 @@ prepare_performance_options() {
                     echo "Error: $option must be a positive size such as 4KiB or 1GiB"; return 1
                 fi ;;
         esac
+        if [[ "$option" == --runtime-seconds ]] && (( ${#value} > 6 || value > 604800 )); then
+            echo "Error: --runtime-seconds must be at most 604800"; return 1
+        fi
         PERFORMANCE_ARGS+=("$option" "$value")
     done
     [[ "$PERFORMANCE_DRY_RUN" == yes ]] && PERFORMANCE_ARGS+=(--dry-run)
@@ -702,6 +705,7 @@ fio / elbencho 通用性能测试:
   --rw MODE            read/write/randread/randwrite/rw/randrw（默认 write）
   --direct 0|1          direct I/O（默认 1）
   --rounds N            测试轮数（默认 1）
+  --runtime-seconds N   每轮测量秒数（1..604800；缺省为有限数据量模式）
   --iodepth N           I/O 队列深度（默认 1）
   --read-percent N      混合读写的读比例（0..100）
   --dry-run             只输出执行计划，不运行存储 I/O 或发送通知
@@ -1054,7 +1058,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,concurrency:,total-size:,rw:,rounds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,concurrency:,total-size:,rw:,rounds:,runtime-seconds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -1064,7 +1068,7 @@ parse_args() {
 
     while true; do
         case "$1" in
-            --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation)
+            --concurrency|--total-size|--rw|--rounds|--runtime-seconds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation)
                 if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
                     echo "Error: $1 requires a value"
                     exit 1
@@ -1126,13 +1130,14 @@ parse_args() {
                 NP="$2"
                 shift 2
                 ;;
-            --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent)
+            --concurrency|--total-size|--rw|--rounds|--runtime-seconds|--iodepth|--read-percent)
                 PERFORMANCE_REQUESTED=yes
                 case "$1" in
                     --concurrency) PERFORMANCE_CONCURRENCY="$2" ;;
                     --total-size) PERFORMANCE_TOTAL_SIZE="$2" ;;
                     --rw) PERFORMANCE_RW="$2" ;;
                     --rounds) PERFORMANCE_ROUNDS="$2" ;;
+                    --runtime-seconds) PERFORMANCE_RUNTIME_SECONDS="$2" ;;
                     --iodepth) PERFORMANCE_IODEPTH="$2" ;;
                     --read-percent) PERFORMANCE_READ_PERCENT="$2" ;;
                 esac

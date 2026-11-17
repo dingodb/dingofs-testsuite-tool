@@ -12,7 +12,7 @@ from urllib.parse import quote, unquote, urlsplit
 
 METRICS = (
     "bandwidth_mib_s", "read_mib_s", "write_mib_s", "iops",
-    "latency_mean_us", "io_bytes", "elapsed_seconds",
+    "latency_mean_us", "io_bytes", "measurement_seconds", "elapsed_seconds",
 )
 
 
@@ -176,19 +176,25 @@ def _render(report):
         ("挂载点", plan.get("mount", "—")), ("测试数据目录", plan.get("data_dir", "—")),
         ("报告输出目录", plan.get("output_dir", "—")), ("工具版本", report.get("tool_version", "—")),
     ]
+    if plan.get('runtime_seconds') is not None:
+        parameters += [('每轮请求测量时间', str(plan['runtime_seconds']) + ' s'),
+                       ('数据集大小', _bytes(plan.get('total_size_bytes')))]
     parameter_html = "".join(f'<div><dt>{_escape(name)}</dt><dd>{_escape(value)}</dd></div>' for name, value in parameters)
     table_rows = []
     for index, row in enumerate(rows):
         metrics = row.get("metrics", {})
         safe_status = row.get("status") if row.get("status") in ("passed", "failed", "interrupted") else "interrupted"
         cells = "".join(f'<td class="number">{_format(metrics.get(key))}</td>' for key in METRICS[:5])
+        timed_cells = (f'<td class="number">{_format(metrics.get("measurement_seconds"))}</td>'
+                       f'<td class="number">{_escape(_bytes(metrics.get("io_bytes")))}</td>'
+                       if plan.get('runtime_seconds') is not None else '')
         table_rows.append(f'<tr data-status="{safe_status}"><td>{_escape(row.get("round", index + 1))}</td>'
-                          f'<td>{_status(row.get("status"))}</td>{cells}'
+                          f'<td>{_status(row.get("status"))}</td>{cells}{timed_cells}'
                           f'<td class="number">{_format(row.get("elapsed_seconds"))}</td>'
                           f'<td>{_artifact_links(row.get("artifacts"))}</td>'
                           f'<td class="error-cell">{_escape(row.get("error") or "—")}</td></tr>')
     if not table_rows:
-        table_rows.append('<tr><td colspan="10" class="muted">尚无测量结果</td></tr>')
+        table_rows.append(f'<tr><td colspan="{12 if plan.get("runtime_seconds") is not None else 10}" class="muted">尚无测量结果</td></tr>')
     error = f'<div class="error">{_escape(report["error"])}</div>' if report.get("error") else ""
     preparation = ""
     if report.get("preparation"):
@@ -214,7 +220,7 @@ def _render(report):
 <section class="panel"><h2>各轮带宽</h2><div class="chart">{_chart(rows)}</div><p class="muted">绿色为成功轮，红色为未成功轮；未成功轮的观测值不参与均值。</p></section>
 {preparation}<section class="panel"><div class="panel-title"><h2>逐轮结果</h2><div><label for="status-filter" class="muted">状态筛选 </label>
 <select id="status-filter"><option value="all">全部</option><option value="passed">通过</option><option value="failed">失败</option><option value="interrupted">中断</option></select></div></div>
-<div class="table-wrap"><table><thead><tr><th>轮次</th><th>状态</th><th>总带宽 MiB/s</th><th>读 MiB/s</th><th>写 MiB/s</th><th>IOPS</th><th>平均延迟 μs</th><th>耗时 s</th><th>原始文件</th><th>错误</th></tr></thead>
+<div class="table-wrap"><table><thead><tr><th>轮次</th><th>状态</th><th>总带宽 MiB/s</th><th>读 MiB/s</th><th>写 MiB/s</th><th>IOPS</th><th>平均延迟 μs</th>{'<th>原生测量时间 s</th><th>实际 I/O 字节</th>' if plan.get('runtime_seconds') is not None else ''}<th>{'进程耗时 s' if plan.get('runtime_seconds') is not None else '耗时 s'}</th><th>原始文件</th><th>错误</th></tr></thead>
 <tbody id="round-results">{''.join(table_rows)}</tbody></table></div></section>
 <section class="panel notes"><h2>统计口径</h2>{interpretation_notes}<p>每个指标分别取成功轮的算术平均值，并展示最小值、最大值和有效样本数。缺失值显示为 —，不会按 0 参与平均。</p>
 <p>延迟为各轮平均延迟的算术平均；不合并延迟分布，也不推算整体 P99。MiB/s 以 1 MiB = 1,048,576 bytes 计算。</p>

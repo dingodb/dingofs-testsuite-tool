@@ -77,6 +77,21 @@ class PerformanceReportTests(unittest.TestCase):
         self.assertEqual(stats["metrics"]["elapsed_seconds"]["mean"], 3.0)
         self.assertEqual(stats["metrics"]["iops"]["mean"], 38400.0)
 
+    def test_timed_report_separates_dataset_io_native_measurement_and_wall_time(self):
+        report = example_report()
+        report['plan']['runtime_seconds'] = 60
+        report['rounds'][0]['requested_runtime_seconds'] = 60
+        report['rounds'][0]['metrics'].update(io_bytes=16777216, measurement_seconds=60.2)
+        report['rounds'][1]['requested_runtime_seconds'] = 60
+        report['rounds'][1]['metrics'].update(io_bytes=33554432, measurement_seconds=60.3)
+        result, _, doc = self.render(report)
+        self.assertEqual(result['statistics']['metrics']['measurement_seconds']['mean'], 60.25)
+        text = ' '.join(doc.text)
+        for label in ('每轮请求测量时间', '原生测量时间', '进程耗时', '数据集大小', '实际 I/O 字节'):
+            self.assertIn(label, text)
+        self.assertIn('60.20', text)
+        self.assertIn('16 MiB', text)
+
     def test_missing_latency_is_not_counted_as_zero(self):
         stats = performance_report.compute_statistics(example_report()["rounds"])
         self.assertEqual(stats["metrics"]["latency_mean_us"],

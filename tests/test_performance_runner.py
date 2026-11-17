@@ -44,11 +44,14 @@ for name in cfg.sections():
         total += file.stat().st_size
 round_number = int(out.stem.split('-')[-1]) if out.stem.startswith('round-') else 9
 direction = 'read' if common['rw'] in ('read', 'randread') else 'write'
-observed = total - 4096 if os.environ.get('DTT_TEST_SHORT') else total
+observed = (0 if os.environ.get('DTT_TEST_ZERO') else
+            total - 4096 if os.environ.get('DTT_TEST_SHORT') or common.get('time_based') else total)
+runtime = (900 if os.environ.get('DTT_TEST_MEASURE_SHORT') else
+           int(common.get('runtime', '1')) * 1000)
 out.write_text(json.dumps({'jobs': [{'error': 0, direction: {
     'io_bytes': observed, 'bw_bytes': round_number * 100 * 1048576,
     'iops': round_number * 1000, 'total_ios': observed // int(common['bs']),
-    'lat_ns': {'mean': 2000}
+    'lat_ns': {'mean': 2000}, 'runtime': runtime
 }}]}))
 '''
 
@@ -106,6 +109,27 @@ class PerformanceRunnerTest(unittest.TestCase):
         self.assertEqual(report['status'], 'failed')
         self.assertIn('bytes', report['error'])
         self.assertEqual(report['statistics']['successful_rounds'], 0)
+
+    def test_timed_read_accepts_actual_io_different_from_dataset_and_retains_native_duration(self):
+        plan = self.plan('--rw', 'read', '--runtime-seconds', '2')
+        report = execute(plan)
+        self.assertEqual(report['status'], 'passed', report)
+        self.assertEqual(self.calls.read_text().splitlines(), ['prepare', 'round-001'])
+        self.assertEqual(report['preparation']['metrics']['io_bytes'], plan['total_size_bytes'])
+        row = report['rounds'][0]
+        self.assertEqual(row['requested_runtime_seconds'], 2)
+        self.assertEqual(row['metrics']['measurement_seconds'], 2)
+        self.assertEqual(row['metrics']['io_bytes'], plan['total_size_bytes'] - 4096)
+        self.assertIn('elapsed_seconds', row)
+        summary = json.loads((Path(plan['output_dir']) / 'summary.json').read_text())
+        self.assertEqual(summary['plan']['runtime_seconds'], 2)
+
+    def test_short_or_zero_timed_measurement_cannot_pass(self):
+        for key in ('DTT_TEST_MEASURE_SHORT', 'DTT_TEST_ZERO'):
+            with self.subTest(key=key), patch.dict(os.environ, {key: 'yes'}):
+                report = execute(self.plan('--runtime-seconds', '2'))
+                self.assertEqual(report['status'], 'failed')
+                self.assertEqual(report['statistics']['successful_rounds'], 0)
 
     def test_preparation_failure_does_not_start_read_round(self):
         with patch.dict(os.environ, {'DTT_TEST_FAIL': 'prepare'}):

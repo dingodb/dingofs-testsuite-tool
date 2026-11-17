@@ -1,4 +1,4 @@
-"""Pure planning for the shared, finite fio/elbencho benchmark interface."""
+"""Pure planning for shared finite and timed fio/elbencho benchmarks."""
 
 import argparse
 from datetime import datetime, timezone
@@ -15,6 +15,13 @@ def positive(value):
     return int(value)
 
 
+def runtime_seconds(value):
+    number = positive(value)
+    if number > 604800:
+        raise argparse.ArgumentTypeError('runtime seconds must be at most 604800')
+    return number
+
+
 def size(value):
     match = re.fullmatch(r'([1-9][0-9]*)([KMGTPE]?)(?:i?B)?', str(value), re.I)
     if not match:
@@ -23,7 +30,7 @@ def size(value):
 
 
 def parser():
-    p = argparse.ArgumentParser(description='Single-client finite performance benchmark; sizes and file count are global totals.')
+    p = argparse.ArgumentParser(description='Single-client performance benchmark; sizes and file count are global totals.')
     p.add_argument('--tool', required=True, choices=('fio', 'elbencho'))
     p.add_argument('--mount', default='/data')
     p.add_argument('--output', default='/output')
@@ -35,6 +42,7 @@ def parser():
     p.add_argument('--total-size', type=size)
     p.add_argument('--block-size', type=size)
     p.add_argument('--rounds', type=positive, default=1)
+    p.add_argument('--runtime-seconds', type=runtime_seconds)
     p.add_argument('--iodepth', type=positive, default=1)
     p.add_argument('--read-percent', type=int)
     p.add_argument('--dry-run', action='store_true')
@@ -83,7 +91,7 @@ def build_plan(args):
             raise ValueError('mount/output paths cannot contain newline, colon, backslash or brackets')
     mount, output = Path(args.mount).absolute(), Path(args.output).absolute()
     run_id = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ-') + uuid.uuid4().hex[:12]
-    return dict(
+    plan = dict(
         tool=args.tool, mode=args.rw, direct=args.direct, concurrency=args.concurrency,
         file_size_bytes=file_size, file_count=count, total_size_bytes=total,
         block_size_bytes=block, rounds=args.rounds, iodepth=args.iodepth,
@@ -94,6 +102,9 @@ def build_plan(args):
         cache_note='未清除操作系统或存储缓存；buffered/direct 按配置执行，不宣称冷缓存。',
         metric_note='带宽、IOPS、延迟采用工具原生数据阶段指标；耗时包含进程启动与同步。fio end_fsync 与 elbencho 独立 SYNC 的计时口径不同，跨工具对比需结合耗时和原始结果。随机模式表示随机偏移，不保证两工具的跨文件访问顺序一致。',
     )
+    if args.runtime_seconds is not None:
+        plan['runtime_seconds'] = args.runtime_seconds
+    return plan
 
 
 def build_step(plan, phase, round_number):
@@ -118,6 +129,8 @@ def build_step(plan, phase, round_number):
             lines.append('end_fsync=1')
         if mode in ('rw', 'randrw'):
             lines.append('rwmixread=%d' % plan['read_percent'])
+        if not prepare and plan.get('runtime_seconds') is not None:
+            lines += ['time_based=1', 'runtime=%d' % plan['runtime_seconds']]
         quotient, remainder = divmod(plan['file_count'], plan['concurrency'])
         for worker in range(plan['concurrency']):
             count = quotient + (worker < remainder)
@@ -140,6 +153,8 @@ def build_step(plan, phase, round_number):
             argv += ['--rwmixpct', str(plan['read_percent'])]
         if write:
             argv += ['--blockvarpct', '100', '--blockvaralgo', 'balanced', '--sync']
+        if not prepare and plan.get('runtime_seconds') is not None:
+            argv += ['--infloop', '--timelimit', str(plan['runtime_seconds'])]
         argv.append(plan['data_dir'] + '/file[0-%d]' % (plan['file_count'] - 1))
         step['argv'] = argv
     return step

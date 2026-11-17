@@ -105,6 +105,23 @@ class PerformanceToolsTest(unittest.TestCase):
         data = {"jobs": [{"error": 0, "read": {"io_bytes": 9007199254740993, "bw_bytes": 4096, "iops": 1}}]}
         self.assertEqual(self.parse("fio", data, "read")["io_bytes"], 9007199254740993)
 
+    def test_native_measurement_duration_is_reported_for_both_tools(self):
+        fio = self.parse('fio', json.loads((FIXTURES / 'fio-seq-write.json').read_text()), 'write')
+        elbencho = self.parse('elbencho', (FIXTURES / 'elbencho-seq-write.json').read_text(), 'write')
+        self.assertAlmostEqual(fio['measurement_seconds'], 0.006)
+        self.assertAlmostEqual(elbencho['measurement_seconds'], 0.004)
+
+    def test_invalid_native_measurement_duration_is_rejected(self):
+        for tool, key, container in (('fio', 'runtime', 'write'), ('elbencho', 'elapsed_time_ms', 'last_done')):
+            original = json.loads((FIXTURES / f'{tool}-seq-write.json').read_text())
+            for value in (0, -1, True, 'nan'):
+                with self.subTest(tool=tool, value=value):
+                    data = deepcopy(original)
+                    target = data['jobs'][0][container] if tool == 'fio' else data[container]
+                    target[key] = value
+                    with self.assertRaises(ValueError):
+                        self.parse(tool, data, 'write')
+
     def test_invalid_latency_is_not_reported_as_unknown(self):
         for tool in ("fio", "elbencho"):
             data = json.loads((FIXTURES / f"{tool}-seq-write.json").read_text())

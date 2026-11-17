@@ -2693,13 +2693,13 @@ prepare_performance_options() {
     local option value
     local -a pairs=(--direct "$direct" --concurrency "$workers" --file-size "$file_size"
         --file-count "$file_count" --total-size "$PERFORMANCE_TOTAL_SIZE" --block-size "$block_size"
-        --rw "$rw" --rounds "$PERFORMANCE_ROUNDS" --iodepth "$PERFORMANCE_IODEPTH"
+        --rw "$rw" --rounds "$PERFORMANCE_ROUNDS" --runtime-seconds "$PERFORMANCE_RUNTIME_SECONDS" --iodepth "$PERFORMANCE_IODEPTH"
         --read-percent "$PERFORMANCE_READ_PERCENT")
     while [[ ${#pairs[@]} -gt 0 ]]; do
         option="${pairs[0]}"; value="${pairs[1]}"; pairs=("${pairs[@]:2}")
         [[ -z "$value" ]] && continue
         case "$option" in
-            --concurrency|--file-count|--rounds|--iodepth)
+            --concurrency|--file-count|--rounds|--iodepth|--runtime-seconds)
                 if [[ ! "$value" =~ ^[1-9][0-9]*$ ]]; then
                     echo "Error: $option must be a positive integer, got '$value'"; return 1
                 fi ;;
@@ -2720,6 +2720,9 @@ prepare_performance_options() {
                     echo "Error: $option must be a positive size such as 4KiB or 1GiB"; return 1
                 fi ;;
         esac
+        if [[ "$option" == --runtime-seconds ]] && (( ${#value} > 6 || value > 604800 )); then
+            echo "Error: --runtime-seconds must be at most 604800"; return 1
+        fi
         PERFORMANCE_ARGS+=("$option" "$value")
     done
     [[ "$PERFORMANCE_DRY_RUN" == yes ]] && PERFORMANCE_ARGS+=(--dry-run)
@@ -2739,6 +2742,7 @@ fio / elbencho 通用性能测试:
   --rw MODE            read/write/randread/randwrite/rw/randrw（默认 write）
   --direct 0|1          direct I/O（默认 1）
   --rounds N            测试轮数（默认 1）
+  --runtime-seconds N   每轮测量秒数（1..604800；缺省为有限数据量模式）
   --iodepth N           I/O 队列深度（默认 1）
   --read-percent N      混合读写的读比例（0..100）
   --dry-run             只输出执行计划，不运行存储 I/O 或发送通知
@@ -2795,7 +2799,7 @@ run_testsuite() {
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local -a ai_storage_args=()
     local PERFORMANCE_MODE="" PERFORMANCE_REQUESTED="" PERFORMANCE_CONCURRENCY="" PERFORMANCE_TOTAL_SIZE=""
-    local PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
+    local PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_RUNTIME_SECONDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
     local -a PERFORMANCE_ARGS=()
     local fio_numjobs="" fio_direct="" fio_file_size="" fio_block_size=""
     local elbencho_file_count="" elbencho_dir_count="" elbencho_threads="" elbencho_operation=""
@@ -2866,13 +2870,14 @@ run_testsuite() {
                 test_times="$2"
                 shift 2
                 ;;
-            --concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent)
+            --concurrency|--total-size|--rw|--rounds|--runtime-seconds|--iodepth|--read-percent)
                 PERFORMANCE_REQUESTED=yes
                 case "$1" in
                     --concurrency) PERFORMANCE_CONCURRENCY="$2" ;;
                     --total-size) PERFORMANCE_TOTAL_SIZE="$2" ;;
                     --rw) PERFORMANCE_RW="$2" ;;
                     --rounds) PERFORMANCE_ROUNDS="$2" ;;
+                    --runtime-seconds) PERFORMANCE_RUNTIME_SECONDS="$2" ;;
                     --iodepth) PERFORMANCE_IODEPTH="$2" ;;
                     --read-percent) PERFORMANCE_READ_PERCENT="$2" ;;
                 esac
@@ -5644,7 +5649,7 @@ dingofs-testsuite-tool() {
         help|--help|-h)
             show_help
             ;;
-        --custom-dir|--concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--dry-run|--ai-storage-*|-t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
+        --custom-dir|--concurrency|--total-size|--rw|--rounds|--runtime-seconds|--iodepth|--read-percent|--dry-run|--ai-storage-*|-t|--tool|-s|--scenario|-n|--np|-m|--mount|-o|--output|--wechat|--email|--bs_size|--numjobs|--direct|--file-size|--block-size|--file-count|--dir-count|--threads|--operation|--scale|--file_count|--gpu_count|--debug|--ai-analysis|--mode)
             # Handle case where command starts with options (no explicit command)
             run_testsuite "$@"
             ;;

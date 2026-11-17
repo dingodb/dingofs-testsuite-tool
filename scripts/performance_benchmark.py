@@ -73,6 +73,8 @@ def validate_dataset(plan):
 def run_step(plan, step, binary, timeout):
     row = dict(round=step['round'], phase=step['phase'], status='failed',
                error='', metrics={}, artifacts={})
+    if step['measured'] and plan.get('runtime_seconds') is not None:
+        row['requested_runtime_seconds'] = plan['runtime_seconds']
     for key in ('result_path', 'log_path', 'command_path', 'config_path'):
         if key in step:
             label = {'result_path': 'json', 'log_path': 'log', 'command_path': 'command', 'config_path': 'config'}[key]
@@ -90,7 +92,11 @@ def run_step(plan, step, binary, timeout):
         if result:
             raise RuntimeError('tool exited with %d: %s' % (result, log_tail(step['log_path'])))
         metrics = parse_metrics(plan['tool'], step['result_path'], 'write' if not step['measured'] else plan['mode'])
-        if metrics['io_bytes'] != plan['total_size_bytes']:
+        if step['measured'] and plan.get('runtime_seconds') is not None:
+            measured_seconds = metrics.get('measurement_seconds')
+            if measured_seconds is None or measured_seconds < plan['runtime_seconds'] * 0.95:
+                raise ValueError('short measurement: native data phase did not reach requested runtime')
+        elif metrics['io_bytes'] != plan['total_size_bytes']:
             raise ValueError('incomplete I/O: %d bytes, expected %d bytes' % (metrics['io_bytes'], plan['total_size_bytes']))
         row['metrics'] = metrics
         if not step['measured'] or step['round'] == 1:

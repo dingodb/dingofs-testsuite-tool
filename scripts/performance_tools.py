@@ -44,6 +44,43 @@ def _mapping(value, name):
     return value
 
 
+def _positive_milliseconds(value, name):
+    milliseconds = _number(value, name, integer=True)
+    if milliseconds <= 0:
+        raise ValueError(name + ' must be positive')
+    return milliseconds / 1000
+
+
+def _fio_measurement_seconds(document, directions):
+    durations = []
+    for job in document['jobs']:
+        for direction in directions:
+            data = job.get(direction, {})
+            if _number(data.get('io_bytes', 0), 'fio io_bytes', integer=True) > 0:
+                if 'runtime' not in data:
+                    return None
+                durations.append(_positive_milliseconds(data['runtime'], 'fio runtime'))
+    return max(durations) if durations else None
+
+
+def _elbencho_measurement_seconds(text, directions):
+    phases = []
+    for line in text.splitlines():
+        if line.strip():
+            value = json.loads(line)
+            phases.extend(value if isinstance(value, list) else [value])
+    mixed = len(directions) == 2
+    matching = [phase for phase in phases if
+                (mixed and re.fullmatch(r'RWMIX\d+', str(phase.get('phase_type', '')).upper())) or
+                (not mixed and str(phase.get('phase_type', '')).upper() == directions[0].upper())]
+    if len(matching) != 1:
+        return None
+    done = _mapping(matching[0].get('last_done'), 'elbencho last_done')
+    if 'elapsed_time_ms' not in done:
+        return None
+    return _positive_milliseconds(done['elapsed_time_ms'], 'elbencho elapsed_time_ms')
+
+
 def _fio_components(document, directions):
     jobs = _mapping(document, "fio result").get("jobs")
     if not isinstance(jobs, list) or not jobs:
@@ -142,9 +179,12 @@ def parse_metrics(tool, result_path, mode):
         raise ValueError("unsupported performance mode: " + mode)
     text = Path(result_path).read_text()
     if tool == "fio":
-        components = _fio_components(json.loads(text), directions)
+        document = json.loads(text)
+        components = _fio_components(document, directions)
+        measurement_seconds = _fio_measurement_seconds(document, directions)
     elif tool == "elbencho":
         components = _elbencho_components(text, directions)
+        measurement_seconds = _elbencho_measurement_seconds(text, directions)
     else:
         raise ValueError("unsupported performance tool: " + tool)
     if not components:
@@ -161,6 +201,7 @@ def parse_metrics(tool, result_path, mode):
         "write_mib_s": write_rate,
         "iops": math.fsum(c[3] for c in components),
         "latency_mean_us": latency,
+        "measurement_seconds": measurement_seconds,
     }
     for key, value in result.items():
         if value is not None:

@@ -87,7 +87,7 @@ dingofs-testsuite-tool help
 
 ## fio / elbencho：统一性能测试入口
 
-两种工具使用相同参数。无需准备 `.fio` 文件：不指定 `-s` 或显式使用 `-s benchmark`，即可运行一次有限数据量的测试。使用 `--rounds` 可以重复测量并生成包含平均值的独立 HTML 报告。
+两种工具使用相同参数。无需准备 `.fio` 文件：不指定 `-s` 或显式使用 `-s benchmark`，即可运行有限数据量或定时测试。使用 `--rounds` 可以重复测量并生成包含平均值的独立 HTML 报告。
 
 ```bash
 # 先查看计划：不运行存储 I/O
@@ -111,6 +111,10 @@ dtt -t elbencho --rw read --direct 1 --concurrency 4 \
 
 # 按总量和数量自动推导单文件大小（每个 64MiB）
 dtt -t fio --rw read --concurrency 4 --total-size 1G --file-count 16 --rounds 3
+
+# 每轮测量 60 秒，数据集仍为 1GiB；先用 --dry-run 查看 JSON 计划
+dtt -t fio --rw read --concurrency 4 --total-size 1G --file-count 16 \
+  --runtime-seconds 60 --rounds 2 --dry-run
 ```
 
 | 参数 | 含义与默认值 |
@@ -124,12 +128,15 @@ dtt -t fio --rw read --concurrency 4 --total-size 1G --file-count 16 --rounds 3
 | `--rw MODE` | `read` 顺序读、`write` 顺序写、`randread` 随机读、`randwrite` 随机写、`rw` 顺序混合、`randrw` 随机混合；默认 `write` |
 | `--read-percent N` | 混合模式的目标读百分比，默认 `50`；其他模式不接受此参数 |
 | `--rounds N` | 测量轮数，默认 `1`；准备数据不算测量轮 |
+| `--runtime-seconds N` | 每轮测量秒数，严格正整数且不超过 `604800`；省略时沿用有限数据量模式 |
 | `--iodepth N` | 每个 worker 的请求队列深度，默认 `1`；实际并行程度取决于工具、I/O 引擎和文件系统 |
 | `--dry-run` | 打印参数和数据量计划，不执行工具；不可与建环境、清理或 AI 分析参数组合 |
 
 `K/M/G/T` 和 `KiB/MiB/GiB/TiB` 均按 1024 进制解释。要求文件数不少于并发数，文件大小可以被块大小整除；Direct I/O 要求块大小和文件大小按 4KiB 对齐。elbencho 随机模式要求总量可被 `block × 并发数` 整除；参数不满足时明确报错，不让工具悄悄缩减数据量。
 
 读和混合模式自动先写入完整数据；准备阶段独立记录，不进入平均值。各测量轮复用本次专属数据目录，数据量不乘轮数，不自动清除缓存。完成或失败后保留数据在 `testdir/dtt-performance/<run-id>/<tool>/`，便于复核；再次执行创建新目录，用户可按报告中的精确目录回收旧数据。
+
+定时模式中，准备仍是有限数据量操作；fio 仅测量阶段启用 `time_based/runtime`，elbencho 仅测量阶段启用 `infloop/timelimit`。`--dry-run` 的计划 JSON 顶层含 `runtime_seconds`，可用于确认运行时支持此参数。数据集大小是保留文件量，实际 I/O 字节可能大于或小于数据集；报告分别显示请求时长、工具原生测量时长、进程耗时、数据集大小与实际 I/O。原生测量短于请求时长的 95%、无有效 I/O 或结果不完整时不会报成功。现有 vdbench `--duration` 参数不变。
 
 报告保存在配置的 output 或 `-o` 目录内的 `performance-<tool>-<run-id>/index.html`，可直接用浏览器打开，无外部网络依赖。页面包含参数、成功/计划轮数、带宽/IOPS/延迟平均值、最小/最大值、逐轮表格和图表，以及原始命令、工具 JSON、日志链接；同时输出 `summary.json` 和 `plan.json`。容器控制台的 `/output/...` 对应宿主机配置的输出目录。
 

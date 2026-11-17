@@ -109,6 +109,31 @@ class PerformancePlanTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'read-percent'):
             self.plan('--rw', 'read', '--read-percent', '70')
 
+    def test_timed_plan_exposes_runtime_and_only_measurement_repeats(self):
+        for tool in ('fio', 'elbencho'):
+            with self.subTest(tool=tool):
+                plan = self.plan('--tool', tool, '--rw', 'read', '--runtime-seconds', '5')
+                self.assertEqual(plan['runtime_seconds'], 5)
+                prepare = build_step(plan, 'prepare', 0)
+                measured = build_step(plan, 'read', 1)
+                if tool == 'fio':
+                    self.assertNotIn('time_based=', prepare['config'])
+                    self.assertNotIn('runtime=', prepare['config'])
+                    self.assertIn('time_based=1', measured['config'])
+                    self.assertIn('runtime=5', measured['config'])
+                else:
+                    self.assertNotIn('--infloop', prepare['argv'])
+                    self.assertNotIn('--timelimit', prepare['argv'])
+                    self.assertIn('--infloop', measured['argv'])
+                    self.assertEqual(measured['argv'][measured['argv'].index('--timelimit') + 1], '5')
+
+    def test_runtime_is_strictly_bounded_and_finite_plan_is_compatible(self):
+        for value in ('0', '-1', '1.5', '01', '604801', 'nan'):
+            with self.subTest(value=value), self.assertRaises(SystemExit):
+                self.plan('--runtime-seconds', value)
+        self.assertEqual(self.plan('--runtime-seconds', '604800')['runtime_seconds'], 604800)
+        self.assertNotIn('runtime_seconds', self.plan())
+
 
 if __name__ == '__main__':
     unittest.main()
