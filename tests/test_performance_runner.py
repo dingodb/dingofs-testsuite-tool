@@ -48,6 +48,10 @@ observed = (0 if os.environ.get('DTT_TEST_ZERO') else
             total - 4096 if os.environ.get('DTT_TEST_SHORT') or common.get('time_based') else total)
 runtime = (900 if os.environ.get('DTT_TEST_MEASURE_SHORT') else
            int(common.get('runtime', '1')) * 1000)
+if out.stem == 'prepare' and os.environ.get('DTT_TEST_PREP_ZERO_MS'):
+    runtime = 0
+if out.stem.startswith('round-') and os.environ.get('DTT_TEST_MEASURE_ZERO_MS'):
+    runtime = 0
 workers = [name for name in cfg.sections() if name != 'global'] if common.get('time_based') else ['worker-0']
 jobs = []
 for index, name in enumerate(workers):
@@ -134,6 +138,19 @@ class PerformanceRunnerTest(unittest.TestCase):
         self.assertIn('elapsed_seconds', row)
         summary = json.loads((Path(plan['output_dir']) / 'summary.json').read_text())
         self.assertEqual(summary['plan']['runtime_seconds'], 2)
+
+    def test_zero_millisecond_finite_preparation_does_not_block_timed_read(self):
+        with patch.dict(os.environ, {'DTT_TEST_PREP_ZERO_MS': 'yes'}):
+            report = execute(self.plan('--rw', 'read', '--runtime-seconds', '2'))
+        self.assertEqual(report['status'], 'passed', report)
+        self.assertEqual(report['preparation']['metrics']['measurement_seconds'], 0)
+        self.assertEqual(report['rounds'][0]['metrics']['measurement_seconds'], 2)
+
+    def test_zero_millisecond_timed_measurement_still_fails(self):
+        with patch.dict(os.environ, {'DTT_TEST_MEASURE_ZERO_MS': 'yes'}):
+            report = execute(self.plan('--runtime-seconds', '2'))
+        self.assertEqual(report['status'], 'failed')
+        self.assertIn('short measurement', report['error'])
 
     def test_short_or_zero_timed_measurement_cannot_pass(self):
         for key in ('DTT_TEST_MEASURE_SHORT', 'DTT_TEST_ZERO'):

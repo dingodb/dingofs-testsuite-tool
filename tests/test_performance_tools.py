@@ -111,6 +111,12 @@ class PerformanceToolsTest(unittest.TestCase):
         self.assertAlmostEqual(fio['measurement_seconds'], 0.006)
         self.assertAlmostEqual(elbencho['measurement_seconds'], 0.004)
 
+    def test_finite_elbencho_preparation_can_complete_with_zero_reported_milliseconds(self):
+        # Native 4-worker preparation completed 1 MiB in less than 1 ms.
+        result = parse_metrics('elbencho', FIXTURES / 'elbencho-fast-prepare.json', 'write')
+        self.assertEqual(result['io_bytes'], 1048576)
+        self.assertEqual(result['measurement_seconds'], 0)
+
     def test_timed_fio_requires_every_expected_worker_and_uses_shortest_duration(self):
         original = json.loads((FIXTURES / 'fio-seq-write.json').read_text())['jobs'][0]
         first = deepcopy(original)
@@ -139,7 +145,7 @@ class PerformanceToolsTest(unittest.TestCase):
     def test_invalid_native_measurement_duration_is_rejected(self):
         for tool, key, container in (('fio', 'runtime', 'write'), ('elbencho', 'elapsed_time_ms', 'last_done')):
             original = json.loads((FIXTURES / f'{tool}-seq-write.json').read_text())
-            for value in (0, -1, True, 'nan'):
+            for value in (-1, True, 'nan'):
                 with self.subTest(tool=tool, value=value):
                     data = deepcopy(original)
                     target = data['jobs'][0][container] if tool == 'fio' else data[container]

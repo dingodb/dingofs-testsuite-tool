@@ -44,10 +44,8 @@ def _mapping(value, name):
     return value
 
 
-def _positive_milliseconds(value, name):
+def _milliseconds(value, name):
     milliseconds = _number(value, name, integer=True)
-    if milliseconds <= 0:
-        raise ValueError(name + ' must be positive')
     return milliseconds / 1000
 
 
@@ -70,7 +68,7 @@ def _fio_measurement_seconds(document, directions, expected_workers=None):
             if _number(data.get('io_bytes', 0), 'fio io_bytes', integer=True) > 0:
                 if 'runtime' not in data:
                     return None
-                durations.append(_positive_milliseconds(data['runtime'], 'fio runtime'))
+                durations.append(_milliseconds(data['runtime'], 'fio runtime'))
         if durations:
             worker_durations.append(max(durations))
     if not worker_durations:
@@ -93,7 +91,7 @@ def _elbencho_measurement_seconds(text, directions):
     done = _mapping(matching[0].get('last_done'), 'elbencho last_done')
     if 'elapsed_time_ms' not in done:
         return None
-    return _positive_milliseconds(done['elapsed_time_ms'], 'elbencho elapsed_time_ms')
+    return _milliseconds(done['elapsed_time_ms'], 'elbencho elapsed_time_ms')
 
 
 def _fio_components(document, directions):
