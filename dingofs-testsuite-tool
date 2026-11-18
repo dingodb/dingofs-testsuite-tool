@@ -3066,7 +3066,14 @@ run_testsuite() {
         [[ -n "$mount" && -n "$output" ]] || { echo "Error: mount and output are required" >&2; return 1; }
         local cli_root mlperf_script
         cli_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
-        mlperf_script="$cli_root/scripts/mlperf_benchmark.py"
+        if [[ -n "${DTT_PERFORMANCE_RUNTIME_DIR:-}" ]]; then
+            mlperf_script="$DTT_PERFORMANCE_RUNTIME_DIR/mlperf_benchmark.py"
+        elif [[ -f "$cli_root/scripts/mlperf_benchmark.py" ]]; then
+            mlperf_script="$cli_root/scripts/mlperf_benchmark.py"
+        else
+            mlperf_script="$cli_root/mlperf_benchmark.py"
+        fi
+        [[ -f "$mlperf_script" ]] || { echo "Error: MLPerf benchmark adapter not found: $mlperf_script" >&2; return 1; }
         local -a mlperf_args=(--mount "$mount" --output "$output" --file-count "$elbencho_file_count")
         [[ -n "$mlperf_model" ]] && mlperf_args+=(--mlperf-model "$mlperf_model")
         [[ -n "$mlperf_epochs" ]] && mlperf_args+=(--mlperf-epochs "$mlperf_epochs")

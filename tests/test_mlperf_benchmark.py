@@ -1,6 +1,7 @@
 import json
 import os
 from pathlib import Path
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -223,6 +224,27 @@ class MlperfBenchmarkTest(unittest.TestCase):
         self.assertEqual(json.loads(result.stdout)['format'], 'dtt-mlperf-v1')
         self.assertFalse(self.mount.exists())
         self.assertFalse(self.output.exists())
+
+    def test_flat_installed_wrapper_dry_run_finds_adapter_without_scripts_dir(self):
+        install = self.root / 'flat-install'
+        install.mkdir()
+        shutil.copyfile(ROOT / 'dingofs-testsuite-tool', install / 'dtt')
+        shutil.copyfile(ADAPTER, install / 'mlperf_benchmark.py')
+        config = self.root / 'config'
+        config.mkdir()
+        (config / 'testdir').write_text(str(self.mount) + '\n')
+        (config / 'output').write_text(str(self.output) + '\n')
+        command = (f'export DINGOFS_TESTSUITE_CONFIG_DIR={shlex.quote(str(config))}\n'
+                   f'source {shlex.quote(str(install / "dtt"))}\n'
+                   'dingofs-testsuite-tool -t mlperf -s benchmark --file-count 4 --dry-run')
+        for extra_env in ({}, {'DTT_PERFORMANCE_RUNTIME_DIR': str(install)}):
+            with self.subTest(extra_env=extra_env):
+                result = subprocess.run(['bash', '-c', command], capture_output=True,
+                                        text=True, env=dict(os.environ, **extra_env))
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(json.loads(result.stdout)['format'], 'dtt-mlperf-v1')
+                self.assertFalse(self.mount.exists())
+                self.assertFalse(self.output.exists())
 
     def test_entrypoint_routes_benchmark_to_adapter_with_pure_dry_run(self):
         runner = self.root / 'runner.py'
