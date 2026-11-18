@@ -1273,6 +1273,8 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于
 
 用法:
   dtt -t mlperf [-s <场景>] [--scale <规模>] [--file_count <数量>] [--gpu_count <数量>]
+  dtt -t mlperf -s benchmark -m TARGET -o OUTPUT --file-count N [--mlperf-model MODEL]
+      [--mlperf-epochs E] [--mlperf-accelerators A] [--concurrency P] [--rounds R] [--dry-run]
 
 参数:
   -s, --scenario <名称>
@@ -1319,6 +1321,9 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于
   dtt -t mlperf -s checkpointing --scale small
 
 注意:
+  - benchmark 为独立的 v2.0 H100 训练 I/O 入口；--file-count 必填，dry-run 输出 dtt-mlperf-v1 JSON
+  - benchmark 模拟加速器，不要求实体 GPU；自定义数据量/epochs 仅供内部对比，非官方合规成绩
+  - benchmark 不接受 --runtime-seconds，也无需交互式 TTY
   - mlperf-storage 已集成到 dtt 主镜像中，与其他工具共用同一个容器 (D-01)
   - 需要 --shm-size=8g 共享内存 (自动设置) 支持 PyTorch DataLoader 多进程数据加载
   - 测试数据写入 dtt config testdir 配置的目录 (挂载到容器内 /data)
@@ -2786,15 +2791,6 @@ run_testsuite() {
     local config_custom=$(load_config custom)
     local runtime=$(load_config runtime)
 
-    if [[ -z "$image" ]]; then
-        echo "Error: No Docker image configured."
-        echo "Please run 'dingofs-testsuite-tool config set image <image>' first."
-        echo ""
-        echo "Usage:"
-        echo "  dingofs-testsuite-tool config set image localhost/dingofs-testsuite-tools:latest"
-        return 1
-    fi
-
     # Parse arguments
     local mount="" output="" tool="" scenario="" np="${NP:-16}" bs_size="normal"
     local -a ai_storage_args=()
@@ -2805,6 +2801,8 @@ run_testsuite() {
     local elbencho_file_count="" elbencho_dir_count="" elbencho_threads="" elbencho_operation=""
     local wechat="" email_to=""
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
+    local legacy_mlperf_option=""
+    local mlperf_model="" mlperf_epochs="" mlperf_accelerators=""
     local int_case_plan="" int_env_file=""
     local setup_env=""
     local do_cleanup=""
@@ -2813,7 +2811,7 @@ run_testsuite() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            --custom-dir|--concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation|--ai-storage-dataset-size|--ai-storage-file-size|--ai-storage-file-count|--ai-storage-bs|--ai-storage-jobs|--ai-storage-threads|--ai-storage-iodepth|--ai-storage-direct|--ai-storage-repeats|--ai-storage-runtime|--ai-storage-ramp-time|--ai-storage-phase|--ai-storage-data-id|--ai-storage-layout|--ai-storage-cache-note)
+            --custom-dir|--mlperf-model|--mlperf-epochs|--mlperf-accelerators|--concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation|--ai-storage-dataset-size|--ai-storage-file-size|--ai-storage-file-count|--ai-storage-bs|--ai-storage-jobs|--ai-storage-threads|--ai-storage-iodepth|--ai-storage-direct|--ai-storage-repeats|--ai-storage-runtime|--ai-storage-ramp-time|--ai-storage-phase|--ai-storage-data-id|--ai-storage-layout|--ai-storage-cache-note)
                 if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:-}" == -* ]]; then
                     echo "Error: $1 requires a value"
                     return 1
@@ -2843,6 +2841,18 @@ run_testsuite() {
                 ;;
             -s|--scenario)
                 scenario="$2"
+                shift 2
+                ;;
+            --mlperf-model)
+                mlperf_model="$2"
+                shift 2
+                ;;
+            --mlperf-epochs)
+                mlperf_epochs="$2"
+                shift 2
+                ;;
+            --mlperf-accelerators)
+                mlperf_accelerators="$2"
                 shift 2
                 ;;
             -n|--np)
@@ -2929,14 +2939,17 @@ run_testsuite() {
                 shift 2
                 ;;
             --scale)
+                legacy_mlperf_option=yes
                 scale="$2"
                 shift 2
                 ;;
             --file_count)
+                legacy_mlperf_option=yes
                 file_count="$2"
                 shift 2
                 ;;
             --gpu_count)
+                legacy_mlperf_option=yes
                 gpu_count="$2"
                 shift 2
                 ;;
@@ -3035,6 +3048,69 @@ run_testsuite() {
         esac
     done
 
+    if [[ "$tool" == mlperf && "$scenario" == benchmark ]]; then
+        if [[ "$run_mode" != one-shot ]]; then
+            echo "Error: MLPerf benchmark requires one-shot mode" >&2
+            return 1
+        fi
+        if [[ -n "$legacy_mlperf_option" ]]; then
+            echo "Error: legacy --scale, --file_count and --gpu_count are unsupported by MLPerf benchmark" >&2
+            return 1
+        fi
+        if [[ -n "$PERFORMANCE_RUNTIME_SECONDS$PERFORMANCE_TOTAL_SIZE$PERFORMANCE_RW$PERFORMANCE_IODEPTH$PERFORMANCE_READ_PERCENT$fio_numjobs$fio_direct$fio_file_size$fio_block_size$elbencho_dir_count$elbencho_threads$elbencho_operation" ]]; then
+            echo "Error: MLPerf benchmark accepts only model, epochs, accelerators, concurrency, file-count and rounds" >&2
+            return 1
+        fi
+        [[ -n "$elbencho_file_count" ]] || { echo "Error: --file-count is required for MLPerf benchmark" >&2; return 1; }
+        mount="${mount:-$config_testdir}"; output="${output:-$config_output}"
+        [[ -n "$mount" && -n "$output" ]] || { echo "Error: mount and output are required" >&2; return 1; }
+        local cli_root mlperf_script
+        cli_root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
+        mlperf_script="$cli_root/scripts/mlperf_benchmark.py"
+        local -a mlperf_args=(--mount "$mount" --output "$output" --file-count "$elbencho_file_count")
+        [[ -n "$mlperf_model" ]] && mlperf_args+=(--mlperf-model "$mlperf_model")
+        [[ -n "$mlperf_epochs" ]] && mlperf_args+=(--mlperf-epochs "$mlperf_epochs")
+        [[ -n "$mlperf_accelerators" ]] && mlperf_args+=(--mlperf-accelerators "$mlperf_accelerators")
+        [[ -n "$PERFORMANCE_CONCURRENCY" ]] && mlperf_args+=(--concurrency "$PERFORMANCE_CONCURRENCY")
+        [[ -n "$PERFORMANCE_ROUNDS" ]] && mlperf_args+=(--rounds "$PERFORMANCE_ROUNDS")
+        if [[ "$PERFORMANCE_DRY_RUN" == yes ]]; then
+            python3 "$mlperf_script" "${mlperf_args[@]}" --dry-run
+            return $?
+        fi
+        [[ -n "$image" ]] || { echo "Error: No Docker image configured." >&2; return 1; }
+        [[ -d "$mount" ]] || { echo "Error: mount directory does not exist: $mount" >&2; return 1; }
+        mkdir -p "$output" || return 1
+        local -a mlperf_docker=($runtime run --rm --privileged --net=host --shm-size=8g)
+        if ! _is_rootless; then mlperf_docker+=(--user "$(stat -c '%u:%g' "$mount")"); fi
+        mlperf_docker+=(-v "$mount:/data" -v "$output:/output")
+        if [[ -n "${DTT_PERFORMANCE_RUNTIME_DIR:-}" ]]; then
+            for runtime_file in entrypoint.sh mlperf_benchmark.py; do
+                [[ -f "$DTT_PERFORMANCE_RUNTIME_DIR/$runtime_file" ]] || { echo "Error: incomplete MLPerf runtime: $runtime_file" >&2; return 1; }
+                local runtime_target="/scripts/$runtime_file"
+                [[ "$runtime_file" == entrypoint.sh ]] && runtime_target=/entrypoint.sh
+                mlperf_docker+=(-v "$DTT_PERFORMANCE_RUNTIME_DIR/$runtime_file:$runtime_target:ro")
+            done
+        fi
+        local -a container_args=(-t mlperf -s benchmark -m /data -o /output --file-count "$elbencho_file_count")
+        [[ -n "$mlperf_model" ]] && container_args+=(--mlperf-model "$mlperf_model")
+        [[ -n "$mlperf_epochs" ]] && container_args+=(--mlperf-epochs "$mlperf_epochs")
+        [[ -n "$mlperf_accelerators" ]] && container_args+=(--mlperf-accelerators "$mlperf_accelerators")
+        [[ -n "$PERFORMANCE_CONCURRENCY" ]] && container_args+=(--concurrency "$PERFORMANCE_CONCURRENCY")
+        [[ -n "$PERFORMANCE_ROUNDS" ]] && container_args+=(--rounds "$PERFORMANCE_ROUNDS")
+        exec "${mlperf_docker[@]}" "$image" "${container_args[@]}"
+    fi
+    if [[ -n "$mlperf_model$mlperf_epochs$mlperf_accelerators" ]]; then
+        echo "Error: --mlperf-* options require -t mlperf -s benchmark" >&2
+        return 1
+    fi
+    if [[ "$tool" == mlperf && -n "$elbencho_file_count" ]]; then
+        echo "Error: --file-count requires -t mlperf -s benchmark" >&2
+        return 1
+    fi
+    if [[ -z "$image" ]]; then
+        echo "Error: No Docker image configured."
+        return 1
+    fi
     prepare_performance_options "$tool" "$scenario" "$fio_numjobs" "$elbencho_threads" \
         "$elbencho_operation" "$fio_direct" "$fio_file_size" "$elbencho_file_count" \
         "$fio_block_size" "$elbencho_dir_count" || return 1

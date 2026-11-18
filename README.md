@@ -482,6 +482,20 @@ dtt -t mlperf --help
 - 自动设置 `--shm-size=8g` 和 `-it` 模式
 - 测试结果保存在 output 目录的 `mlperf_<timestamp>/` 子目录中
 
+### 引导式 MLPerf Storage 训练 I/O（独立入口）
+
+`-s benchmark` 使用固定的 MLPerf Storage v2.0 H100 工作负载，可供性能任务预览与非交互运行。它模拟加速器，不要求实体 GPU。自定义文件数和 epochs 用于内部对比，不构成 MLPerf 官方合规成绩。
+
+```bash
+dtt -t mlperf -s benchmark -m /mnt/test -o /tmp/results \
+  --mlperf-model resnet50 --mlperf-epochs 5 --mlperf-accelerators 1 \
+  --concurrency 4 --file-count 8 --rounds 1 --dry-run
+```
+
+`--dry-run` 只向标准输出写一个 `dtt-mlperf-v1` JSON 计划，不创建数据、不调用容器或 MLPerf。正式运行去掉 `--dry-run`。模型可选 `resnet50`、`unet3d`、`cosmoflow`；epochs 为 1–1000，加速器和数据生成并发为 1–1024，轮数为 1–100。模型、epochs、加速器、并发、轮数分别默认 `resnet50`、5、1、4、1；`--file-count` 必填。文件数至少满足每个模拟加速器一个 batch，并且必须是加速器数的倍数。该入口不接受 `--runtime-seconds`；训练耗时取决于完整 epochs 和轮次。
+
+输出位于 `performance-mlperf-<unique>/`，包含 `summary.json`、自包含 `index.html`、各轮原生 JSON 摘要及日志。数据生成一次，每轮训练各有独立结果目录；失败时保留部分报告和日志。旧 `-s resnet50|unet3d|cosmoflow|checkpointing|all` 入口保持原有行为。
+
 ---
 
 ## 8. XFSTESTS — 文件系统回归测试

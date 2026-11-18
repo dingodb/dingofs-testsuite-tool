@@ -37,6 +37,8 @@ ELBENCHO_OPERATION="${ELBENCHO_OPERATION:-}"
 PERFORMANCE_MODE="" PERFORMANCE_REQUESTED="" PERFORMANCE_CONCURRENCY="" PERFORMANCE_TOTAL_SIZE=""
 PERFORMANCE_RW="" PERFORMANCE_ROUNDS="" PERFORMANCE_RUNTIME_SECONDS="" PERFORMANCE_IODEPTH="" PERFORMANCE_READ_PERCENT="" PERFORMANCE_DRY_RUN=""
 PERFORMANCE_ARGS=()
+MLPERF_ARGS=()
+MLPERF_MODE=""
 
 # Tool paths (from Dockerfile)
 FIO_BIN="/usr/bin/fio"
@@ -519,6 +521,8 @@ MLPerf Storage 基准测试
 =======================
 
 用法: entrypoint.sh -t mlperf [-s <场景>]
+      entrypoint.sh -t mlperf -s benchmark --file-count N [--mlperf-model MODEL]
+          [--mlperf-epochs E] [--mlperf-accelerators A] [--concurrency P] [--rounds R] [--dry-run]
 
 MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件。
 
@@ -544,6 +548,7 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件。
     dingofs-testsuite-tools -t mlperf -s all
 
 注意:
+  - benchmark 为独立 v2.0 H100 训练 I/O 入口，模拟加速器；结果仅供内部对比
   - 需要 --shm-size=8g 支持 PyTorch DataLoader
   - 测试数据写入 /data/datasets/ (存储性能测试目标)
   - 测试结果保存到 /output/mlperf_<timestamp>/
@@ -1062,7 +1067,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,concurrency:,total-size:,rw:,rounds:,runtime-seconds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,mlperf-model:,mlperf-epochs:,mlperf-accelerators:,concurrency:,total-size:,rw:,rounds:,runtime-seconds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -1072,7 +1077,7 @@ parse_args() {
 
     while true; do
         case "$1" in
-            --concurrency|--total-size|--rw|--rounds|--runtime-seconds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation)
+            --mlperf-model|--mlperf-epochs|--mlperf-accelerators|--concurrency|--total-size|--rw|--rounds|--runtime-seconds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation)
                 if [[ -z "${2:-}" || "${2:-}" == -* ]]; then
                     echo "Error: $1 requires a value"
                     exit 1
@@ -1102,6 +1107,10 @@ parse_args() {
                 ;;
             -s|--scenario)
                 SCENARIO="$2"
+                shift 2
+                ;;
+            --mlperf-model|--mlperf-epochs|--mlperf-accelerators)
+                MLPERF_ARGS+=("$1" "$2")
                 shift 2
                 ;;
             -m|--mount)
@@ -1212,6 +1221,27 @@ parse_args() {
                 ;;
         esac
     done
+    if [[ "$TOOL" == mlperf && "$SCENARIO" == benchmark ]]; then
+        MLPERF_MODE=yes
+        if [[ -n "$PERFORMANCE_RUNTIME_SECONDS$PERFORMANCE_TOTAL_SIZE$PERFORMANCE_RW$PERFORMANCE_IODEPTH$PERFORMANCE_READ_PERCENT$FIO_NUMJOBS$FIO_DIRECT$FIO_FILE_SIZE$FIO_BLOCK_SIZE$ELBENCHO_DIR_COUNT$ELBENCHO_THREADS$ELBENCHO_OPERATION" ]]; then
+            echo "Error: MLPerf benchmark accepts only model, epochs, accelerators, concurrency, file-count and rounds" >&2
+            exit 1
+        fi
+        [[ -n "$ELBENCHO_FILE_COUNT" ]] || { echo "Error: --file-count is required for MLPerf benchmark" >&2; exit 1; }
+        MLPERF_ARGS+=(--file-count "$ELBENCHO_FILE_COUNT")
+        [[ -n "$PERFORMANCE_CONCURRENCY" ]] && MLPERF_ARGS+=(--concurrency "$PERFORMANCE_CONCURRENCY")
+        [[ -n "$PERFORMANCE_ROUNDS" ]] && MLPERF_ARGS+=(--rounds "$PERFORMANCE_ROUNDS")
+        [[ "$PERFORMANCE_DRY_RUN" == yes ]] && MLPERF_ARGS+=(--dry-run)
+        return 0
+    fi
+    if [[ ${#MLPERF_ARGS[@]} -gt 0 ]]; then
+        echo "Error: --mlperf-* options require -t mlperf -s benchmark" >&2
+        exit 1
+    fi
+    if [[ "$TOOL" == mlperf && -n "$ELBENCHO_FILE_COUNT" ]]; then
+        echo "Error: --file-count requires -t mlperf -s benchmark" >&2
+        exit 1
+    fi
     prepare_performance_options "$TOOL" "$SCENARIO" "$FIO_NUMJOBS" "$ELBENCHO_THREADS" \
         "$ELBENCHO_OPERATION" "$FIO_DIRECT" "${FIO_FILE_SIZE:-$ELBENCHO_FILE_SIZE}" "$ELBENCHO_FILE_COUNT" \
         "${FIO_BLOCK_SIZE:-$ELBENCHO_BLOCK_SIZE}" "$ELBENCHO_DIR_COUNT" || exit 1
@@ -4237,6 +4267,15 @@ drop_smoke_privileges() {
 main() {
     # Parse command line arguments
     parse_args "$@"
+    if [[ "$MLPERF_MODE" == yes ]]; then
+        if [[ "$MODE" != one-shot ]]; then
+            echo "Error: MLPerf benchmark requires one-shot mode" >&2
+            return 1
+        fi
+        python3 "${DTT_MLPERF_RUNNER:-/scripts/mlperf_benchmark.py}" \
+            --mount "$MOUNT" --output "$OUTPUT" "${MLPERF_ARGS[@]}"
+        return $?
+    fi
 
     # Only reuse timestamps created by the root smoke bootstrap. Do not allow an
     # arbitrary inherited value to influence output paths in the root helper.
