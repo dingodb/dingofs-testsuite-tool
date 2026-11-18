@@ -126,6 +126,16 @@ class MlperfBenchmarkTest(unittest.TestCase):
                 self.assertEqual(json.loads(good.stdout)['file_count'], accepted)
         self.assertFalse(self.calls.exists())
 
+    def test_resnet50_small_files_still_meet_three_batch_minimum(self):
+        for accelerators, count in ((1, 1), (2, 2)):
+            with self.subTest(accelerators=accelerators):
+                result = self.adapter('--dry-run', '--mlperf-model', 'resnet50',
+                                      '--mlperf-accelerators', str(accelerators),
+                                      '--file-count', str(count))
+                self.assertEqual(result.returncode, 0, result.stderr)
+                self.assertEqual(json.loads(result.stdout)['file_count'], count)
+        self.assertFalse(self.calls.exists())
+
     def test_invalid_model_epoch_count_and_runtime_are_rejected(self):
         for extra in (('--mlperf-model', 'bad'), ('--mlperf-epochs', '0'),
                       ('--mlperf-epochs', '1.5'), ('--file-count', '3', '--mlperf-accelerators', '2'),

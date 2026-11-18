@@ -52,8 +52,10 @@ def parser():
 
 def build_plan(args):
     nominal, samples_per_file, batch = MODELS[args.mlperf_model]
-    minimum = max(4 * args.mlperf_accelerators,
+    minimum = max(args.mlperf_accelerators,
                   math.ceil(3 * batch * args.mlperf_accelerators / samples_per_file))
+    if args.mlperf_model == 'cosmoflow':
+        minimum = max(minimum, 4 * args.mlperf_accelerators)
     if args.file_count < minimum or args.file_count % args.mlperf_accelerators:
         raise ValueError('--file-count must provide three complete batches per accelerator '
                          '(at least %d files) and be divisible by --mlperf-accelerators' % minimum)
