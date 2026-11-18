@@ -21,11 +21,18 @@ kind = args[1]
 results = pathlib.Path(args[args.index('--results-dir') + 1])
 if kind == 'datagen': sys.exit(0)
 if os.environ.get('DTT_TEST_FAIL') == 'run': sys.exit(7)
-leaf = results / 'training' / 'resnet50' / 'run' / '20231118_120000'
+model = args[args.index('--model') + 1]
+count = int(next(x.split('=', 1)[1] for x in args if x.startswith('dataset.num_files_train=')))
+accelerators = int(args[args.index('--num-accelerators') + 1])
+samples_per_file, batch = {'resnet50': (1251, 400), 'unet3d': (1, 7), 'cosmoflow': (1, 1)}[model]
+# Pinned DLIO computes throughput from every completed batch, minus two steps.
+steps = samples_per_file * count // (batch * accelerators)
+throughput = (steps - 2) * batch / 320.0
+leaf = results / 'training' / model / 'run' / '20231118_120000'
 leaf.mkdir(parents=True)
 epoch = int(next(x.split('=', 1)[1] for x in args if x.startswith('train.epochs=')))
-metric = {'train_throughput_samples_per_second': [12.5] * epoch,
-          'train_throughput_mean_samples_per_second': 12.5,
+metric = {'train_throughput_samples_per_second': [throughput] * epoch,
+          'train_throughput_mean_samples_per_second': throughput,
           'train_au_percentage': [87.5] * epoch,
           'train_au_mean_percentage': 87.5,
           'train_io_mean_MB_per_second': 120.0}
@@ -37,8 +44,8 @@ summary = {'num_accelerators': int(args[args.index('--num-accelerators') + 1]),
            'end': '2023-11-18T12:00:02', 'epochs': epoch}
 if os.environ.get('DTT_TEST_BAD') == 'epochs': summary['epochs'] -= 1
 (leaf / 'summary.json').write_text(json.dumps(summary))
-model = 'unet3d' if os.environ.get('DTT_TEST_BAD') == 'wrongmodel' else args[args.index('--model') + 1]
-count = 999 if os.environ.get('DTT_TEST_BAD') == 'wrongcount' else int(next(x.split('=', 1)[1] for x in args if x.startswith('dataset.num_files_train=')))
+model = 'unet3d' if os.environ.get('DTT_TEST_BAD') == 'wrongmodel' else model
+count = 999 if os.environ.get('DTT_TEST_BAD') == 'wrongcount' else count
 metadata = {'args': {'model': model, 'num_accelerators': summary['num_accelerators'],
                      'accelerator_type': args[args.index('--accelerator-type') + 1],
                      'data_dir': args[args.index('--data-dir') + 1],
@@ -53,7 +60,7 @@ if os.environ.get('DTT_TEST_DURATION'):
     else: stats['1']['duration'] = os.environ['DTT_TEST_DURATION']
 (leaf / '0_per_epoch_stats.json').write_text(json.dumps(stats))
 if os.environ.get('DTT_TEST_BAD') == 'duplicate':
-    other = results / 'training' / 'resnet50' / 'run' / '20231118_120001'
+    other = results / 'training' / model / 'run' / '20231118_120001'
     other.mkdir(parents=True)
     (other / 'summary.json').write_text(json.dumps(summary))
 '''
@@ -103,6 +110,52 @@ class MlperfBenchmarkTest(unittest.TestCase):
                 result = self.adapter('--dry-run', *extra)
                 self.assertNotEqual(result.returncode, 0, result.stdout)
         self.assertFalse(self.calls.exists())
+
+    def test_one_and_two_native_batches_rejected_before_any_side_effect(self):
+        for model, accelerators, counts in (
+                ('unet3d', 1, (7, 14)), ('unet3d', 2, (14, 28)),
+                ('cosmoflow', 1, (1, 2)), ('cosmoflow', 2, (2, 4))):
+            for count in counts:
+                with self.subTest(model=model, accelerators=accelerators, count=count):
+                    result = self.adapter('--dry-run', '--mlperf-model', model,
+                                          '--mlperf-accelerators', str(accelerators),
+                                          '--file-count', str(count))
+                    self.assertNotEqual(result.returncode, 0)
+                    self.assertIn('three complete batches', result.stderr)
+        self.assertFalse(self.calls.exists())
+        self.assertFalse(self.mount.exists())
+
+    def test_fake_native_throughput_reproduces_one_two_three_batch_boundary(self):
+        for count, expected in ((1, -1 / 320), (2, 0), (3, 1 / 320)):
+            with self.subTest(count=count):
+                results = self.root / ('native-' + str(count))
+                command = [str(self.binary), '--open', 'run', '--results-dir', str(results),
+                           '--model', 'cosmoflow', '--num-accelerators', '1',
+                           '--accelerator-type', 'h100', '--data-dir', str(self.mount),
+                           '--loops', '1', 'dataset.num_files_train=' + str(count),
+                           'train.epochs=1']
+                self.assertEqual(subprocess.run(command, env=self.env).returncode, 0)
+                summary = json.loads(next(results.rglob('summary.json')).read_text())
+                self.assertEqual(summary['metric']['train_throughput_mean_samples_per_second'], expected)
+
+    def test_three_native_batches_complete_with_positive_derived_throughput(self):
+        for model, accelerators, count, expected in (
+                ('unet3d', 1, 21, 7 / 320),
+                ('unet3d', 2, 42, 7 / 320),
+                ('cosmoflow', 1, 3, 1 / 320),
+                ('cosmoflow', 2, 6, 1 / 320)):
+            with self.subTest(model=model, accelerators=accelerators):
+                with tempfile.TemporaryDirectory() as temp:
+                    self.mount = Path(temp) / 'mount'
+                    self.output = Path(temp) / 'output'
+                    self.mount.mkdir()
+                    self.output.mkdir()
+                    result = self.adapter('--mlperf-model', model,
+                                          '--mlperf-accelerators', str(accelerators),
+                                          '--file-count', str(count), '--mlperf-epochs', '1')
+                    self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                    report = json.loads(next(self.output.glob('performance-mlperf-*/summary.json')).read_text())
+                    self.assertEqual(report['rounds'][0]['metrics']['samples_per_second'], expected)
 
     def test_native_rounds_have_distinct_results_and_raw_evidence(self):
         self.mount.mkdir()
@@ -194,7 +247,7 @@ class MlperfBenchmarkTest(unittest.TestCase):
             (config / key).write_text(str(value) + '\n')
         options = ['-t', 'mlperf', '-s', 'benchmark', '--mlperf-model', 'unet3d',
                    '--mlperf-epochs', '3', '--mlperf-accelerators', '2',
-                   '--concurrency', '5', '--file-count', '14', '--rounds', '2']
+                   '--concurrency', '5', '--file-count', '42', '--rounds', '2']
         command = (f'export DINGOFS_TESTSUITE_CONFIG_DIR={shlex.quote(str(config))}\n'
                    f'source {shlex.quote(str(ROOT / "dingofs-testsuite-tool"))}\n'
                    '_is_rootless() { return 0; }\n'
@@ -208,7 +261,7 @@ class MlperfBenchmarkTest(unittest.TestCase):
         self.assertEqual(argv[argv.index('--mlperf-epochs') + 1], '3')
         self.assertEqual(argv[argv.index('--mlperf-accelerators') + 1], '2')
         self.assertEqual(argv[argv.index('--concurrency') + 1], '5')
-        self.assertEqual(argv[argv.index('--file-count') + 1], '14')
+        self.assertEqual(argv[argv.index('--file-count') + 1], '42')
         self.assertEqual(argv[argv.index('--rounds') + 1], '2')
 
     def test_wrapper_dry_run_needs_no_image_or_runtime(self):
@@ -260,14 +313,14 @@ class MlperfBenchmarkTest(unittest.TestCase):
                                  '-m', str(self.mount), '-o', str(self.output),
                                  '--mlperf-model', 'unet3d', '--mlperf-epochs', '3',
                                  '--mlperf-accelerators', '2', '--concurrency', '5',
-                                 '--file-count', '14', '--rounds', '2', '--dry-run'],
+                                 '--file-count', '42', '--rounds', '2', '--dry-run'],
                                 capture_output=True, text=True,
                                 env=dict(self.env, DTT_MLPERF_RUNNER=str(runner)))
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
         self.assertEqual(json.loads(result.stdout), {'format': 'dtt-mlperf-v1'})
         argv = json.loads(recorded.read_text())
         self.assertEqual(argv[argv.index('--mlperf-model') + 1], 'unet3d')
-        self.assertEqual(argv[argv.index('--file-count') + 1], '14')
+        self.assertEqual(argv[argv.index('--file-count') + 1], '42')
         self.assertIn('--dry-run', argv)
         self.assertFalse(self.mount.exists())
         self.assertFalse(self.output.exists())

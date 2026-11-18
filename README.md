@@ -492,7 +492,7 @@ dtt -t mlperf -s benchmark -m /mnt/test -o /tmp/results \
   --concurrency 4 --file-count 8 --rounds 1 --dry-run
 ```
 
-`--dry-run` 只向标准输出写一个 `dtt-mlperf-v1` JSON 计划，不创建数据、不调用容器或 MLPerf。正式运行去掉 `--dry-run`。模型可选 `resnet50`、`unet3d`、`cosmoflow`；epochs 为 1–1000，加速器和数据生成并发为 1–1024，轮数为 1–100。模型、epochs、加速器、并发、轮数分别默认 `resnet50`、5、1、4、1；`--file-count` 必填。文件数至少满足每个模拟加速器一个 batch，并且必须是加速器数的倍数。该入口不接受 `--runtime-seconds`；训练耗时取决于完整 epochs 和轮次。
+`--dry-run` 只向标准输出写一个 `dtt-mlperf-v1` JSON 计划，不创建数据、不调用容器或 MLPerf。正式运行去掉 `--dry-run`。模型可选 `resnet50`、`unet3d`、`cosmoflow`；epochs 为 1–1000，加速器和数据生成并发为 1–1024，轮数为 1–100。模型、epochs、加速器、并发、轮数分别默认 `resnet50`、5、1、4、1；`--file-count` 必填。文件数至少满足每个模拟加速器三个完整 batch，并且必须是加速器数的倍数；因此规范化后的预计数据量可能大于用户请求值。该入口不接受 `--runtime-seconds`；训练耗时取决于完整 epochs 和轮次。
 
 输出位于 `performance-mlperf-<unique>/`，包含 `summary.json`、自包含 `index.html`、各轮原生 JSON 摘要及日志。数据生成一次，每轮训练各有独立结果目录；失败时保留部分报告和日志。旧 `-s resnet50|unet3d|cosmoflow|checkpointing|all` 入口保持原有行为。
 

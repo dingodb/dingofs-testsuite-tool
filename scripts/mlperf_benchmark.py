@@ -53,9 +53,10 @@ def parser():
 def build_plan(args):
     nominal, samples_per_file, batch = MODELS[args.mlperf_model]
     minimum = max(args.mlperf_accelerators,
-                  math.ceil(batch * args.mlperf_accelerators / samples_per_file))
+                  math.ceil(3 * batch * args.mlperf_accelerators / samples_per_file))
     if args.file_count < minimum or args.file_count % args.mlperf_accelerators:
-        raise ValueError('--file-count must be at least %d and divisible by --mlperf-accelerators' % minimum)
+        raise ValueError('--file-count must provide three complete batches per accelerator '
+                         '(at least %d files) and be divisible by --mlperf-accelerators' % minimum)
     for value in (args.mount, args.output):
         if any(char in value for char in '\r\n\x00:\\[]'):
             raise ValueError('mount/output paths cannot contain newline, colon, backslash or brackets')
