@@ -142,6 +142,7 @@ def native_metrics(plan, native_dir, output, prefix):
     if not isinstance(epoch_stats, dict) or set(epoch_stats) != {str(i) for i in range(1, epochs + 1)}:
         raise ValueError('native epoch statistics incomplete')
     duration = 0.0
+    measurable = True
     for i in range(1, epochs + 1):
         row = epoch_stats[str(i)]
         if not isinstance(row, dict) or not row.get('start') or not row.get('end'):
@@ -149,15 +150,22 @@ def native_metrics(plan, native_dir, output, prefix):
         raw_duration = row.get('duration')
         if not isinstance(raw_duration, str) or not re.fullmatch(r'[0-9]+(?:\.[0-9]+)?', raw_duration):
             raise ValueError('invalid native epoch duration')
-        duration += finite_number(float(raw_duration), 'epoch duration', positive=True)
+        epoch_duration = finite_number(float(raw_duration), 'epoch duration')
+        if epoch_duration < 0:
+            raise ValueError('invalid native epoch duration')
+        measurable = measurable and epoch_duration > 0
+        duration += epoch_duration
     attached = []
     for source, suffix in ((summary_path, 'summary'), (epoch_path, 'per-epoch-stats'),
                            (metadata_paths[0], 'metadata')):
         dest = output / (prefix + '-native-' + suffix + '.json')
         shutil.copyfile(source, dest)
         attached.append(dest.name)
-    return dict(samples_per_second=samples, accelerator_utilization_percent=utilization,
-                io_mb_per_second=io_mb, measurement_seconds=duration), attached
+    metrics = dict(samples_per_second=samples, accelerator_utilization_percent=utilization,
+                   io_mb_per_second=io_mb)
+    if measurable:
+        metrics['measurement_seconds'] = duration
+    return metrics, attached
 
 
 def run_command(argv, log_path):

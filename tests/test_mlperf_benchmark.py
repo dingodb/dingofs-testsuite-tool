@@ -47,6 +47,9 @@ metadata = {'args': {'model': model, 'num_accelerators': summary['num_accelerato
 (leaf / 'training_20231118_120000_metadata.json').write_text(json.dumps(metadata))
 stats = {str(i): {'start': '2023-11-18T12:00:00', 'end': '2023-11-18T12:00:01',
                   'duration': '1.00'} for i in range(1, epoch + 1)}
+if os.environ.get('DTT_TEST_DURATION'):
+    if os.environ['DTT_TEST_DURATION'] == 'missing': stats['1'].pop('duration')
+    else: stats['1']['duration'] = os.environ['DTT_TEST_DURATION']
 (leaf / '0_per_epoch_stats.json').write_text(json.dumps(stats))
 if os.environ.get('DTT_TEST_BAD') == 'duplicate':
     other = results / 'training' / 'resnet50' / 'run' / '20231118_120001'
@@ -124,6 +127,31 @@ class MlperfBenchmarkTest(unittest.TestCase):
         self.assertIn('--allow-invalid-params', calls[1])
         self.assertEqual(calls[1][calls[1].index('--loops') + 1], '1')
         self.assertGreater(int(calls[1][calls[1].index('--client-host-memory-in-gb') + 1]), 0)
+
+    def test_zero_rounded_epoch_duration_keeps_valid_round_without_measurement(self):
+        self.mount.mkdir()
+        self.output.mkdir()
+        result = self.adapter('--mlperf-epochs', '2', env=dict(self.env, DTT_TEST_DURATION='0.00'))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        report = json.loads(next(self.output.glob('performance-mlperf-*/summary.json')).read_text())
+        self.assertEqual(report['status'], 'passed')
+        self.assertTrue(report['statistics']['complete'])
+        self.assertEqual(report['rounds'][0]['metrics']['samples_per_second'], 12.5)
+        self.assertNotIn('measurement_seconds', report['rounds'][0]['metrics'])
+        self.assertNotIn('measurement_seconds', report['statistics']['metrics'])
+
+    def test_missing_negative_and_nonfinite_epoch_duration_still_fail(self):
+        for value in ('missing', '-0.01', 'nan', 'inf'):
+            with self.subTest(duration=value):
+                temp = tempfile.TemporaryDirectory()
+                self.addCleanup(temp.cleanup)
+                self.output = Path(temp.name)
+                self.mount.mkdir(exist_ok=True)
+                result = self.adapter('--mlperf-epochs', '2',
+                                      env=dict(self.env, DTT_TEST_DURATION=value))
+                self.assertNotEqual(result.returncode, 0)
+                report = json.loads(next(self.output.glob('performance-mlperf-*/summary.json')).read_text())
+                self.assertEqual(report['status'], 'failed')
 
     def test_invalid_native_metrics_epochs_or_duplicate_summary_fail(self):
         for bad in ('zero', 'nonfinite', 'missing', 'epochs', 'duplicate', 'wrongmodel', 'wrongcount'):
