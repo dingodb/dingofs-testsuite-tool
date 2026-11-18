@@ -38,12 +38,21 @@ metric = {'train_throughput_samples_per_second': [throughput] * epoch,
           'train_io_mean_MB_per_second': 120.0}
 if os.environ.get('DTT_TEST_BAD') == 'zero': metric['train_throughput_mean_samples_per_second'] = 0
 if os.environ.get('DTT_TEST_BAD') == 'nonfinite': metric['train_au_mean_percentage'] = float('nan')
+if os.environ.get('DTT_TEST_BAD') == 'series_nonfinite': metric['train_au_percentage'][0] = float('nan')
+if os.environ.get('DTT_TEST_BAD') == 'infinity': metric['train_io_mean_MB_per_second'] = float('inf')
 if os.environ.get('DTT_TEST_BAD') == 'missing': metric.pop('train_throughput_mean_samples_per_second')
+if os.environ.get('DTT_TEST_BAD') == 'checkpoint_nan':
+    for key in ('save_checkpoint_io_mean_GB_per_second',
+                'save_checkpoint_io_stdev_GB_per_second',
+                'save_checkpoint_duration_mean_seconds',
+                'save_checkpoint_duration_stdev_seconds'):
+        metric[key] = float('nan')
 summary = {'num_accelerators': int(args[args.index('--num-accelerators') + 1]),
            'hostname': 'test', 'metric': metric, 'start': '2023-11-18T12:00:00',
            'end': '2023-11-18T12:00:02', 'epochs': epoch}
 if os.environ.get('DTT_TEST_BAD') == 'epochs': summary['epochs'] -= 1
 (leaf / 'summary.json').write_text(json.dumps(summary))
+if os.environ.get('DTT_TEST_BAD') == 'no_summary': (leaf / 'summary.json').unlink()
 model = 'unet3d' if os.environ.get('DTT_TEST_BAD') == 'wrongmodel' else model
 count = 999 if os.environ.get('DTT_TEST_BAD') == 'wrongcount' else count
 metadata = {'args': {'model': model, 'num_accelerators': summary['num_accelerators'],
@@ -52,6 +61,7 @@ metadata = {'args': {'model': model, 'num_accelerators': summary['num_accelerato
                      'results_dir': str(results), 'loops': int(args[args.index('--loops') + 1])},
             'params_dict': {'dataset.num_files_train': count, 'train.epochs': epoch},
             'benchmark_type': 'training'}
+if os.environ.get('DTT_TEST_BAD') == 'metadata_nonfinite': metadata['args']['num_accelerators'] = float('nan')
 (leaf / 'training_20231118_120000_metadata.json').write_text(json.dumps(metadata))
 stats = {str(i): {'start': '2023-11-18T12:00:00', 'end': '2023-11-18T12:00:01',
                   'duration': '1.00'} for i in range(1, epoch + 1)}
@@ -59,6 +69,7 @@ if os.environ.get('DTT_TEST_DURATION'):
     if os.environ['DTT_TEST_DURATION'] == 'missing': stats['1'].pop('duration')
     else: stats['1']['duration'] = os.environ['DTT_TEST_DURATION']
 (leaf / '0_per_epoch_stats.json').write_text(json.dumps(stats))
+if os.environ.get('DTT_TEST_BAD') == 'no_epochs': (leaf / '0_per_epoch_stats.json').unlink()
 if os.environ.get('DTT_TEST_BAD') == 'duplicate':
     other = results / 'training' / model / 'run' / '20231118_120001'
     other.mkdir(parents=True)
@@ -102,6 +113,19 @@ class MlperfBenchmarkTest(unittest.TestCase):
         self.assertFalse(self.output.exists())
         self.assertFalse(self.calls.exists())
 
+    def test_cosmoflow_requires_four_files_per_accelerator(self):
+        for accelerators, rejected, accepted in ((1, 3, 4), (2, 6, 8)):
+            with self.subTest(accelerators=accelerators):
+                common = ('--dry-run', '--mlperf-model', 'cosmoflow',
+                          '--mlperf-accelerators', str(accelerators), '--file-count')
+                bad = self.adapter(*common, str(rejected))
+                self.assertNotEqual(bad.returncode, 0)
+                self.assertIn('at least %d files' % accepted, bad.stderr)
+                good = self.adapter(*common, str(accepted))
+                self.assertEqual(good.returncode, 0, good.stderr)
+                self.assertEqual(json.loads(good.stdout)['file_count'], accepted)
+        self.assertFalse(self.calls.exists())
+
     def test_invalid_model_epoch_count_and_runtime_are_rejected(self):
         for extra in (('--mlperf-model', 'bad'), ('--mlperf-epochs', '0'),
                       ('--mlperf-epochs', '1.5'), ('--file-count', '3', '--mlperf-accelerators', '2'),
@@ -138,12 +162,12 @@ class MlperfBenchmarkTest(unittest.TestCase):
                 summary = json.loads(next(results.rglob('summary.json')).read_text())
                 self.assertEqual(summary['metric']['train_throughput_mean_samples_per_second'], expected)
 
-    def test_three_native_batches_complete_with_positive_derived_throughput(self):
+    def test_native_minimum_files_complete_with_positive_derived_throughput(self):
         for model, accelerators, count, expected in (
                 ('unet3d', 1, 21, 7 / 320),
                 ('unet3d', 2, 42, 7 / 320),
-                ('cosmoflow', 1, 3, 1 / 320),
-                ('cosmoflow', 2, 6, 1 / 320)):
+                ('cosmoflow', 1, 4, 2 / 320),
+                ('cosmoflow', 2, 8, 2 / 320)):
             with self.subTest(model=model, accelerators=accelerators):
                 with tempfile.TemporaryDirectory() as temp:
                     self.mount = Path(temp) / 'mount'
@@ -182,6 +206,21 @@ class MlperfBenchmarkTest(unittest.TestCase):
         self.assertEqual(calls[1][calls[1].index('--loops') + 1], '1')
         self.assertGreater(int(calls[1][calls[1].index('--client-host-memory-in-gb') + 1]), 0)
 
+    def test_unet_checkpoint_nan_stats_are_optional_and_raw_summary_is_preserved(self):
+        self.mount.mkdir()
+        self.output.mkdir()
+        result = self.adapter('--mlperf-model', 'unet3d', '--file-count', '21',
+                              '--mlperf-epochs', '1', env=dict(self.env, DTT_TEST_BAD='checkpoint_nan'))
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        output = next(self.output.glob('performance-mlperf-*'))
+        report = json.loads((output / 'summary.json').read_text())
+        self.assertEqual(report['status'], 'passed')
+        self.assertEqual(report['rounds'][0]['metrics']['samples_per_second'], 7 / 320)
+        raw = next((output / 'round-001-native').rglob('summary.json')).read_bytes()
+        attached = output / 'round-001-native-summary.json'
+        self.assertEqual(attached.read_bytes(), raw)
+        self.assertIn(b'"save_checkpoint_io_mean_GB_per_second": NaN', raw)
+
     def test_zero_rounded_epoch_duration_keeps_valid_round_without_measurement(self):
         self.mount.mkdir()
         self.output.mkdir()
@@ -208,7 +247,9 @@ class MlperfBenchmarkTest(unittest.TestCase):
                 self.assertEqual(report['status'], 'failed')
 
     def test_invalid_native_metrics_epochs_or_duplicate_summary_fail(self):
-        for bad in ('zero', 'nonfinite', 'missing', 'epochs', 'duplicate', 'wrongmodel', 'wrongcount'):
+        for bad in ('zero', 'nonfinite', 'series_nonfinite', 'infinity', 'missing',
+                    'epochs', 'duplicate', 'wrongmodel', 'wrongcount',
+                    'metadata_nonfinite', 'no_summary', 'no_epochs'):
             with self.subTest(bad=bad):
                 tmp = tempfile.TemporaryDirectory()
                 self.addCleanup(tmp.cleanup)

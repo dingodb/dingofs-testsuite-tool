@@ -52,7 +52,7 @@ def parser():
 
 def build_plan(args):
     nominal, samples_per_file, batch = MODELS[args.mlperf_model]
-    minimum = max(args.mlperf_accelerators,
+    minimum = max(4 * args.mlperf_accelerators,
                   math.ceil(3 * batch * args.mlperf_accelerators / samples_per_file))
     if args.file_count < minimum or args.file_count % args.mlperf_accelerators:
         raise ValueError('--file-count must provide three complete batches per accelerator '
@@ -87,6 +87,38 @@ def read_json(path):
                       parse_constant=lambda value: (_ for _ in ()).throw(ValueError('nonfinite JSON: ' + value)))
 
 
+def read_native_summary(path):
+    nan = object()
+
+    def parse_constant(value):
+        if value == 'NaN':
+            return nan
+        raise ValueError('nonfinite JSON: ' + value)
+
+    summary = json.loads(path.read_text(encoding='utf-8'), parse_constant=parse_constant)
+    optional = ('save_checkpoint_io_mean_GB_per_second',
+                'save_checkpoint_io_stdev_GB_per_second',
+                'save_checkpoint_duration_mean_seconds',
+                'save_checkpoint_duration_stdev_seconds')
+    if isinstance(summary, dict) and isinstance(summary.get('metric'), dict):
+        for key in optional:
+            if summary['metric'].get(key) is nan:
+                del summary['metric'][key]
+
+    def require_finite(value):
+        if value is nan or isinstance(value, float) and not math.isfinite(value):
+            raise ValueError('nonfinite JSON: NaN')
+        if isinstance(value, dict):
+            for item in value.values():
+                require_finite(item)
+        elif isinstance(value, list):
+            for item in value:
+                require_finite(item)
+
+    require_finite(summary)
+    return summary
+
+
 def native_metrics(plan, native_dir, output, prefix):
     summaries = list(native_dir.rglob('summary.json'))
     if len(summaries) != 1:
@@ -116,7 +148,7 @@ def native_metrics(plan, native_dir, output, prefix):
             any(native_args.get(key) != value for key, value in expected_args.items()) or
             any(str(native_params.get(key)) != str(value) for key, value in expected_params.items())):
         raise ValueError('native model or training parameters do not match request')
-    summary, epoch_stats = read_json(summary_path), read_json(epoch_path)
+    summary, epoch_stats = read_native_summary(summary_path), read_json(epoch_path)
     epochs = plan['mlperf_epochs']
     if type(summary.get('epochs')) is not int or summary['epochs'] != epochs:
         raise ValueError('native epochs do not match request')
