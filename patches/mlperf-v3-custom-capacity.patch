@@ -1,0 +1,29 @@
+diff --git a/mlpstorage_py/benchmarks/dlio.py b/mlpstorage_py/benchmarks/dlio.py
+--- a/mlpstorage_py/benchmarks/dlio.py
++++ b/mlpstorage_py/benchmarks/dlio.py
+@@ -1403,6 +1403,12 @@ class CheckpointingBenchmark(DLIOBenchmark):
+         full to the destination. Silent on the happy path per SC#6 —
+         the shared helper does no logging.
+         """
++        # DTT's explicitly custom byte-sized state is not a full Llama model.
++        # Retain CAP-01, but estimate the actual per-rank state requested.
++        if self.params_dict.get('model.type') == 'custom':
++            size = int(self.params_dict['model.model_size_bytes'])
++            return size * self.args.num_processes * self.args.num_checkpoints_write
++
+         rank_gb = self._checkpoint_gb_per_rank()
+         return int(sum(rank_gb) * 1024**3 * self.args.num_checkpoints_write)
+ 
+diff --git a/kv_cache_benchmark/kv_cache/cli.py b/kv_cache_benchmark/kv_cache/cli.py
+--- a/kv_cache_benchmark/kv_cache/cli.py
++++ b/kv_cache_benchmark/kv_cache/cli.py
+@@ -484,6 +484,9 @@ def main():
+     )
+ 
+     results = benchmark.run()
++    # Preserve parsed effective arguments alongside native measurements.
++    # DTT validates these, rather than trusting a reconstructed request plan.
++    results['effective_config'] = vars(args).copy()
+ 
+     def convert_numpy(obj):
+         if isinstance(obj, np.ndarray):

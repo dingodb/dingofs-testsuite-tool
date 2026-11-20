@@ -1067,7 +1067,7 @@ parse_args() {
     # Use getopt for long options support
     local opts
     opts=$(getopt -o t:s:m:o:n:h \
-                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,mlperf-model:,mlperf-epochs:,mlperf-accelerators:,concurrency:,total-size:,rw:,rounds:,runtime-seconds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
+                  -l tool:,scenario:,mount:,output:,np:,help,scratch-mnt:,duration:,mlperf-scenario:,checkpoint-mode:,checkpoint-count:,checkpoint-size:,gpu-memory-gib:,cpu-memory-gib:,mlperf-model:,mlperf-epochs:,mlperf-accelerators:,concurrency:,total-size:,rw:,rounds:,runtime-seconds:,iodepth:,read-percent:,dry-run,numjobs:,direct:,file-size:,block-size:,file-count:,dir-count:,threads:,operation:,mode:,ai-storage-dry-run,ai-storage-dataset-size:,ai-storage-file-size:,ai-storage-file-count:,ai-storage-bs:,ai-storage-jobs:,ai-storage-threads:,ai-storage-iodepth:,ai-storage-direct:,ai-storage-repeats:,ai-storage-runtime:,ai-storage-ramp-time:,ai-storage-phase:,ai-storage-data-id:,ai-storage-layout:,ai-storage-cache-note: \
                   -n 'entrypoint.sh' -- "${app_args[@]}" 2>&1) || {
         echo "Error: $opts"
         exit 1
@@ -1109,7 +1109,7 @@ parse_args() {
                 SCENARIO="$2"
                 shift 2
                 ;;
-            --mlperf-model|--mlperf-epochs|--mlperf-accelerators)
+            --mlperf-model|--mlperf-epochs|--mlperf-accelerators|--mlperf-scenario|--checkpoint-mode|--checkpoint-count|--checkpoint-size|--gpu-memory-gib|--cpu-memory-gib)
                 MLPERF_ARGS+=("$1" "$2")
                 shift 2
                 ;;
@@ -1223,12 +1223,13 @@ parse_args() {
     done
     if [[ "$TOOL" == mlperf && "$SCENARIO" == benchmark ]]; then
         MLPERF_MODE=yes
-        if [[ -n "$PERFORMANCE_RUNTIME_SECONDS$PERFORMANCE_TOTAL_SIZE$PERFORMANCE_RW$PERFORMANCE_IODEPTH$PERFORMANCE_READ_PERCENT$FIO_NUMJOBS$FIO_DIRECT$FIO_FILE_SIZE$FIO_BLOCK_SIZE$ELBENCHO_DIR_COUNT$ELBENCHO_THREADS$ELBENCHO_OPERATION" ]]; then
+        if [[ -n "$PERFORMANCE_RW$PERFORMANCE_IODEPTH$PERFORMANCE_READ_PERCENT$FIO_NUMJOBS$FIO_DIRECT$FIO_FILE_SIZE$FIO_BLOCK_SIZE$ELBENCHO_DIR_COUNT$ELBENCHO_THREADS$ELBENCHO_OPERATION" ]]; then
             echo "Error: MLPerf benchmark accepts only model, epochs, accelerators, concurrency, file-count and rounds" >&2
             exit 1
         fi
-        [[ -n "$ELBENCHO_FILE_COUNT" ]] || { echo "Error: --file-count is required for MLPerf benchmark" >&2; exit 1; }
-        MLPERF_ARGS+=(--file-count "$ELBENCHO_FILE_COUNT")
+        [[ -n "$ELBENCHO_FILE_COUNT" ]] && MLPERF_ARGS+=(--file-count "$ELBENCHO_FILE_COUNT")
+        [[ -n "$PERFORMANCE_RUNTIME_SECONDS" ]] && MLPERF_ARGS+=(--runtime-seconds "$PERFORMANCE_RUNTIME_SECONDS")
+        [[ -n "$PERFORMANCE_TOTAL_SIZE" ]] && MLPERF_ARGS+=(--total-size "$PERFORMANCE_TOTAL_SIZE")
         [[ -n "$PERFORMANCE_CONCURRENCY" ]] && MLPERF_ARGS+=(--concurrency "$PERFORMANCE_CONCURRENCY")
         [[ -n "$PERFORMANCE_ROUNDS" ]] && MLPERF_ARGS+=(--rounds "$PERFORMANCE_ROUNDS")
         [[ "$PERFORMANCE_DRY_RUN" == yes ]] && MLPERF_ARGS+=(--dry-run)
@@ -2684,7 +2685,7 @@ mlperf_run() {
     # Print configuration banner
     echo ""
     echo "=============================================="
-    echo "  MLPerf Storage Benchmark v2.0"
+    echo "  MLPerf Storage Benchmark (installed runtime)"
     echo "=============================================="
     echo "  Models:            ${MODELS}"
     echo "  Scale:             ${SCALE}"

@@ -1321,7 +1321,12 @@ MLPerf Storage 是 MLPerf 组织定义的存储性能基准测试套件，用于
   dtt -t mlperf -s checkpointing --scale small
 
 注意:
-  - benchmark 为独立的 v2.0 H100 训练 I/O 入口；--file-count 必填，dry-run 输出 dtt-mlperf-v1 JSON
+  - benchmark 支持 --mlperf-scenario training|checkpointing|kvcache；新版镜像使用 MLPerf Storage 3.0
+  - training: --mlperf-model resnet50|unet3d|cosmoflow --file-count N --mlperf-epochs E
+  - checkpointing: --mlperf-model custom --checkpoint-size BYTES --checkpoint-mode write|read|write-read --checkpoint-count N
+  - kvcache: --mlperf-model tiny-1b|mistral-7b|llama2-7b|llama3.1-8b|llama3.1-70b-instruct --runtime-seconds N --total-size BYTES
+  - KV 可选 --gpu-memory-gib N --cpu-memory-gib N；total-size 为缓存层容量，不是实际写入量
+  - 所有场景支持 --concurrency N --rounds N --dry-run；结果仅供内部比较，非官方提交
   - benchmark 模拟加速器，不要求实体 GPU；自定义数据量/epochs 仅供内部对比，非官方合规成绩
   - benchmark 不接受 --runtime-seconds，也无需交互式 TTY
   - mlperf-storage 已集成到 dtt 主镜像中，与其他工具共用同一个容器 (D-01)
@@ -2803,6 +2808,7 @@ run_testsuite() {
     local scale="${SCALE:-small}" file_count="" gpu_count="${GPU_COUNT:-1}" debug=""
     local legacy_mlperf_option=""
     local mlperf_model="" mlperf_epochs="" mlperf_accelerators=""
+    local -a mlperf_v3_args=()
     local int_case_plan="" int_env_file=""
     local setup_env=""
     local do_cleanup=""
@@ -2811,6 +2817,12 @@ run_testsuite() {
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --mlperf-scenario|--checkpoint-mode|--checkpoint-count|--checkpoint-size|--gpu-memory-gib|--cpu-memory-gib)
+                [[ $# -ge 2 && -n "${2:-}" && "$2" != -* ]] || { echo "Error: $1 requires a value" >&2; return 1; }
+                mlperf_v3_args+=("$1" "$2")
+                shift 2
+                continue
+                ;;
             --custom-dir|--mlperf-model|--mlperf-epochs|--mlperf-accelerators|--concurrency|--total-size|--rw|--rounds|--iodepth|--read-percent|--numjobs|--direct|--file-size|--file-count|--block-size|--dir-count|--threads|--operation|--ai-storage-dataset-size|--ai-storage-file-size|--ai-storage-file-count|--ai-storage-bs|--ai-storage-jobs|--ai-storage-threads|--ai-storage-iodepth|--ai-storage-direct|--ai-storage-repeats|--ai-storage-runtime|--ai-storage-ramp-time|--ai-storage-phase|--ai-storage-data-id|--ai-storage-layout|--ai-storage-cache-note)
                 if [[ $# -lt 2 ]] || [[ -z "${2:-}" ]] || [[ "${2:-}" == -* ]]; then
                     echo "Error: $1 requires a value"
@@ -3057,11 +3069,10 @@ run_testsuite() {
             echo "Error: legacy --scale, --file_count and --gpu_count are unsupported by MLPerf benchmark" >&2
             return 1
         fi
-        if [[ -n "$PERFORMANCE_RUNTIME_SECONDS$PERFORMANCE_TOTAL_SIZE$PERFORMANCE_RW$PERFORMANCE_IODEPTH$PERFORMANCE_READ_PERCENT$fio_numjobs$fio_direct$fio_file_size$fio_block_size$elbencho_dir_count$elbencho_threads$elbencho_operation" ]]; then
+        if [[ -n "$PERFORMANCE_RW$PERFORMANCE_IODEPTH$PERFORMANCE_READ_PERCENT$fio_numjobs$fio_direct$fio_file_size$fio_block_size$elbencho_dir_count$elbencho_threads$elbencho_operation" ]]; then
             echo "Error: MLPerf benchmark accepts only model, epochs, accelerators, concurrency, file-count and rounds" >&2
             return 1
         fi
-        [[ -n "$elbencho_file_count" ]] || { echo "Error: --file-count is required for MLPerf benchmark" >&2; return 1; }
         mount="${mount:-$config_testdir}"; output="${output:-$config_output}"
         [[ -n "$mount" && -n "$output" ]] || { echo "Error: mount and output are required" >&2; return 1; }
         local cli_root mlperf_script
@@ -3074,7 +3085,10 @@ run_testsuite() {
             mlperf_script="$cli_root/mlperf_benchmark.py"
         fi
         [[ -f "$mlperf_script" ]] || { echo "Error: MLPerf benchmark adapter not found: $mlperf_script" >&2; return 1; }
-        local -a mlperf_args=(--mount "$mount" --output "$output" --file-count "$elbencho_file_count")
+        local -a mlperf_args=(--mount "$mount" --output "$output" "${mlperf_v3_args[@]}")
+        [[ -n "$elbencho_file_count" ]] && mlperf_args+=(--file-count "$elbencho_file_count")
+        [[ -n "$PERFORMANCE_RUNTIME_SECONDS" ]] && mlperf_args+=(--runtime-seconds "$PERFORMANCE_RUNTIME_SECONDS")
+        [[ -n "$PERFORMANCE_TOTAL_SIZE" ]] && mlperf_args+=(--total-size "$PERFORMANCE_TOTAL_SIZE")
         [[ -n "$mlperf_model" ]] && mlperf_args+=(--mlperf-model "$mlperf_model")
         [[ -n "$mlperf_epochs" ]] && mlperf_args+=(--mlperf-epochs "$mlperf_epochs")
         [[ -n "$mlperf_accelerators" ]] && mlperf_args+=(--mlperf-accelerators "$mlperf_accelerators")
@@ -3091,14 +3105,17 @@ run_testsuite() {
         if ! _is_rootless; then mlperf_docker+=(--user "$(stat -c '%u:%g' "$mount")"); fi
         mlperf_docker+=(-v "$mount:/data" -v "$output:/output")
         if [[ -n "${DTT_PERFORMANCE_RUNTIME_DIR:-}" ]]; then
-            for runtime_file in entrypoint.sh mlperf_benchmark.py; do
+            for runtime_file in entrypoint.sh mlperf_benchmark.py mlperf_v3.py; do
                 [[ -f "$DTT_PERFORMANCE_RUNTIME_DIR/$runtime_file" ]] || { echo "Error: incomplete MLPerf runtime: $runtime_file" >&2; return 1; }
                 local runtime_target="/scripts/$runtime_file"
                 [[ "$runtime_file" == entrypoint.sh ]] && runtime_target=/entrypoint.sh
                 mlperf_docker+=(-v "$DTT_PERFORMANCE_RUNTIME_DIR/$runtime_file:$runtime_target:ro")
             done
         fi
-        local -a container_args=(-t mlperf -s benchmark -m /data -o /output --file-count "$elbencho_file_count")
+        local -a container_args=(-t mlperf -s benchmark -m /data -o /output "${mlperf_v3_args[@]}")
+        [[ -n "$elbencho_file_count" ]] && container_args+=(--file-count "$elbencho_file_count")
+        [[ -n "$PERFORMANCE_RUNTIME_SECONDS" ]] && container_args+=(--runtime-seconds "$PERFORMANCE_RUNTIME_SECONDS")
+        [[ -n "$PERFORMANCE_TOTAL_SIZE" ]] && container_args+=(--total-size "$PERFORMANCE_TOTAL_SIZE")
         [[ -n "$mlperf_model" ]] && container_args+=(--mlperf-model "$mlperf_model")
         [[ -n "$mlperf_epochs" ]] && container_args+=(--mlperf-epochs "$mlperf_epochs")
         [[ -n "$mlperf_accelerators" ]] && container_args+=(--mlperf-accelerators "$mlperf_accelerators")
@@ -3106,7 +3123,7 @@ run_testsuite() {
         [[ -n "$PERFORMANCE_ROUNDS" ]] && container_args+=(--rounds "$PERFORMANCE_ROUNDS")
         exec "${mlperf_docker[@]}" "$image" "${container_args[@]}"
     fi
-    if [[ -n "$mlperf_model$mlperf_epochs$mlperf_accelerators" ]]; then
+    if [[ -n "$mlperf_model$mlperf_epochs$mlperf_accelerators" || ${#mlperf_v3_args[@]} -gt 0 ]]; then
         echo "Error: --mlperf-* options require -t mlperf -s benchmark" >&2
         return 1
     fi

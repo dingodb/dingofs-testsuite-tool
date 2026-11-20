@@ -68,6 +68,10 @@ RUN echo 'Acquire::Retries "3";' > /etc/apt/apt.conf.d/80-retries && \
 # Create Python 3.12 venv
 RUN python3.12 -m venv /opt/mlpstorage-env
 
+# Install CPU torch first: s3torchconnector otherwise resolves CUDA torch from PyPI.
+RUN /opt/mlpstorage-env/bin/pip install --no-cache-dir 'torch>=2.8.0' torchvision \
+        --index-url https://download.pytorch.org/whl/cpu
+
 # Install all pip deps before git clone (cached even when repos update)
 RUN /opt/mlpstorage-env/bin/pip install --upgrade pip --no-cache-dir \
     && /opt/mlpstorage-env/bin/pip install --no-cache-dir \
@@ -81,19 +85,22 @@ RUN /opt/mlpstorage-env/bin/pip install --upgrade pip --no-cache-dir \
         PyYAML \
         "psutil>=5.9" \
         pyarrow \
-    && /opt/mlpstorage-env/bin/pip install --no-cache-dir \
-        torch torchvision \
-        --extra-index-url https://download.pytorch.org/whl/cpu \
+        'packaging>=21' 'rich>=13' 'pydantic>=2.13.4' \
+        'minio>=7.2.20' 's3torchconnector>=1.5.0' 's3dlio==0.9.112' \
+        'dgen-py>=0.2.4' 'pydftracer>=2.0.2' python-dotenv tiktoken openpyxl \
     && /opt/mlpstorage-env/bin/pip install --no-cache-dir tensorflow-cpu tfrecord \
     && printf '#!/opt/mlpstorage-env/bin/python\nfrom tfrecord.tools.tfrecord2idx import main\nmain()\n' \
        > /opt/mlpstorage-env/bin/tfrecord2idx \
     && chmod +x /opt/mlpstorage-env/bin/tfrecord2idx
 
 # Clone repos (shallow clones to save space)
-RUN git clone --depth 1 --branch v2.0 \
+ARG MLPERF_STORAGE_COMMIT=ce28a9888076eba5a58fdd93d1c0258bf27b7aa2
+ARG DLIO_COMMIT=edaf4bb3d6343ef2fb6b9f6dbafa6102032ae8bf
+RUN git clone --depth 1 --branch v3.0 \
         https://github.com/mlcommons/storage.git /opt/mlpstorage-src \
-    && git clone --depth 1 --branch mlperf_storage_v2.0 \
-        https://github.com/argonne-lcf/dlio_benchmark.git /opt/dlio-src
+    && test "$(git -C /opt/mlpstorage-src rev-parse HEAD)" = "$MLPERF_STORAGE_COMMIT" \
+    && git clone https://github.com/mlcommons/DLIO_local_changes.git /opt/dlio-src \
+    && git -C /opt/dlio-src checkout "$DLIO_COMMIT"
 
 # Patch dlio_benchmark for optional dependency guards
 RUN sed -i \
@@ -105,6 +112,10 @@ RUN sed -i \
     && sed -i \
       's/^import tensorflow_io as tfio$/try:\n    import tensorflow_io as tfio\nexcept ImportError:\n    tfio = None/' \
       /opt/dlio-src/dlio_benchmark/framework/tf_framework.py
+
+# Keep capacity checks accurate for explicitly custom byte-sized checkpoints.
+COPY patches/mlperf-v3-custom-capacity.patch /tmp/mlperf-v3-custom-capacity.patch
+RUN cd /opt/mlpstorage-src && git apply /tmp/mlperf-v3-custom-capacity.patch
 
 # Install dlio-benchmark and mlpstorage without pulling their deps
 RUN /opt/mlpstorage-env/bin/pip install --no-cache-dir --no-deps /opt/dlio-src \

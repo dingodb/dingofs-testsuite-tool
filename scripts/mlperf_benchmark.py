@@ -314,6 +314,15 @@ def execute(plan):
 
 
 def main(argv=None):
+    argv = sys.argv[1:] if argv is None else argv
+    import importlib.metadata
+    try:
+        native_v3 = importlib.metadata.version('mlpstorage').startswith('3.')
+    except importlib.metadata.PackageNotFoundError:
+        native_v3 = False
+    if '--mlperf-scenario' in argv or native_v3:
+        from mlperf_v3 import main as main_v3
+        return main_v3(argv)
     args = parser().parse_args(argv)
     try:
         plan = build_plan(args)

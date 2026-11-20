@@ -1,0 +1,918 @@
+{
+  "provenance": "Native pinned MLPerf 3.0.46 / DLIO 3.0.4, isolated tmpfs, 2026-11-20. System inventory and unused raw arrays omitted; metrics/effective configuration unchanged.",
+  "cases": [
+    {
+      "plan": {
+        "format": "dtt-mlperf-v2",
+        "tool": "mlperf",
+        "mlperf_model": "cosmoflow",
+        "mlperf_epochs": 1,
+        "mlperf_accelerators": 1,
+        "concurrency": 1,
+        "file_size": "2828486",
+        "file_count": 4,
+        "total_size": "11313944",
+        "rounds": 1,
+        "rw": "read",
+        "direct": false,
+        "block_size": 0,
+        "iodepth": 1,
+        "read_percent": null,
+        "mount": "/data",
+        "output_dir": "/results/performance-mlperf-20261120T094535Z-9604e368c357",
+        "data_dir": "/data/dtt-mlperf/20261120T094535Z-9604e368c357/cosmoflow",
+        "run_id": "20261120T094535Z-9604e368c357",
+        "compliance_note": "MLPerf Storage 3.0 what-if/custom workload; internal comparison, not an official submission.",
+        "engine_version": "3.0.46",
+        "mlperf_scenario": "training"
+      },
+      "expected_metrics": {
+        "samples_per_second": 167.0172420658623,
+        "io_mb_per_second": 450.5214032572771,
+        "accelerator_utilization_percent": 59.674272289252585
+      },
+      "files": {
+        "summary.json": {
+          "start": "2026-11-20T17:46:02.539703",
+          "num_accelerators": 1,
+          "num_hosts": 1,
+          "hostname": "f9a1baa00dca",
+          "metric": {
+            "train_au_percentage": [
+              59.674272289252585
+            ],
+            "train_au_mean_percentage": 59.674272289252585,
+            "train_au_meet_expectation": "fail",
+            "train_au_stdev_percentage": 0.0,
+            "train_throughput_samples_per_second": [
+              167.0172420658623
+            ],
+            "train_throughput_mean_samples_per_second": 167.0172420658623,
+            "train_throughput_stdev_samples_per_second": 0.0,
+            "train_io_mean_MB_per_second": 450.5214032572771,
+            "train_io_stdev_MB_per_second": 0.0
+          },
+          "num_files_train": 4,
+          "num_files_eval": 0,
+          "num_samples_per_file": 1,
+          "host_cpu_count": [
+            72
+          ],
+          "host_processor_name": "x86_64",
+          "potential_caching": [
+            1
+          ],
+          "host_cpuinfo": {
+            "vendor_id": "GenuineIntel",
+            "cpu family": "6",
+            "model": "79",
+            "model name": "Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz",
+            "stepping": "1",
+            "microcode": "0xb000040",
+            "cpu MHz": "2697.471",
+            "cache size": "46080 KB",
+            "physical id": "1",
+            "siblings": "36",
+            "core id": "27",
+            "cpu cores": "18",
+            "apicid": "119",
+            "initial apicid": "119",
+            "fpu": "yes",
+            "fpu_exception": "yes",
+            "cpuid level": "20",
+            "wp": "yes",
+            "flags": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 pti ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm rdt_a rdseed adx smap intel_pt xsaveopt cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts vnmi md_clear flush_l1d",
+            "vmx flags": "vnmi preemption_timer posted_intr invvpid ept_x_only ept_ad ept_1gb flexpriority apicv tsc_offset vtpr mtf vapic ept vpid unrestricted_guest vapic_reg vid ple shadow_vmcs pml ept_violation_ve",
+            "bugs": "cpu_meltdown spectre_v1 spectre_v2 spec_store_bypass l1tf mds swapgs taa itlb_multihit mmio_stale_data",
+            "bogomips": "4599.68",
+            "clflush size": "64",
+            "cache_alignment": "64",
+            "address sizes": "46 bits physical, 48 bits virtual",
+            "power management": ""
+          },
+          "host_meminfo": {
+            "MemTotal": "1584690424 kB",
+            "MemFree": "1464769824 kB",
+            "MemAvailable": "1519012228 kB",
+            "Buffers": "588 kB",
+            "Cached": "65929816 kB",
+            "SwapCached": "0 kB",
+            "Active": "54014640 kB",
+            "Inactive": "44700380 kB",
+            "Active(anon)": "45682128 kB",
+            "Inactive(anon)": "0 kB",
+            "Active(file)": "8332512 kB",
+            "Inactive(file)": "44700380 kB",
+            "Unevictable": "3412 kB",
+            "Mlocked": "340 kB",
+            "SwapTotal": "0 kB",
+            "SwapFree": "0 kB",
+            "Zswap": "0 kB",
+            "Zswapped": "0 kB",
+            "Dirty": "3352 kB",
+            "Writeback": "0 kB",
+            "AnonPages": "31297352 kB",
+            "Mapped": "14577156 kB",
+            "Shmem": "12897984 kB",
+            "KReclaimable": "9434304 kB",
+            "Slab": "11429464 kB",
+            "SReclaimable": "9434304 kB",
+            "SUnreclaim": "1995160 kB",
+            "KernelStack": "124272 kB",
+            "PageTables": "262592 kB",
+            "SecPageTables": "2056 kB",
+            "NFS_Unstable": "0 kB",
+            "Bounce": "0 kB",
+            "WritebackTmp": "0 kB",
+            "CommitLimit": "792345212 kB",
+            "Committed_AS": "110052040 kB",
+            "VmallocTotal": "34359738367 kB",
+            "VmallocUsed": "570396 kB",
+            "VmallocChunk": "0 kB",
+            "Percpu": "118400 kB",
+            "HardwareCorrupted": "0 kB",
+            "AnonHugePages": "22798336 kB",
+            "ShmemHugePages": "0 kB",
+            "ShmemPmdMapped": "0 kB",
+            "FileHugePages": "0 kB",
+            "FilePmdMapped": "0 kB",
+            "CmaTotal": "0 kB",
+            "CmaFree": "0 kB",
+            "Unaccepted": "0 kB",
+            "HugePages_Total": "0",
+            "HugePages_Free": "0",
+            "HugePages_Rsvd": "0",
+            "HugePages_Surp": "0",
+            "Hugepagesize": "2048 kB",
+            "Hugetlb": "0 kB",
+            "DirectMap4k": "967444 kB",
+            "DirectMap2M": "156223488 kB",
+            "DirectMap1G": "1455423488 kB"
+          },
+          "host_memory_GB": [
+            1511.2785568237305
+          ],
+          "data_size_per_host_GB": 0.010536931455135345,
+          "epochs": 1,
+          "end": "2026-11-20T17:46:02.982166"
+        },
+        "training_20261120_174551_metadata.json": {
+          "benchmark_type": "training",
+          "model": "cosmoflow",
+          "num_processes": 1,
+          "parameters": {
+            "model": {
+              "name": "cosmoflow"
+            },
+            "framework": "tensorflow",
+            "workflow": {
+              "generate_data": false,
+              "train": true
+            },
+            "dataset": {
+              "data_folder": "/data/dtt-mlperf/20261120T094535Z-9604e368c357/cosmoflow",
+              "num_files_train": "4",
+              "num_samples_per_file": 1,
+              "record_length_bytes": 2828486,
+              "record_length_bytes_stdev": 71311,
+              "format": "tfrecord",
+              "skip_listing": "True",
+              "listing_validation_interval": "1"
+            },
+            "reader": {
+              "data_loader": "tensorflow",
+              "read_threads": 4,
+              "batch_size": 1,
+              "file_shuffle": "seed",
+              "sample_shuffle": "seed",
+              "shuffle_size": 2
+            },
+            "train": {
+              "epochs": "1",
+              "computation_time": 0.0035
+            },
+            "metric": {
+              "au": 0.7
+            }
+          }
+        },
+        "0_per_epoch_stats.json": {
+          "1": {
+            "start": "2026-11-20T17:46:02.896399",
+            "block1": {
+              "start": "2026-11-20T17:46:02.896698",
+              "end": "2026-11-20T17:46:02.943428",
+              "duration": "0.05"
+            },
+            "end": "2026-11-20T17:46:02.981238",
+            "duration": "0.05"
+          }
+        }
+      }
+    },
+    {
+      "plan": {
+        "tool": "mlperf",
+        "mlperf_model": "custom",
+        "concurrency": 1,
+        "rounds": 1,
+        "mount": "/data",
+        "run_id": "20261120T094605Z-44116ba31b73",
+        "file_count": 0,
+        "file_size": "0",
+        "rw": "readwrite",
+        "direct": false,
+        "block_size": 0,
+        "iodepth": 1,
+        "read_percent": null,
+        "output_dir": "/results/performance-mlperf-20261120T094605Z-44116ba31b73",
+        "data_dir": "/data/dtt-mlperf/20261120T094605Z-44116ba31b73/checkpointing",
+        "checkpoint_mode": "write-read",
+        "checkpoint_count": 1,
+        "checkpoint_size": 16777216,
+        "preparation_required": false,
+        "total_size": "16777216",
+        "format": "dtt-mlperf-v2",
+        "engine_version": "3.0.46",
+        "mlperf_scenario": "checkpointing",
+        "compliance_note": "MLPerf Storage 3.0 what-if/custom workload; internal comparison, not an official submission."
+      },
+      "expected_metrics": {
+        "write_gib_per_second": 0.3191967477681763,
+        "write_seconds": 0.048951,
+        "read_gib_per_second": 2.489246455313048,
+        "read_seconds": 0.006277,
+        "checkpoint_gib": 0.015625
+      },
+      "files": {
+        "summary.json": {
+          "start": "2026-11-20T17:46:15.999897",
+          "num_accelerators": 1,
+          "num_hosts": 1,
+          "hostname": "f9a1baa00dca",
+          "metric": {
+            "save_checkpoint_io_mean_GB_per_second": 0.3191967477681763,
+            "save_checkpoint_io_stdev_GB_per_second": 0.0,
+            "save_checkpoint_duration_mean_seconds": 0.048951,
+            "save_checkpoint_duration_stdev_seconds": 0.0,
+            "load_checkpoint_io_mean_GB_per_second": 2.489246455313048,
+            "load_checkpoint_io_stdev_GB_per_second": 0.0,
+            "load_checkpoint_duration_mean_seconds": 0.006277,
+            "load_checkpoint_duration_stdev_seconds": 0.0,
+            "checkpoint_size_GB": 0.015625
+          },
+          "num_files_train": 8,
+          "num_files_eval": 0,
+          "num_samples_per_file": 1,
+          "host_cpu_count": [
+            72
+          ],
+          "host_processor_name": "x86_64",
+          "potential_caching": [
+            1
+          ],
+          "host_cpuinfo": {
+            "vendor_id": "GenuineIntel",
+            "cpu family": "6",
+            "model": "79",
+            "model name": "Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz",
+            "stepping": "1",
+            "microcode": "0xb000040",
+            "cpu MHz": "2699.814",
+            "cache size": "46080 KB",
+            "physical id": "1",
+            "siblings": "36",
+            "core id": "27",
+            "cpu cores": "18",
+            "apicid": "119",
+            "initial apicid": "119",
+            "fpu": "yes",
+            "fpu_exception": "yes",
+            "cpuid level": "20",
+            "wp": "yes",
+            "flags": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 pti ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm rdt_a rdseed adx smap intel_pt xsaveopt cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts vnmi md_clear flush_l1d",
+            "vmx flags": "vnmi preemption_timer posted_intr invvpid ept_x_only ept_ad ept_1gb flexpriority apicv tsc_offset vtpr mtf vapic ept vpid unrestricted_guest vapic_reg vid ple shadow_vmcs pml ept_violation_ve",
+            "bugs": "cpu_meltdown spectre_v1 spectre_v2 spec_store_bypass l1tf mds swapgs taa itlb_multihit mmio_stale_data",
+            "bogomips": "4599.68",
+            "clflush size": "64",
+            "cache_alignment": "64",
+            "address sizes": "46 bits physical, 48 bits virtual",
+            "power management": ""
+          },
+          "host_meminfo": {
+            "MemTotal": "1584690424 kB",
+            "MemFree": "1465221408 kB",
+            "MemAvailable": "1519473540 kB",
+            "Buffers": "588 kB",
+            "Cached": "65936152 kB",
+            "SwapCached": "0 kB",
+            "Active": "53999884 kB",
+            "Inactive": "44706080 kB",
+            "Active(anon)": "45667372 kB",
+            "Inactive(anon)": "0 kB",
+            "Active(file)": "8332512 kB",
+            "Inactive(file)": "44706080 kB",
+            "Unevictable": "3412 kB",
+            "Mlocked": "340 kB",
+            "SwapTotal": "0 kB",
+            "SwapFree": "0 kB",
+            "Zswap": "0 kB",
+            "Zswapped": "0 kB",
+            "Dirty": "948 kB",
+            "Writeback": "0 kB",
+            "AnonPages": "31283872 kB",
+            "Mapped": "14276808 kB",
+            "Shmem": "12898588 kB",
+            "KReclaimable": "9438332 kB",
+            "Slab": "11434208 kB",
+            "SReclaimable": "9438332 kB",
+            "SUnreclaim": "1995876 kB",
+            "KernelStack": "124784 kB",
+            "PageTables": "261680 kB",
+            "SecPageTables": "2056 kB",
+            "NFS_Unstable": "0 kB",
+            "Bounce": "0 kB",
+            "WritebackTmp": "0 kB",
+            "CommitLimit": "792345212 kB",
+            "Committed_AS": "110251692 kB",
+            "VmallocTotal": "34359738367 kB",
+            "VmallocUsed": "571068 kB",
+            "VmallocChunk": "0 kB",
+            "Percpu": "118400 kB",
+            "HardwareCorrupted": "0 kB",
+            "AnonHugePages": "22728704 kB",
+            "ShmemHugePages": "0 kB",
+            "ShmemPmdMapped": "0 kB",
+            "FileHugePages": "0 kB",
+            "FilePmdMapped": "0 kB",
+            "CmaTotal": "0 kB",
+            "CmaFree": "0 kB",
+            "Unaccepted": "0 kB",
+            "HugePages_Total": "0",
+            "HugePages_Free": "0",
+            "HugePages_Rsvd": "0",
+            "HugePages_Surp": "0",
+            "Hugepagesize": "2048 kB",
+            "Hugetlb": "0 kB",
+            "DirectMap4k": "967444 kB",
+            "DirectMap2M": "156223488 kB",
+            "DirectMap1G": "1455423488 kB"
+          },
+          "host_memory_GB": [
+            1511.2785568237305
+          ],
+          "data_size_per_host_GB": 0.00048828125,
+          "epochs": 0,
+          "end": "2026-11-20T17:46:16.097897"
+        },
+        "checkpointing_20261120_174607_metadata.json": {
+          "benchmark_type": "checkpointing",
+          "model": "llama3-8b",
+          "num_processes": 1,
+          "parameters": {
+            "model": {
+              "name": "llama_8b",
+              "type": "custom",
+              "num_layers": "-1",
+              "model_datatype": "fp16",
+              "optimizer_datatype": "fp32",
+              "parallelism": {
+                "pipeline": "1",
+                "tensor": "1",
+                "zero_stage": "0",
+                "data": 1
+              },
+              "transformer": {
+                "vocab_size": 128256,
+                "hidden_size": 4096,
+                "ffn_hidden_size": 14336,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8
+              },
+              "model_size_bytes": "16777216",
+              "optimization_groups": "[]"
+            },
+            "framework": "pytorch",
+            "workflow": {
+              "generate_data": false,
+              "train": false,
+              "checkpoint": true
+            },
+            "checkpoint": {
+              "checkpoint_folder": "/data/dtt-mlperf/20261120T094605Z-44116ba31b73/checkpointing/llama3-8b",
+              "time_between_checkpoints": "0",
+              "num_checkpoints_write": 1,
+              "num_checkpoints_read": 1,
+              "fsync": true,
+              "mode": "subset"
+            }
+          }
+        },
+        "0_per_epoch_stats.json": {
+          "1": {
+            "start": "2026-11-20T17:46:16.035888",
+            "save_ckpt1": {
+              "start": "2026-11-20T17:46:16.035981",
+              "end": "2026-11-20T17:46:16.084932",
+              "duration": 0.048951,
+              "throughput": 0.3191967477681763
+            },
+            "load_ckpt1": {
+              "start": "2026-11-20T17:46:16.089058",
+              "end": "2026-11-20T17:46:16.095335",
+              "duration": 0.006277,
+              "throughput": 2.489246455313048
+            },
+            "end": "2026-11-20T17:46:16.096950"
+          }
+        }
+      }
+    },
+    {
+      "plan": {
+        "tool": "mlperf",
+        "mlperf_model": "custom",
+        "concurrency": 2,
+        "rounds": 1,
+        "mount": "/data",
+        "run_id": "20261120T094618Z-7efdc830f7cc",
+        "file_count": 0,
+        "file_size": "0",
+        "rw": "readwrite",
+        "direct": false,
+        "block_size": 0,
+        "iodepth": 1,
+        "read_percent": null,
+        "output_dir": "/results/performance-mlperf-20261120T094618Z-7efdc830f7cc",
+        "data_dir": "/data/dtt-mlperf/20261120T094618Z-7efdc830f7cc/checkpointing",
+        "checkpoint_mode": "read",
+        "checkpoint_count": 2,
+        "checkpoint_size": 16777216,
+        "preparation_required": true,
+        "total_size": "33554432",
+        "format": "dtt-mlperf-v2",
+        "engine_version": "3.0.46",
+        "mlperf_scenario": "checkpointing",
+        "compliance_note": "MLPerf Storage 3.0 what-if/custom workload; internal comparison, not an official submission."
+      },
+      "expected_metrics": {
+        "read_gib_per_second": 4.290499751499494,
+        "read_seconds": 0.0051095,
+        "checkpoint_gib": 0.015625
+      },
+      "files": {
+        "summary.json": {
+          "start": "2026-11-20T17:46:40.160101",
+          "num_accelerators": 2,
+          "num_hosts": 1,
+          "hostname": "f9a1baa00dca",
+          "metric": {
+            "load_checkpoint_io_mean_GB_per_second": 2.145249875749747,
+            "load_checkpoint_io_stdev_GB_per_second": 1.1497733212135597,
+            "load_checkpoint_duration_mean_seconds": 0.0051095,
+            "load_checkpoint_duration_stdev_seconds": 0.0027385000000000005,
+            "checkpoint_size_GB": 0.0078125
+          },
+          "num_files_train": 8,
+          "num_files_eval": 0,
+          "num_samples_per_file": 1,
+          "host_cpu_count": [
+            72
+          ],
+          "host_processor_name": "x86_64",
+          "potential_caching": [
+            1
+          ],
+          "host_cpuinfo": {
+            "vendor_id": "GenuineIntel",
+            "cpu family": "6",
+            "model": "79",
+            "model name": "Intel(R) Xeon(R) CPU E5-2686 v4 @ 2.30GHz",
+            "stepping": "1",
+            "microcode": "0xb000040",
+            "cpu MHz": "3000.000",
+            "cache size": "46080 KB",
+            "physical id": "1",
+            "siblings": "36",
+            "core id": "27",
+            "cpu cores": "18",
+            "apicid": "119",
+            "initial apicid": "119",
+            "fpu": "yes",
+            "fpu_exception": "yes",
+            "cpuid level": "20",
+            "wp": "yes",
+            "flags": "fpu vme de pse tsc msr pae mce cx8 apic sep mtrr pge mca cmov pat pse36 clflush dts acpi mmx fxsr sse sse2 ss ht tm pbe syscall nx pdpe1gb rdtscp lm constant_tsc arch_perfmon pebs bts rep_good nopl xtopology nonstop_tsc cpuid aperfmperf pni pclmulqdq dtes64 monitor ds_cpl vmx smx est tm2 ssse3 sdbg fma cx16 xtpr pdcm pcid dca sse4_1 sse4_2 x2apic movbe popcnt tsc_deadline_timer aes xsave avx f16c rdrand lahf_lm abm 3dnowprefetch cpuid_fault epb cat_l3 cdp_l3 pti ssbd ibrs ibpb stibp tpr_shadow flexpriority ept vpid ept_ad fsgsbase tsc_adjust bmi1 hle avx2 smep bmi2 erms invpcid rtm cqm rdt_a rdseed adx smap intel_pt xsaveopt cqm_llc cqm_occup_llc cqm_mbm_total cqm_mbm_local dtherm ida arat pln pts vnmi md_clear flush_l1d",
+            "vmx flags": "vnmi preemption_timer posted_intr invvpid ept_x_only ept_ad ept_1gb flexpriority apicv tsc_offset vtpr mtf vapic ept vpid unrestricted_guest vapic_reg vid ple shadow_vmcs pml ept_violation_ve",
+            "bugs": "cpu_meltdown spectre_v1 spectre_v2 spec_store_bypass l1tf mds swapgs taa itlb_multihit mmio_stale_data",
+            "bogomips": "4599.68",
+            "clflush size": "64",
+            "cache_alignment": "64",
+            "address sizes": "46 bits physical, 48 bits virtual",
+            "power management": ""
+          },
+          "host_meminfo": {
+            "MemTotal": "1584690424 kB",
+            "MemFree": "1465043600 kB",
+            "MemAvailable": "1519307036 kB",
+            "Buffers": "588 kB",
+            "Cached": "65992300 kB",
+            "SwapCached": "0 kB",
+            "Active": "54612704 kB",
+            "Inactive": "44711980 kB",
+            "Active(anon)": "46280192 kB",
+            "Inactive(anon)": "0 kB",
+            "Active(file)": "8332512 kB",
+            "Inactive(file)": "44711980 kB",
+            "Unevictable": "3412 kB",
+            "Mlocked": "340 kB",
+            "SwapTotal": "0 kB",
+            "SwapFree": "0 kB",
+            "Zswap": "0 kB",
+            "Zswapped": "0 kB",
+            "Dirty": "7880 kB",
+            "Writeback": "0 kB",
+            "AnonPages": "31847032 kB",
+            "Mapped": "14278024 kB",
+            "Shmem": "12948840 kB",
+            "KReclaimable": "9443736 kB",
+            "Slab": "11440796 kB",
+            "SReclaimable": "9443736 kB",
+            "SUnreclaim": "1997060 kB",
+            "KernelStack": "124960 kB",
+            "PageTables": "269300 kB",
+            "SecPageTables": "2056 kB",
+            "NFS_Unstable": "0 kB",
+            "Bounce": "0 kB",
+            "WritebackTmp": "0 kB",
+            "CommitLimit": "792345212 kB",
+            "Committed_AS": "110764592 kB",
+            "VmallocTotal": "34359738367 kB",
+            "VmallocUsed": "571188 kB",
+            "VmallocChunk": "0 kB",
+            "Percpu": "118400 kB",
+            "HardwareCorrupted": "0 kB",
+            "AnonHugePages": "22743040 kB",
+            "ShmemHugePages": "0 kB",
+            "ShmemPmdMapped": "0 kB",
+            "FileHugePages": "0 kB",
+            "FilePmdMapped": "0 kB",
+            "CmaTotal": "0 kB",
+            "CmaFree": "0 kB",
+            "Unaccepted": "0 kB",
+            "HugePages_Total": "0",
+            "HugePages_Free": "0",
+            "HugePages_Rsvd": "0",
+            "HugePages_Surp": "0",
+            "Hugepagesize": "2048 kB",
+            "Hugetlb": "0 kB",
+            "DirectMap4k": "967444 kB",
+            "DirectMap2M": "156223488 kB",
+            "DirectMap1G": "1455423488 kB"
+          },
+          "host_memory_GB": [
+            1511.2785568237305
+          ],
+          "data_size_per_host_GB": 0.00048828125,
+          "epochs": 0,
+          "end": "2026-11-20T17:46:40.211146"
+        },
+        "checkpointing_20261120_174631_metadata.json": {
+          "benchmark_type": "checkpointing",
+          "model": "llama3-8b",
+          "num_processes": 2,
+          "parameters": {
+            "model": {
+              "name": "llama_8b",
+              "type": "custom",
+              "num_layers": "-1",
+              "model_datatype": "fp16",
+              "optimizer_datatype": "fp32",
+              "parallelism": {
+                "pipeline": "1",
+                "tensor": "2",
+                "zero_stage": "0",
+                "data": 1
+              },
+              "transformer": {
+                "vocab_size": 128256,
+                "hidden_size": 4096,
+                "ffn_hidden_size": 14336,
+                "num_attention_heads": 32,
+                "num_kv_heads": 8
+              },
+              "model_size_bytes": "8388608",
+              "optimization_groups": "[]"
+            },
+            "framework": "pytorch",
+            "workflow": {
+              "generate_data": false,
+              "train": false,
+              "checkpoint": true
+            },
+            "checkpoint": {
+              "checkpoint_folder": "/data/dtt-mlperf/20261120T094618Z-7efdc830f7cc/checkpointing/llama3-8b",
+              "time_between_checkpoints": "0",
+              "num_checkpoints_write": 0,
+              "num_checkpoints_read": 2,
+              "fsync": true,
+              "mode": "subset"
+            }
+          }
+        },
+        "0_per_epoch_stats.json": {
+          "1": {
+            "start": "2026-11-20T17:46:40.195566",
+            "load_ckpt1": {
+              "start": "2026-11-20T17:46:40.195718",
+              "end": "2026-11-20T17:46:40.203566",
+              "duration": 0.007848,
+              "throughput": 0.9954765545361874
+            },
+            "load_ckpt2": {
+              "start": "2026-11-20T17:46:40.206598",
+              "end": "2026-11-20T17:46:40.208969",
+              "duration": 0.002371,
+              "throughput": 3.295023196963307
+            },
+            "end": "2026-11-20T17:46:40.210353"
+          }
+        },
+        "1_per_epoch_stats.json": {
+          "1": {
+            "start": "2026-11-20T17:46:40.195562",
+            "load_ckpt1": {
+              "start": "2026-11-20T17:46:40.195719",
+              "end": "2026-11-20T17:46:40.202865",
+              "duration": 0.007146,
+              "throughput": 1.0932689616568712
+            },
+            "load_ckpt2": {
+              "start": "2026-11-20T17:46:40.206594",
+              "end": "2026-11-20T17:46:40.209319",
+              "duration": 0.002725,
+              "throughput": 2.86697247706422
+            },
+            "end": "2026-11-20T17:46:40.210601"
+          }
+        }
+      }
+    },
+    {
+      "plan": {
+        "tool": "mlperf",
+        "mlperf_model": "tiny-1b",
+        "concurrency": 1,
+        "rounds": 1,
+        "mount": "/data",
+        "run_id": "20261120T094642Z-7162e797ecee",
+        "file_count": 0,
+        "file_size": "0",
+        "rw": "readwrite",
+        "direct": false,
+        "block_size": 0,
+        "iodepth": 1,
+        "read_percent": null,
+        "output_dir": "/results/performance-mlperf-20261120T094642Z-7162e797ecee",
+        "data_dir": "/data/dtt-mlperf/20261120T094642Z-7162e797ecee/kvcache",
+        "runtime_seconds": 5,
+        "capacity_bytes": 268435456,
+        "total_size": "268435456",
+        "gpu_memory_gib": 0.0,
+        "cpu_memory_gib": 0.0,
+        "preparation_required": false,
+        "format": "dtt-mlperf-v2",
+        "engine_version": "3.0.46",
+        "mlperf_scenario": "kvcache",
+        "compliance_note": "MLPerf Storage 3.0 what-if/custom workload; internal comparison, not an official submission."
+      },
+      "expected_metrics": {
+        "requests": 5.0,
+        "measurement_seconds": 5.000183820724487,
+        "tokens_per_second": 266.7901916867356,
+        "requests_per_second": 0.9999632372066553,
+        "end_to_end_latency_ms_mean": 2269.6903808042407,
+        "end_to_end_latency_ms_p95": 2716.3050354458387,
+        "end_to_end_latency_ms_p99": 2801.271854955703,
+        "storage_io_latency_ms_mean": 880.2044595591724,
+        "storage_io_latency_ms_p95": 1687.3379257507622,
+        "storage_io_latency_ms_p99": 1825.8212574012578,
+        "total_read_bytes": 4870692864.0,
+        "total_write_bytes": 1080213504.0
+      },
+      "files": {
+        "kv-result.json": {
+          "effective_config": {
+            "log_level": "INFO",
+            "model": "tiny-1b",
+            "num_users": 1,
+            "duration": 5,
+            "gpu_mem_gb": 0.0,
+            "num_gpus": 1,
+            "tensor_parallel": 1,
+            "cpu_mem_gb": 0.0,
+            "cache_dir": "/data/dtt-mlperf/20261120T094642Z-7162e797ecee/kvcache",
+            "generation_mode": "none",
+            "performance_profile": "latency",
+            "disable_multi_turn": false,
+            "disable_prefix_caching": false,
+            "enable_rag": false,
+            "rag_num_docs": 10,
+            "enable_autoscaling": false,
+            "autoscaler_mode": "qos",
+            "target_saturation": 0.8,
+            "use_burst_trace": false,
+            "burst_trace_path": "BurstGPT/data/BurstGPT_1.csv",
+            "validation_trace": null,
+            "dataset_path": null,
+            "max_conversations": 500,
+            "output": "/results/performance-mlperf-20261120T094642Z-7162e797ecee/round-001-native/kv-result.json",
+            "seed": 42,
+            "max_concurrent_allocs": 1,
+            "request_rate": 0,
+            "max_requests": 0,
+            "xlsx_output": null,
+            "config": null,
+            "storage_capacity_gb": 0.25,
+            "precondition": false,
+            "precondition_size_gb": 0,
+            "precondition_threads": 0,
+            "trace_speedup": 1.0,
+            "replay_cycles": 0,
+            "prefill_only": false,
+            "decode_only": false,
+            "io_trace_log": null,
+            "enable_latency_tracing": false
+          },
+          "summary": {
+            "total_requests": 5,
+            "total_tokens": 1334,
+            "elapsed_time": 5.000183820724487,
+            "avg_throughput_tokens_per_sec": 266.7901916867356,
+            "total_storage_io_time": 4.401022297795862,
+            "storage_throughput_tokens_per_sec": 303.111393157017,
+            "requests_per_second": 0.9999632372066553,
+            "end_to_end_latency_ms": {
+              "mean": 2269.6903808042407,
+              "p50": 2190.73463184759,
+              "p95": 2716.3050354458387,
+              "p99": 2801.271854955703,
+              "p999": 2820.3893893454224,
+              "p9999": 2822.301142784394
+            },
+            "storage_io_latency_ms": {
+              "mean": 880.2044595591724,
+              "p50": 711.4982339553535,
+              "p95": 1687.3379257507622,
+              "p99": 1825.8212574012578,
+              "p999": 1856.9800070226197,
+              "p9999": 1860.0958819847551
+            },
+            "generation_latency_ms": {
+              "mean": 0.0,
+              "p50": 0.0,
+              "p95": 0.0,
+              "p99": 0.0,
+              "p999": 0.0,
+              "p9999": 0.0
+            },
+            "cache_stats": {
+              "cache_hit_rate": 0.7142857142857143,
+              "cache_hits": 35,
+              "cache_misses": 14,
+              "gpu_entries": 0,
+              "cpu_entries": 0,
+              "storage_entries": 1,
+              "gpu_memory_used_gb": 0.0,
+              "cpu_memory_used_gb": 0.0,
+              "offloads_cpu": 0,
+              "offloads_storage": 5,
+              "storage_health": {
+                "overall_status": "PASS",
+                "criteria": [
+                  {
+                    "name": "Storage Tier Write Device P95 < 500ms",
+                    "target": 500,
+                    "actual": 0.013886019587516783,
+                    "unit": "ms",
+                    "passed": true
+                  },
+                  {
+                    "name": "Storage Tier Read Device P95 < 200ms",
+                    "target": 200,
+                    "actual": 88.40766134671844,
+                    "unit": "ms",
+                    "passed": true
+                  },
+                  {
+                    "name": "Cache Hit Rate > 30%",
+                    "target": 0.3,
+                    "actual": 0.7142857142857143,
+                    "unit": "ratio",
+                    "passed": true
+                  }
+                ],
+                "passed_count": 3,
+                "total_count": 3
+              },
+              "prefill_writes": 5,
+              "decode_reads": 35,
+              "tier_gpu_kv_bytes_written_gb": 0.0,
+              "tier_cpu_kv_bytes_written_gb": 0.0,
+              "tier_storage_kv_bytes_written_gb": 1.0060272216796875,
+              "tier_gpu_kv_bytes_read_gb": 0.0,
+              "tier_cpu_kv_bytes_read_gb": 0.0,
+              "tier_storage_kv_bytes_read_gb": 4.536186218261719,
+              "tier_gpu_read_bandwidth_gbps": 0.0,
+              "tier_gpu_write_bandwidth_gbps": 0.0,
+              "tier_cpu_read_bandwidth_gbps": 0.0,
+              "tier_cpu_write_bandwidth_gbps": 0.0,
+              "tier_storage_read_bandwidth_gbps": 0.9072038910770407,
+              "tier_storage_write_bandwidth_gbps": 0.20119804746176753,
+              "system_prompt_hits": 0,
+              "common_phrase_hits": 0,
+              "user_cache_hits": 30,
+              "multi_turn_hits": 5,
+              "total_read_bytes": 4870692864,
+              "total_write_bytes": 1080213504,
+              "total_read_gb": 4.536186218261719,
+              "total_write_gb": 1.0060272216796875,
+              "read_write_ratio": 4.509009418937981,
+              "read_iops": 35,
+              "write_iops": 5,
+              "storage_tokens_processed": 242143.0,
+              "storage_read_p50_ms": 111.47956922650337,
+              "storage_read_p95_ms": 161.5562737919386,
+              "storage_read_p99_ms": 286.9999951962381,
+              "storage_read_p999_ms": 295.5954119870439,
+              "storage_read_p9999_ms": 296.45495366612437,
+              "storage_write_p50_ms": 72.08311278373003,
+              "storage_write_p95_ms": 186.79609084501863,
+              "storage_write_p99_ms": 189.38629800453782,
+              "storage_write_p999_ms": 189.96909461542967,
+              "storage_write_p9999_ms": 190.0273742765188,
+              "storage_read_device_p50_ms": 60.406961012631655,
+              "storage_read_device_p95_ms": 88.40766134671844,
+              "storage_read_device_p99_ms": 155.21753912791604,
+              "storage_read_device_p999_ms": 160.11149260029197,
+              "storage_read_device_p9999_ms": 160.60088794752943,
+              "storage_read_host_p50_ms": 51.08501575887203,
+              "storage_read_host_p95_ms": 73.23853322304764,
+              "storage_read_host_p99_ms": 131.782456068322,
+              "storage_read_host_p999_ms": 135.48391938675198,
+              "storage_read_host_p9999_ms": 135.85406571859488,
+              "storage_write_device_p50_ms": 0.007408671081066132,
+              "storage_write_device_p95_ms": 0.013886019587516783,
+              "storage_write_device_p99_ms": 0.01516006886959076,
+              "storage_write_device_p999_ms": 0.015446729958057407,
+              "storage_write_device_p9999_ms": 0.015475396066904066,
+              "storage_write_host_p50_ms": 72.06763420253992,
+              "storage_write_host_p95_ms": 186.78980031982064,
+              "storage_write_host_p99_ms": 189.3799969740212,
+              "storage_write_host_p999_ms": 189.96279122121632,
+              "storage_write_host_p9999_ms": 190.02107064593582
+            },
+            "qos_metrics": {
+              "interactive": {
+                "total_requests": 5,
+                "latency_ms": {
+                  "mean": 2269.6903808042407,
+                  "p50": 2190.73463184759,
+                  "p95": 2716.305035445839,
+                  "p99": 2801.271854955703,
+                  "max": 2822.513559833169
+                },
+                "sla": {
+                  "target_p95_ms": 50,
+                  "actual_p95_ms": 2716.305035445839,
+                  "compliance": 0.0,
+                  "met": false
+                }
+              },
+              "responsive": {
+                "no_data": true
+              },
+              "batch": {
+                "no_data": true
+              }
+            },
+            "prefix_cache_stats": {
+              "prefix_hits": 1,
+              "prefix_misses": 4,
+              "system_prompt_reuse": 1,
+              "common_phrase_reuse": 0,
+              "bytes_saved": 221184
+            },
+            "autoscaling_stats": [],
+            "autoscaling_summary": null,
+            "multi_turn_stats": {
+              "cache_hits": 5,
+              "cache_misses": 13,
+              "hit_rate": 0.2777777777777778
+            }
+          }
+        }
+      }
+    }
+  ]
+}

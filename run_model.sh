@@ -33,6 +33,23 @@ CLIENT_MEMORY_GB="${2:?'CLIENT_MEMORY_GB argument required'}"
 NUM_PROCESSES="${3:?'NUM_PROCESSES argument required'}"
 RUN_TS="${4:?'RUN_TS argument required'}"
 
+# The v3 CLI is incompatible with the legacy subcommands below. Keep old
+# images working and route new images through the versioned report adapter.
+if python3 -c 'import importlib.metadata,sys; sys.exit(not importlib.metadata.version("mlpstorage").startswith("3."))' 2>/dev/null; then
+    exec python3 - "$MODEL" "$NUM_PROCESSES" "${OUTPUT_BASE:-/output}" <<'PY'
+import os, sys
+sys.path.insert(0, '/scripts')
+from mlperf_v3 import legacy_arguments, main
+try:
+    args = legacy_arguments(sys.argv[1], sys.argv[2], sys.argv[3], os.environ)
+except ValueError as exc:
+    print(str(exc), file=sys.stderr)
+    sys.exit(2)
+print('MLPerf Storage 3.0 internal comparison; fresh per-run dataset, not an official submission.')
+sys.exit(main(args))
+PY
+fi
+
 # ---------------------------------------------------------------------------
 # Paths
 # ---------------------------------------------------------------------------
