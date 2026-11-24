@@ -1,3 +1,4 @@
+import json
 import os
 import re
 import stat
@@ -143,7 +144,7 @@ class AiCliTest(unittest.TestCase):
                 "    *) shift ;;\n"
                 "  esac\n"
                 "done\n"
-                "name=\"${url##*/}\"\n"
+                "name=\"${url#*/refs/heads/main/}\"\n"
                 "cp \"$INSTALL_SOURCE_ROOT/$name\" \"$out\"\n",
                 encoding="utf-8",
             )
@@ -173,6 +174,30 @@ class AiCliTest(unittest.TestCase):
             self.assertTrue(os.access(install_bin / "dtt-ai-analyze", os.X_OK))
             schema = home / ".local" / "lib" / "dingofs-testsuite-tool" / "analysis.schema.json"
             self.assertTrue(schema.is_file())
+
+            # Plan with installed artifacts only; omission of either adapter must fail.
+            for scenario, options, expected_format in (
+                ('legacy-training', ['--file-count', '4'], 'dtt-mlperf-v1'),
+                ('training', ['--mlperf-scenario', 'training', '--file-count', '4'], 'dtt-mlperf-v2'),
+                ('checkpointing', ['--mlperf-scenario', 'checkpointing',
+                                   '--checkpoint-size', '16777216'], 'dtt-mlperf-v2'),
+                ('kvcache', ['--mlperf-scenario', 'kvcache', '--mlperf-model', 'tiny-1b',
+                             '--runtime-seconds', '10', '--total-size', '1073741824'], 'dtt-mlperf-v2'),
+            ):
+                with self.subTest(scenario=scenario):
+                    plan = subprocess.run(
+                        [str(install_bin / 'dtt'), '-t', 'mlperf', '-s', 'benchmark',
+                         '-m', str(temp / 'mount'), '-o', str(temp / 'output'),
+                         '--dry-run', *options],
+                        text=True, capture_output=True, env=env, cwd=temp,
+                    )
+                    self.assertEqual(plan.returncode, 0, plan.stdout + plan.stderr)
+                    payload = json.loads(plan.stdout)
+                    self.assertEqual(payload['format'], expected_format)
+                    if scenario != 'legacy-training':
+                        self.assertEqual(payload['mlperf_scenario'], scenario)
+            self.assertFalse((temp / 'mount').exists())
+            self.assertFalse((temp / 'output').exists())
 
 
 if __name__ == "__main__":

@@ -85,9 +85,13 @@ download_component() {
 TEMP_WRAPPER="$INSTALL_TEMP_DIR/dingofs-testsuite-tool"
 TEMP_ANALYZER="$INSTALL_TEMP_DIR/dtt-ai-analyze"
 TEMP_SCHEMA="$INSTALL_TEMP_DIR/analysis.schema.json"
+TEMP_MLPERF="$INSTALL_TEMP_DIR/mlperf_benchmark.py"
+TEMP_MLPERF_V3="$INSTALL_TEMP_DIR/mlperf_v3.py"
 download_component "$TESTSUITE_TOOL_URL" "$TEMP_WRAPPER" "dingofs-testsuite-tool" || exit 1
 download_component "$AI_ANALYZER_URL" "$TEMP_ANALYZER" "dtt-ai-analyze" || exit 1
 download_component "$AI_SCHEMA_URL" "$TEMP_SCHEMA" "analysis.schema.json" || exit 1
+download_component "$RAW_BASE_URL/scripts/mlperf_benchmark.py" "$TEMP_MLPERF" "mlperf_benchmark.py" || exit 1
+download_component "$RAW_BASE_URL/scripts/mlperf_v3.py" "$TEMP_MLPERF_V3" "mlperf_v3.py" || exit 1
 
 echo "      Downloaded successfully"
 
@@ -131,6 +135,9 @@ install_component() {
 install_component "$TEMP_WRAPPER" "$DEST_FILE" 0755 || exit 1
 install_component "$TEMP_ANALYZER" "$ANALYZER_DEST" 0755 || exit 1
 install_component "$TEMP_SCHEMA" "$SCHEMA_DEST" 0644 || exit 1
+# The wrapper supports adapters alongside its installed executable.
+install_component "$TEMP_MLPERF" "$INSTALL_DIR/mlperf_benchmark.py" 0644 || exit 1
+install_component "$TEMP_MLPERF_V3" "$INSTALL_DIR/mlperf_v3.py" 0644 || exit 1
 
 # Create symlink for dtt shortcut
 if ln -sf "$DEST_FILE" "$INSTALL_DIR/dtt" 2>/dev/null; then

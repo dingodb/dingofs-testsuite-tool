@@ -1774,6 +1774,7 @@ echo ""
         # Create output directory for this scenario
         mkdir -p "$scenario_output"
 
+        local fio_exit=0
         # Perf/debug scenario: prepare script in /tmp, execute from mount dir
         if [[ "$SCENARIO" == "perf" ]] || [[ "$SCENARIO" == "debug" ]]; then
             local perf_script_name
@@ -1799,9 +1800,13 @@ echo ""
             echo "  TEST_TIMES: ${TEST_TIMES:-3}"
             echo "Executing: cd $MOUNT && bash /tmp/$perf_script_name"
             (
-                cd "$MOUNT" && bash "/tmp/$perf_script_name" 2>&1 | tee "$scenario_output/perf.log"
-            )
-            local fio_exit=${PIPESTATUS[0]}
+                cd "$MOUNT" || exit $?
+                bash "/tmp/$perf_script_name" 2>&1 | tee "$scenario_output/perf.log"
+                statuses=("${PIPESTATUS[@]}")
+                # Preserve producer failure; a failed log sink also fails the run.
+                [[ ${statuses[0]} -eq 0 ]] || exit "${statuses[0]}"
+                exit "${statuses[1]}"
+            ) || fio_exit=$?
         else
             local effective_config="$config"
             if [[ -n "$FIO_NUMJOBS$FIO_DIRECT$FIO_FILE_SIZE$FIO_BLOCK_SIZE" ]]; then
@@ -1829,8 +1834,10 @@ echo ""
             (
                 trap 'kill -INT $$' INT TERM
                 "${fio_cmd[@]}" 2>&1 | tee "$scenario_output/fio.raw" > "$scenario_output/fio.json"
-            )
-            local fio_exit=${PIPESTATUS[0]}
+                statuses=("${PIPESTATUS[@]}")
+                [[ ${statuses[0]} -eq 0 ]] || exit "${statuses[0]}"
+                exit "${statuses[1]}"
+            ) || fio_exit=$?
         fi
 
         if [[ $fio_exit -ne 0 ]]; then
@@ -2294,11 +2301,14 @@ ltp_run() {
     for scenario in $scenarios; do
         echo "Executing LTP scenario: $scenario"
         # Use subshell to allow Ctrl+C to interrupt
+        local ltp_exit=0
         (
             trap 'kill -INT $$' INT TERM
             timeout 3600 /opt/ltp/runltp -Q -f "$scenario" -W "$ltp_zoofile" -d . -p "$OUTPUT" -l "${output_file}_${scenario}.log" 2>&1 | tee "${output_file}_${scenario}.raw"
-        )
-        local ltp_exit=${PIPESTATUS[0]}
+            statuses=("${PIPESTATUS[@]}")
+            [[ ${statuses[0]} -eq 0 ]] || exit "${statuses[0]}"
+            exit "${statuses[1]}"
+        ) || ltp_exit=$?
         if [[ $ltp_exit -ne 0 ]]; then
             overall_exit=$ltp_exit
         fi

@@ -3073,6 +3073,12 @@ run_testsuite() {
             echo "Error: MLPerf benchmark accepts only model, epochs, accelerators, concurrency, file-count and rounds" >&2
             return 1
         fi
+        if [[ -n "$setup_env" ]]; then
+            cmd_setup_env "$setup_env" || return $?
+            # Parse the producer's mount marker before selecting the runtime mount.
+            mount=$(load_config testdir)
+            echo "Test dir updated to: $mount"
+        fi
         mount="${mount:-$config_testdir}"; output="${output:-$config_output}"
         [[ -n "$mount" && -n "$output" ]] || { echo "Error: mount and output are required" >&2; return 1; }
         local cli_root mlperf_script
@@ -3823,6 +3829,7 @@ run_testsuite() {
         local cleanup_exit=0
         (
             cd "$integration_test_dir"
+            export DINGOFS_TESTSUITE_CONFIG_DIR="$CONFIG_DIR"
             python3 -c "
 import sys
 sys.path.insert(0, '.')
@@ -4183,8 +4190,16 @@ _run_setup_env() {
     local config_custom
     config_custom=$(load_config custom)
     if [[ -d "$integration_test_dir" ]] && [[ -n "$config_custom" ]] && [[ -f "$config_custom/${setup_env}.yaml" ]]; then
-        ln -sf "$config_custom/${setup_env}.yaml" "$integration_test_dir/conf/env/${setup_env}.yaml"
-        cleanup_symlink="$integration_test_dir/conf/env/${setup_env}.yaml"
+        local env_link="$integration_test_dir/conf/env/${setup_env}.yaml"
+        if [[ -e "$env_link" || -L "$env_link" ]]; then
+            if [[ "$(readlink "$env_link")" != "$config_custom/${setup_env}.yaml" ]]; then
+                echo "Error: refusing to replace existing environment config: $env_link" >&2
+                return 1
+            fi
+        else
+            ln -s "$config_custom/${setup_env}.yaml" "$env_link" || return $?
+            cleanup_symlink="$env_link"
+        fi
         echo "Using custom env: $config_custom/${setup_env}.yaml"
     fi
 
@@ -4193,6 +4208,7 @@ _run_setup_env() {
         local setup_exit=0
         (
             cd "$integration_test_dir"
+            export DINGOFS_TESTSUITE_CONFIG_DIR="$CONFIG_DIR"
             python3 tests/test_env_setup.py "$setup_env"
         ) || setup_exit=$?
     elif [[ -n "$image" ]]; then
@@ -4265,11 +4281,29 @@ _run_cleanup_env() {
     fi
     local integration_test_dir="${repo_dir}/dingofs-integration-test"
 
+    # Resolve the same custom configuration used by standalone setup, without
+    # replacing a checkout-owned file. The journal independently checks identity.
+    local config_custom cleanup_symlink=""
+    config_custom=$(load_config custom)
+    if [[ -d "$integration_test_dir" ]] && [[ -n "$config_custom" ]] && [[ -f "$config_custom/${cleanup_env}.yaml" ]]; then
+        local env_link="$integration_test_dir/conf/env/${cleanup_env}.yaml"
+        if [[ -e "$env_link" || -L "$env_link" ]]; then
+            if [[ "$(readlink "$env_link")" != "$config_custom/${cleanup_env}.yaml" ]]; then
+                echo "Error: refusing to replace existing environment config: $env_link" >&2
+                return 1
+            fi
+        else
+            ln -s "$config_custom/${cleanup_env}.yaml" "$env_link" || return $?
+            cleanup_symlink="$env_link"
+        fi
+    fi
+
     if [[ -d "$integration_test_dir" ]]; then
         echo "Cleaning up environment (local): $cleanup_env"
         local cleanup_exit=0
         (
             cd "$integration_test_dir"
+            export DINGOFS_TESTSUITE_CONFIG_DIR="$CONFIG_DIR"
             python3 -c "
 import sys
 sys.path.insert(0, '.')
@@ -4293,6 +4327,9 @@ env_cleanup('$cleanup_env')
             docker_args+=(-v "$SSH_AUTH_SOCK:$SSH_AUTH_SOCK" -e "SSH_AUTH_SOCK=$SSH_AUTH_SOCK")
         fi
         local cleanup_exit=0
+        if [[ -n "$config_custom" ]] && [[ -f "$config_custom/${cleanup_env}.yaml" ]]; then
+            docker_args+=(-v "$config_custom/${cleanup_env}.yaml:/dingofs-integration-test/conf/env/${cleanup_env}.yaml:ro")
+        fi
         "${docker_args[@]}" "$image" \
             python3 -c "
 import sys
@@ -4307,6 +4344,7 @@ env_cleanup('$cleanup_env')
         return 1
     fi
 
+    [[ -n "$cleanup_symlink" ]] && rm -f "$cleanup_symlink"
     if [[ $cleanup_exit -ne 0 ]]; then
         echo "Warning: env_cleanup failed (exit: $cleanup_exit)"
         return $cleanup_exit
@@ -4326,9 +4364,15 @@ cmd_setup_env() {
 
     # Capture output to parse DINGOFS_TEMP_MOUNTDIR (tee for real-time display)
     local setup_log _setup_rc
+    local -a setup_statuses
     setup_log=$(mktemp)
-    _run_setup_env "$setup_env" 2>&1 | tee "$setup_log" || true
-    _setup_rc=${PIPESTATUS[0]}
+    if _run_setup_env "$setup_env" 2>&1 | tee "$setup_log"; then
+        setup_statuses=("${PIPESTATUS[@]}")
+    else
+        setup_statuses=("${PIPESTATUS[@]}")
+    fi
+    _setup_rc=${setup_statuses[0]}
+    [[ $_setup_rc -ne 0 ]] || _setup_rc=${setup_statuses[1]}
 
     if [[ $_setup_rc -ne 0 ]]; then
         rm -f "$setup_log"
@@ -5744,7 +5788,7 @@ dingofs-testsuite-tool() {
             shift
             local setup_env_name="$1"
             shift
-            cmd_setup_env "$setup_env_name"
+            cmd_setup_env "$setup_env_name" || return $?
             # If -t follows, run the test
             if [[ "$1" == "-t" ]] || [[ "$1" == "--tool" ]]; then
                 run_testsuite "$@"

@@ -350,6 +350,87 @@ class MlperfBenchmarkTest(unittest.TestCase):
                 self.assertFalse(self.mount.exists())
                 self.assertFalse(self.output.exists())
 
+    def _run_benchmark_with_setup(self, leading, setup_status=0, dry_run=False, pipefail=False, tee_status=0):
+        config = self.root / 'setup-config'
+        config.mkdir(exist_ok=True)
+        setup_calls = self.root / 'setup-calls'
+        runtime_calls = self.root / 'runtime-calls'
+        fresh_mount = self.root / 'fresh-mount'
+        fresh_mount.mkdir(exist_ok=True)
+        self.mount.mkdir(exist_ok=True)
+        runtime = self.root / 'fake-runtime'
+        runtime.write_text('#!/bin/bash\nprintf "%s\\n" "$@" > "$RUNTIME_CALLS"\n')
+        runtime.chmod(0o755)
+        for key, value in {'image': 'test-image', 'testdir': self.mount,
+                           'output': self.output, 'runtime': runtime}.items():
+            (config / key).write_text(str(value) + '\n')
+        options = ['-t', 'mlperf', '-s', 'benchmark', '--file-count', '4']
+        setup = ['--setup-env', 'selected-environment']
+        options = setup + options if leading else options + setup
+        if dry_run:
+            options.append('--dry-run')
+        command = (f'source {shlex.quote(str(ROOT / "dingofs-testsuite-tool"))}\n'
+                   + ('set -o pipefail\n' if pipefail else '') +
+                   '_is_rootless() { return 0; }\n'
+                   'tee() { command tee "$@"; return "$TEE_STATUS"; }\n'
+                   '_run_setup_env() {\n'
+                   '  printf "%s\\n" "$1" >> "$SETUP_CALLS"\n'
+                   '  [[ "$SETUP_STATUS" == 0 ]] || return "$SETUP_STATUS"\n'
+                   '  printf "export DINGOFS_TEMP_MOUNTDIR=%s\\n" "$FRESH_MOUNT"\n'
+                   '}\n'
+                   'dingofs-testsuite-tool ' + shlex.join(options) + ' || exit $?')
+        result = subprocess.run(['bash', '-c', command], capture_output=True, text=True,
+                                env=dict(self.env, DINGOFS_TESTSUITE_CONFIG_DIR=str(config),
+                                         SETUP_CALLS=str(setup_calls), SETUP_STATUS=str(setup_status),
+                                         TEE_STATUS=str(tee_status),
+                                         RUNTIME_CALLS=str(runtime_calls), FRESH_MOUNT=str(fresh_mount)))
+        calls = setup_calls.read_text().splitlines() if setup_calls.exists() else []
+        argv = runtime_calls.read_text().splitlines() if runtime_calls.exists() else []
+        # Each option ordering starts with the same empty observation files.
+        setup_calls.unlink(missing_ok=True)
+        runtime_calls.unlink(missing_ok=True)
+        return result, calls, argv, fresh_mount
+
+    def test_benchmark_setup_in_either_position_refreshes_runtime_mount(self):
+        for leading in (True, False):
+            with self.subTest(leading=leading):
+                result, calls, argv, fresh_mount = self._run_benchmark_with_setup(leading)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertEqual(calls, ['selected-environment'])
+                self.assertIn(str(fresh_mount) + ':/data', argv)
+                self.assertNotIn(str(self.mount) + ':/data', argv)
+
+    def test_benchmark_setup_failure_in_either_position_stops_before_runtime(self):
+        for leading, pipefail in ((True, False), (False, False), (True, True), (False, True)):
+            with self.subTest(leading=leading, pipefail=pipefail):
+                result, calls, argv, _ = self._run_benchmark_with_setup(
+                    leading, setup_status=7, pipefail=pipefail)
+                self.assertEqual(result.returncode, 7, result.stdout + result.stderr)
+                self.assertEqual(calls, ['selected-environment'])
+                self.assertEqual(argv, [])
+                self.assertFalse(self.output.exists())
+
+    def test_benchmark_dry_run_rejects_setup_in_either_position_without_side_effects(self):
+        for leading in (True, False):
+            with self.subTest(leading=leading):
+                result, calls, argv, _ = self._run_benchmark_with_setup(leading, dry_run=True)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn('--dry-run cannot be combined with --setup-env', result.stdout)
+                self.assertEqual(calls, [])
+                self.assertEqual(argv, [])
+                self.assertFalse(self.output.exists())
+
+    def test_benchmark_setup_output_failure_in_either_position_stops_before_runtime(self):
+        for leading in (True, False):
+            for pipefail in (False, True):
+                for producer in (0, 7):
+                    with self.subTest(leading=leading, pipefail=pipefail, producer=producer):
+                        result, calls, argv, _ = self._run_benchmark_with_setup(
+                            leading, setup_status=producer, pipefail=pipefail, tee_status=9)
+                        self.assertEqual(result.returncode, producer or 9, result.stdout + result.stderr)
+                        self.assertEqual(calls, ['selected-environment'])
+                        self.assertEqual(argv, [])
+
     def test_entrypoint_routes_benchmark_to_adapter_with_pure_dry_run(self):
         runner = self.root / 'runner.py'
         recorded = self.root / 'entrypoint.json'
