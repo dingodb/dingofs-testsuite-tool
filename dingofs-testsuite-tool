@@ -3701,13 +3701,14 @@ run_testsuite() {
             return 1
         fi
         local file
-        for file in entrypoint.sh run_tests.py test_suite.py functional_plan.py env_parser.py env_setup.py command_utils.py mount_subdir_executor.py trash_executor.py cache_node_executor.py hot_upgrade_executor.py dirstat_executor.py mds_manage_executor.py client_mount_ops.py client_cache_group_ops.py large_scale_cache_setup.py large_scale_cache_observer.py; do
+        for file in entrypoint.sh integration_summary.py run_tests.py test_suite.py functional_plan.py env_parser.py env_setup.py command_utils.py mount_subdir_executor.py trash_executor.py cache_node_executor.py hot_upgrade_executor.py dirstat_executor.py mds_manage_executor.py client_mount_ops.py client_cache_group_ops.py large_scale_cache_setup.py large_scale_cache_observer.py; do
             if [[ ! -f "$DTT_PERFORMANCE_RUNTIME_DIR/$file" ]]; then
                 echo "Error: functional test runtime missing: $file"
                 return 1
             fi
             case "$file" in
                 entrypoint.sh) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/entrypoint.sh:ro") ;;
+                integration_summary.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/scripts/integration_summary.py:ro") ;;
                 env_parser.py|env_setup.py|command_utils.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/config/$file:ro") ;;
                 client_*.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/client_test/mixins/${file#client_}:ro") ;;
                 large_scale_*.py) docker_cmd+=("-v" "$DTT_PERFORMANCE_RUNTIME_DIR/$file:/dingofs-integration-test/src/large_scale_test/${file#large_scale_}:ro") ;;

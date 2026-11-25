@@ -2540,32 +2540,14 @@ with open(os.path.join(base, 'index.html'), 'w') as f:
     echo "Allure report updated: $int_report_base/"
 
     # Parse test results from the log output.
-    # Supports both run_tests.py format ("TEST SUITE SUMMARY") and pytest format.
-    local int_passed=0
-    local int_failed=0
-    local int_total=0
-
-    # Try run_tests.py format: "  <module>: N passed, M failed, K skipped"
-    local rt_line
-    rt_line=$(grep -oP '^\s+\S+:\s+\d+\s+passed.*$' "$log_file" | head -1)
-    if [[ -n "$rt_line" ]]; then
-        int_passed=$(echo "$rt_line" | grep -oP '\d+(?= passed)' || echo "0")
-        int_failed=$(echo "$rt_line" | grep -oP '\d+(?= failed)' || echo "0")
-    else
-        # Try pytest format: "======= N failed, M passed in X.XXs ======="
-        local summary_line
-        summary_line=$(grep -E "=+.*[0-9]+.*(passed|failed).*in [0-9]" "$log_file" | tail -1)
-        if [[ -n "$summary_line" ]]; then
-            int_failed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) failed.*/\1/p' | head -1)
-            [[ -z "$int_failed" ]] && int_failed=0
-            int_passed=$(echo "$summary_line" | sed -n 's/.*failed, \([0-9]\+\) passed.*/\1/p' | head -1)
-            if [[ -z "$int_passed" ]]; then
-                int_passed=$(echo "$summary_line" | sed -n 's/.*[^0-9]\([0-9]\+\) passed.*/\1/p' | head -1)
-            fi
-            [[ -z "$int_passed" ]] && int_passed=0
-        fi
+    # Guided runs use durable final-suite events; legacy runs use text summaries.
+    local int_passed=unknown int_failed=unknown int_total=unknown status=UNKNOWN
+    local summary_events="" summary_values
+    [[ -n "${INT_CASE_PLAN:-}" ]] && summary_events="$OUTPUT/functional-events.jsonl"
+    if summary_values=$(python3 "${DTT_INTEGRATION_SUMMARY:-/scripts/integration_summary.py}" "$log_file" "$summary_events" "$exit_code"); then
+        read -r int_total int_passed int_failed status <<< "$summary_values"
     fi
-    int_total=$((int_passed + int_failed))
+    [[ "$exit_code" != "0" ]] && status=FAIL
 
     echo ""
     echo "=========================================="
@@ -2579,12 +2561,6 @@ with open(os.path.join(base, 'index.html'), 'w') as f:
         echo "Failed Tests:"
         echo "  $failed_tests"
         echo ""
-    fi
-
-    # Determine success based on parsed results
-    local status="FAIL"
-    if [[ "$int_failed" == "0" ]] && [[ "$int_total" -gt "0" ]]; then
-        status="SUCCESS"
     fi
 
     # Set details string for log_result

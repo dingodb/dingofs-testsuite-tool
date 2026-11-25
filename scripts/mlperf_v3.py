@@ -187,7 +187,11 @@ def native_metrics(plan, results):
         if not isinstance(config, dict) or any(config.get(k) != v for k, v in expected.items()):
             raise ValueError('native KV effective configuration mismatch or missing; upgrade DTT image')
         summary = raw.get('summary', {})
-        requests = number(summary.get('total_requests'), 'total_requests', True)
+        requests = number(summary.get('total_requests'), 'total_requests')
+        if requests == 0:
+            raise ValueError('KV cache: no completed requests (model=%s, duration=%ss); '
+                '没有完成请求，无法生成有效性能样本。请检查原始日志和存储延迟，尝试延长测试时间或减小模型负载；'
+                '配置的存储容量不等于单次请求的数据量。' % (plan['mlperf_model'], plan['runtime_seconds']))
         elapsed = number(summary.get('elapsed_time'), 'elapsed_time', True)
         if elapsed < plan['runtime_seconds'] * 0.9:
             raise ValueError('incomplete KV cache duration')

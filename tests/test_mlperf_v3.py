@@ -59,6 +59,17 @@ def adapter():
     return mlperf_v3
 
 
+def test_zero_completed_kv_requests_explains_missing_sample(tmp_path):
+    p = plan('--mlperf-scenario', 'kvcache', '--mlperf-model', 'llama2-7b', '--runtime-seconds', '30')
+    config = dict(model=p['mlperf_model'], num_users=p['concurrency'], duration=30,
+        cache_dir=p['data_dir'], storage_capacity_gb=p['capacity_bytes']/1024**3,
+        gpu_mem_gb=p['gpu_memory_gib'], cpu_mem_gb=p['cpu_memory_gib'],
+        max_concurrent_allocs=p['concurrency'], generation_mode='none', seed=42)
+    (tmp_path/'kv-result.json').write_text(json.dumps({'effective_config':config,'summary':{'total_requests':0}}))
+    with pytest.raises(ValueError, match='no completed requests.*llama2-7b.*30'):
+        adapter().native_metrics(p, tmp_path)
+
+
 def test_checkpoint_native_commands_separate_preparation(tmp_path):
     p = plan('--mlperf-scenario', 'checkpointing', '--mlperf-model', 'custom',
              '--checkpoint-size', '16777216', '--checkpoint-mode', 'read', '--checkpoint-count', '2')
